@@ -4,12 +4,9 @@ await transaction(async client=>{
   const found=await client.query('SELECT id FROM branches WHERE name=$1',['Caruaru Demonstração']);
   if(found.rows[0])throw new Error('Dados de demonstração já criados');
   const branch=(await client.query<{id:string}>("INSERT INTO branches(name,timezone) VALUES('Caruaru Demonstração','America/Fortaleza') RETURNING id")).rows[0];
-  const principal=(await client.query<{id:string}>('INSERT INTO locations(branch_id,name) VALUES($1,$2) RETURNING id',[branch.id,'Principal'])).rows[0];
-  const restaurante=(await client.query<{id:string}>('INSERT INTO locations(branch_id,name) VALUES($1,$2) RETURNING id',[branch.id,'Restaurante'])).rows[0];
-  await client.query('INSERT INTO locations(branch_id,name) VALUES($1,$2)',[branch.id,'Jerinana']);
   const lockers=[];
-  for(const [location,number,size,capacity,modality] of [[principal.id,'101','padrao',1,'fixo'],[principal.id,'102','grande',2,'fixo'],[restaurante.id,'12','padrao',1,'rotativo']] as const){
-    lockers.push((await client.query<{id:string}>('INSERT INTO lockers(branch_id,location_id,number,size,capacity,modality) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[branch.id,location,number,size,capacity,modality])).rows[0]);
+  for(const [number,capacity,modality,sector] of [['101',1,'fixo',null],['102',2,'fixo',null],['12',1,'rotativo','Restaurante FC']] as const){
+    lockers.push((await client.query<{id:string}>('INSERT INTO lockers(branch_id,number,size,capacity,is_double,modality,sector_occupant) VALUES($1,$2,\'padrao\',$3,$4,$5,$6) RETURNING id',[branch.id,number,capacity,capacity===2,modality,sector])).rows[0]);
   }
   for(const [name,registration,category,needsFixed] of [['Ana Exemplo','00017','colaborador',true],['Bruno Fictício','00018','promotor_fixo',true],['Carla Demonstração',null,'roteirista',false]] as const){
     const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[name])).rows[0];

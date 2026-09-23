@@ -6,7 +6,7 @@ import { pool, transaction, one, fail, type Client } from './db.js';
 import { idempotent, event } from './operations.js';
 import { refreshPending } from './pending.js';
 
-type Locker = { id: string; version: number; capacity: number; condition: string; migration_status: string; modality: string };
+type Locker = { id: string; version: number; capacity: number; is_double: boolean; condition: string; migration_status: string; modality: string; sector_occupant: string | null };
 type Allocation = { id: string; person_id: string; locker_id: string; version: number; ended_at: string | null };
 const route = z.object({ branchId: id });
 const routeItem = z.object({ branchId: id, itemId: id });
@@ -18,10 +18,11 @@ async function lockedLockers(client: Client, branchId: string, ids: string[]): P
 }
 async function checkDestination(client: Client, branchId: string, locker: Locker, expectedVersion: number, sharingReason?: string | null, sharingDueAt?: string | null): Promise<void> {
   if (locker.version !== expectedVersion) fail(409,'VERSAO','Armário alterado; recarregue');
+  if (locker.sector_occupant) fail(409,'OCUPACAO','Armário ocupado por um setor');
   if (locker.condition !== 'disponivel' || locker.migration_status !== 'conferido') fail(409,'INDISPONIVEL','Armário indisponível para novas entradas');
   const active = await client.query<{ id: string }>('SELECT id FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[locker.id]);
   if (active.rows.length >= locker.capacity) fail(409,'CAPACIDADE','Limite de ocupantes atingido');
-  if (active.rows.length === 0) return;
+  if (active.rows.length === 0 || locker.is_double) return;
   const sharing = await client.query<{ id: string; expired: boolean }>(`SELECT s.id,(s.due_at AT TIME ZONE b.timezone)::date < (now() AT TIME ZONE b.timezone)::date expired
     FROM sharings s JOIN lockers l ON l.id=s.locker_id JOIN branches b ON b.id=l.branch_id
     WHERE s.locker_id=$1 AND s.ended_at IS NULL FOR UPDATE OF s`,[locker.id]);
@@ -43,7 +44,7 @@ async function endSharingIfSolo(client: Client, branchId: string, lockerId: stri
 export async function movementRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches/:branchId/allocations', async request => {
     const actor = await authenticate(request); const { branchId } = route.parse(request.params); branchAccess(actor,branchId);
-    return (await pool.query(`SELECT a.*,p.name,l.number,lo.name location_name FROM allocations a JOIN people p ON p.id=a.person_id JOIN lockers l ON l.id=a.locker_id JOIN locations lo ON lo.id=l.location_id WHERE a.branch_id=$1 ORDER BY coalesce(a.started_at,a.migrated_at) DESC LIMIT 1000`,[branchId])).rows;
+    return (await pool.query(`SELECT a.*,p.name,l.number FROM allocations a JOIN people p ON p.id=a.person_id JOIN lockers l ON l.id=a.locker_id WHERE a.branch_id=$1 ORDER BY coalesce(a.started_at,a.migrated_at) DESC LIMIT 1000`,[branchId])).rows;
   });
   app.post('/api/branches/:branchId/allocations/occupy', async request => {
     const actor = await authenticate(request); const { branchId } = route.parse(request.params); branchAccess(actor,branchId,true);
@@ -57,7 +58,7 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       await checkDestination(client,branchId,locker,body.expectedVersion,body.sharingReason,body.sharingDueAt);
       const { rows } = await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,seasonal,started_at,due_at,reason,note,started_by)
         VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9) RETURNING *`,[branchId,body.lockerId,body.personId,body.modality,body.seasonal,body.dueAt,body.reason,body.note,actor.id]);
-      await client.query('UPDATE lockers SET version=version+1 WHERE id=$1',[body.lockerId]);
+      await client.query('UPDATE lockers SET version=version+1,key_copy_available=COALESCE($2,key_copy_available) WHERE id=$1',[body.lockerId,body.keyCopyAvailable??null]);
       await event(client,branchId,actor.id,'ocupacao_iniciada','allocation',rows[0].id,{ lockerId: body.lockerId, personId: body.personId });
       await refreshPending(client,branchId); return rows[0];
     }));
@@ -94,11 +95,12 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       if (destination.modality !== allocation.modality) fail(409,'MODALIDADE','Modalidade incompatível');
       await checkDestination(client,branchId,destination,body.destinationVersion,body.sharingReason,body.sharingDueAt);
       await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,version=version+1 WHERE id=$1',[allocation.id,actor.id]);
-      const { rows } = await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,seasonal,started_at,due_at,note,started_by)
-        VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8) RETURNING *`,[branchId,destination.id,allocation.person_id,allocation.modality,allocation.seasonal,allocation.due_at,body.note,actor.id]);
+      const { rows } = await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,seasonal,started_at,due_at,reason,note,started_by)
+        VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9) RETURNING *`,[branchId,destination.id,allocation.person_id,allocation.modality,allocation.seasonal,allocation.due_at,body.reason,body.note,actor.id]);
       await client.query('UPDATE lockers SET version=version+1 WHERE id=ANY($1::uuid[])',[[source.id,destination.id]]);
+      if(body.keyCopyAvailable!==undefined)await client.query('UPDATE lockers SET key_copy_available=$2 WHERE id=$1',[destination.id,body.keyCopyAvailable]);
       await endSharingIfSolo(client,branchId,source.id,actor.id);
-      await event(client,branchId,actor.id,'ocupacao_transferida','allocation',rows[0].id,{ previousAllocationId: allocation.id, sourceLockerId: source.id, destinationLockerId: destination.id });
+      await event(client,branchId,actor.id,'ocupacao_transferida','allocation',rows[0].id,{ previousAllocationId: allocation.id, sourceLockerId: source.id, destinationLockerId: destination.id, reason: body.reason });
       await refreshPending(client,branchId); return rows[0];
     }));
   });

@@ -2,24 +2,112 @@ import {useEffect,useState} from 'react';
 import {api,op,post,patch} from '../api';
 import type {PageProps} from '../App';
 
-type Person={id:string;person_id:string;name:string;registration:string|null;category:string;origin:string;company:string|null;department:string|null;function_name:string|null;status:string;needs_fixed:boolean;ti_present:boolean|null;version:number;locker_id:string|null;number:string|null;location_name:string|null};
+type Person={id:string;person_id:string;name:string;registration:string|null;category:string;origin:string;company:string|null;
+  department:string|null;function_name:string|null;status:string;needs_fixed:boolean;ti_present:boolean|null;version:number;locker_id:string|null;number:string|null};
+type Locker={id:string;number:string;version:number;modality:'fixo'|'rotativo';condition:string;migration_status:string;sector_occupant:string|null;
+  occupants:{allocationId:string;allocationVersion:number;personId:string}[];capacity:number;is_double:boolean};
+type Lookup={id:string;person_id:string;registration:string;name:string;department:string|null;function_name:string|null;locker_id:string|null};
 const empty={name:'',registration:'',category:'promotor_fixo',company:'',department:'',functionName:'',needsFixed:true};
-export function People({branchId,readonly,copy,refresh,notice}:PageProps){
-  const [people,setPeople]=useState<Person[]>([]),[q,setQ]=useState(''),[category,setCategory]=useState(''),[form,setForm]=useState(empty),[editing,setEditing]=useState<Person|null>(null),[busy,setBusy]=useState(false);
-  async function load(){if(copy){setPeople(copy.people as Person[]);return;}setPeople(await api<Person[]>(`/branches/${branchId}/people`));}
-  useEffect(()=>{load().catch(e=>notice(e.message));},[branchId,copy]);
-  const filtered=people.filter(p=>(!category||p.category===category)&&(!q||[p.name,p.registration??'',p.company??'',p.number??''].some(x=>x.toLocaleLowerCase('pt-BR').includes(q.toLocaleLowerCase('pt-BR')))));
+const labels:Record<string,string>={colaborador:'Colaborador',promotor_fixo:'Promotor fixo',roteirista:'Roteirista',terceirizado:'Terceirizado'};
+export function People({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
+  const [people,setPeople]=useState<Person[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[q,setQ]=useState(''),[category,setCategory]=useState('');
+  const [form,setForm]=useState(empty),[editing,setEditing]=useState<Person|null>(null),[busy,setBusy]=useState(false);
+  const [selected,setSelected]=useState<string[]>([]),[registration,setRegistration]=useState(''),[found,setFound]=useState<Lookup|null>(null),[lockerId,setLockerId]=useState('');
+  const [keyCopy,setKeyCopy]=useState(''),[transferReason,setTransferReason]=useState(''),[assignmentNote,setAssignmentNote]=useState('');
+  async function load(){if(copy){setPeople((copy.people as Person[]).filter(person=>person.status==='ativo'));setLockers(copy.lockers as Locker[]);return;}
+    const [persons,cabinets]=await Promise.all([api<Person[]>(`/branches/${branchId}/people`),api<Locker[]>(`/branches/${branchId}/lockers`)]);
+    setPeople(persons);setLockers(cabinets);
+  }
+  useEffect(()=>{load().catch(error=>notice(error.message));},[branchId,copy]);
+  const filtered=people.filter(person=>(!category||person.category===category)&&(!q||[person.name,person.registration??'',person.company??'',person.number??''].some(value=>value.toLocaleLowerCase('pt-BR').includes(q.toLocaleLowerCase('pt-BR')))));
+  const visibleCollaborators=filtered.filter(person=>person.category==='colaborador');
+  const available=lockers.filter(locker=>!locker.sector_occupant&&locker.condition==='disponivel'&&locker.migration_status==='conferido'&&
+    (locker.occupants.length===0||locker.is_double&&locker.occupants.length<locker.capacity));
   function startEdit(person:Person){setEditing(person);setForm({name:person.name,registration:person.registration??'',category:person.category,company:person.company??'',department:person.department??'',functionName:person.function_name??'',needsFixed:person.needs_fixed});}
   async function save(event:React.FormEvent){event.preventDefault();setBusy(true);try{
     const payload={...form,registration:form.registration||null,company:form.company||null,department:form.department||null,functionName:form.functionName||null,operationId:op()};
     if(editing)await patch(`/branches/${branchId}/people/${editing.id}`,{...payload,expectedVersion:editing.version});
     else await post(`/branches/${branchId}/people`,{...payload,origin:'manual'});
     setForm(empty);setEditing(null);await load();refresh();notice('Cadastro salvo.');
-  }catch(e){notice(e instanceof Error?e.message:'Falha ao salvar');}finally{setBusy(false);}}
-  async function status(person:Person){const next=person.status==='ativo'?'encerrado':'ativo';if(!window.confirm(`${next==='encerrado'?'Encerrar atuação':'Reativar'} de ${person.name}? Ocupação atual permanece até liberação explícita.`))return;try{await post(`/branches/${branchId}/people/${person.id}/status`,{operationId:op(),expectedVersion:person.version,status:next});await load();refresh();notice('Situação atualizada.');}catch(e){notice(e instanceof Error?e.message:'Falha');}}
-  async function exception(person:Person){const reason=window.prompt(`Motivo da exceção de armário para ${person.name}:`);if(!reason)return;try{await post(`/branches/${branchId}/people/${person.id}/exception`,{operationId:op(),expectedVersion:person.version,reason});await load();refresh();notice('Exceção registrada.');}catch(e){notice(e instanceof Error?e.message:'Falha');}}
-  return <><section className="card"><div className="section-head"><div><h2>Pessoas</h2><p>{filtered.length} cadastros encontrados{copy?' · a cópia offline inclui somente ocupantes e pessoas com pendência':''}</p></div></div><div className="filters"><label>Buscar<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Nome, matrícula, empresa ou armário"/></label><label>Categoria<select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Todas</option><option value="colaborador">Colaborador</option><option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Roteirista</option><option value="terceirizado">Terceirizado</option></select></label></div><div className="table-wrap"><table><thead><tr><th>Pessoa</th><th>Categoria</th><th>Empresa / setor</th><th>Situação</th><th>Armário</th><th>Ações</th></tr></thead><tbody>{filtered.map(p=><tr key={p.id}><td><strong>{p.name}</strong><small>{p.registration??'Sem matrícula'}</small></td><td>{labelCategory(p.category)}</td><td>{[p.company,p.department].filter(Boolean).join(' · ')||'—'}</td><td>{p.status==='ativo'?'Ativo':'Atuação encerrada'}{p.category==='colaborador'&&p.ti_present===false?<small>Ausente da TI</small>:null}</td><td>{p.number?`${p.location_name} · ${p.number}`:'Sem armário'}</td><td>{!readonly&&<div className="row-actions"><button onClick={()=>startEdit(p)}>Editar</button><button onClick={()=>status(p)}>{p.status==='ativo'?'Encerrar':'Reativar'}</button>{p.needs_fixed&&!p.locker_id&&<button onClick={()=>exception(p)}>Exceção</button>}</div>}</td></tr>)}</tbody></table></div></section>
-    {!readonly&&<section className="card"><div className="section-head"><div><h2>{editing?`Editar ${editing.name}`:'Cadastrar pessoa externa'}</h2><p>Promotores fixos usam matrícula emitida pela loja. Roteiristas e terceirizados podem ficar sem matrícula.</p></div>{editing&&<button onClick={()=>{setEditing(null);setForm(empty);}}>Cancelar edição</button>}</div><form className="form-grid" onSubmit={save}><label>Nome<input required minLength={2} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Categoria<select value={form.category} onChange={e=>setForm({...form,category:e.target.value,needsFixed:e.target.value==='promotor_fixo'})}><option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Promotor roteirista</option><option value="terceirizado">Terceirizado</option>{editing?.category==='colaborador'&&<option value="colaborador">Colaborador</option>}</select></label><label>Matrícula<input required={form.category==='promotor_fixo'||form.category==='colaborador'} value={form.registration} onChange={e=>setForm({...form,registration:e.target.value})}/></label><label>Empresa / marca<input value={form.company} onChange={e=>setForm({...form,company:e.target.value})}/></label><label>Setor<input value={form.department} onChange={e=>setForm({...form,department:e.target.value})}/></label><label>Função<input value={form.functionName} onChange={e=>setForm({...form,functionName:e.target.value})}/></label><label className="check"><input type="checkbox" checked={form.needsFixed} onChange={e=>setForm({...form,needsFixed:e.target.checked})}/> Precisa de armário fixo</label><button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar cadastro'}</button></form></section>}
+  }catch(error){notice(error instanceof Error?error.message:'Falha ao salvar');}finally{setBusy(false);}}
+  async function status(person:Person){const next=person.status==='ativo'?'encerrado':'ativo';
+    if(!window.confirm(`${next==='encerrado'?'Encerrar atuação':'Reativar'} de ${person.name}? Ocupação atual permanece até liberação explícita.`))return;
+    try{await post(`/branches/${branchId}/people/${person.id}/status`,{operationId:op(),expectedVersion:person.version,status:next});
+      await load();refresh();notice('Situação atualizada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
+  async function exception(person:Person){const reason=window.prompt(`Por que ${person.name} não precisa de armário?`);if(!reason)return;
+    try{await post(`/branches/${branchId}/people/${person.id}/exception`,{operationId:op(),expectedVersion:person.version,reason});
+      await load();refresh();notice('Exceção registrada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
+  async function lookup(){
+    if(!registration.trim())return;setBusy(true);setFound(null);setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');
+    try{setFound(await api<Lookup>(`/branches/${branchId}/people/registration/${encodeURIComponent(registration.trim())}`));}
+    catch(error){notice(error instanceof Error?error.message:'Matrícula não encontrada');}finally{setBusy(false);}
+  }
+  async function assign(){
+    const cabinet=available.find(item=>item.id===lockerId),source=lockers.find(item=>item.id===found?.locker_id);
+    if(!found||!cabinet||!keyCopy||source?.id===cabinet.id||source&&!transferReason.trim())return;setBusy(true);
+    try{
+      if(source){const allocation=source.occupants.find(item=>item.personId===found.person_id);if(!allocation)throw new Error('Ocupação atual não encontrada; recarregue a página');
+        await post(`/branches/${branchId}/allocations/transfer`,{operationId:op(),allocationId:allocation.allocationId,expectedAllocationVersion:allocation.allocationVersion,
+          destinationLockerId:cabinet.id,sourceVersion:source.version,destinationVersion:cabinet.version,reason:transferReason.trim(),
+          note:assignmentNote.trim()||null,keyCopyAvailable:keyCopy==='sim'});
+      }else await post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:found.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,
+        modality:cabinet.modality,seasonal:false,note:assignmentNote.trim()||null,keyCopyAvailable:keyCopy==='sim'});
+      await load();refresh();notice(`${found.name} ${source?'foi transferido para':'recebeu'} o armário ${cabinet.number}.`);
+      setRegistration('');setFound(null);setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');
+    }catch(error){notice(error instanceof Error?error.message:'Falha na atribuição');}finally{setBusy(false);}
+  }
+  function choose(person:Person){setRegistration(person.registration??'');setFound({id:person.id,person_id:person.person_id,registration:person.registration??'',
+    name:person.name,department:person.department,function_name:person.function_name,locker_id:person.locker_id});setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');}
+  async function archive(all=false){
+    if(!all&&!selected.length)return;
+    const count=all?'todos os colaboradores ativos':`${selected.length} colaborador(es)`;
+    if(!window.confirm(`Remover ${count} da base ativa? Armários ainda ocupados ficarão pendentes de conferência.`))return;
+    setBusy(true);
+    try{const result=await post<{removed:number}>(`/branches/${branchId}/people/archive`,{operationId:op(),all,membershipIds:all?[]:selected});
+      setSelected([]);setFound(null);await load();refresh();notice(`${result.removed} colaborador(es) removido(s) da base ativa.`);
+    }catch(error){notice(error instanceof Error?error.message:'Falha ao remover');}finally{setBusy(false);}
+  }
+  return <>
+    {!readonly&&<section className="card"><h2>Atribuir ou transferir armário pela matrícula</h2><p>Digite uma matrícula da base atual para buscar nome, setor e cargo ou função automaticamente.</p>
+      <div className="inline-form"><label>Matrícula<input value={registration} onChange={event=>{setRegistration(event.target.value);setFound(null);}} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();lookup();}}}/></label>
+        <button disabled={busy||!registration.trim()} onClick={lookup}>Buscar matrícula</button></div>
+      {found&&<div className="lookup-result"><p><strong>{found.name}</strong> · Matrícula {found.registration}<br/>{found.department??'Setor não informado'} · {found.function_name??'Cargo ou função não informado'}</p>
+        {found.locker_id&&<p>Ocupa o armário {lockers.find(item=>item.id===found.locker_id)?.number??'atual'}. Selecione outro para transferir.</p>}
+        <div className="form-grid"><label>Armário de destino<select value={lockerId} onChange={event=>setLockerId(event.target.value)}>
+          <option value="">Selecione</option>{available.filter(item=>item.id!==found.locker_id&&(!found.locker_id||item.modality===lockers.find(source=>source.id===found.locker_id)?.modality)).map(item=><option value={item.id} key={item.id}>Armário {item.number}{item.is_double?' · Duplo':''}</option>)}</select></label>
+          <label>Cópia da chave<select required value={keyCopy} onChange={event=>setKeyCopy(event.target.value)}><option value="">Selecione sim ou não</option><option value="sim">Sim</option><option value="nao">Não</option></select></label>
+          {found.locker_id&&<label>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
+          <label>Observação (opcional)<input value={assignmentNote} onChange={event=>setAssignmentNote(event.target.value)}/></label>
+          <button className="primary" disabled={busy||!lockerId||!keyCopy||!!found.locker_id&&transferReason.trim().length<3} onClick={assign}>{found.locker_id?'Transferir armário':'Atribuir armário'}</button></div></div>}
+    </section>}
+    <section className="card"><div className="section-head"><div><h2>Colaboradores e outras pessoas</h2><p>{filtered.length} cadastros ativos encontrados</p></div></div>
+      <div className="filters"><label>Buscar<input value={q} onChange={event=>setQ(event.target.value)} placeholder="Nome, matrícula ou armário"/></label>
+        <label>Categoria<select value={category} onChange={event=>setCategory(event.target.value)}><option value="">Todas</option>
+          <option value="colaborador">Colaborador</option><option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Roteirista</option><option value="terceirizado">Terceirizado</option></select></label></div>
+      {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={visibleCollaborators.length>0&&visibleCollaborators.every(person=>selected.includes(person.id))}
+        onChange={event=>setSelected(event.target.checked?[...new Set([...selected,...visibleCollaborators.map(person=>person.id)])]:selected.filter(id=>!visibleCollaborators.some(person=>person.id===id)))}/>
+        Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Remover selecionados ({selected.length})</button>
+        <button disabled={busy} onClick={()=>archive(true)}>Limpar toda a base de colaboradores</button></div>}
+      <div className="table-wrap"><table><thead><tr>{admin&&!readonly&&<th>Selecionar</th>}<th>Pessoa</th><th>Categoria</th><th>Setor / função</th><th>Situação</th><th>Armário</th><th>Ações</th></tr></thead>
+        <tbody>{filtered.map(person=><tr key={person.id}>{admin&&!readonly&&<td>{person.category==='colaborador'&&<input type="checkbox" aria-label={`Selecionar ${person.name}`}
+          checked={selected.includes(person.id)} onChange={event=>setSelected(event.target.checked?[...selected,person.id]:selected.filter(id=>id!==person.id))}/>}</td>}
+          <td><strong>{person.name}</strong><small>{person.registration??'Sem matrícula'}</small></td><td>{labels[person.category]??person.category}</td>
+          <td>{person.department??'—'}<small>{person.function_name??'—'}</small></td><td>Ativo</td><td>{person.number?`Armário ${person.number}`:'Sem armário'}</td>
+          <td>{!readonly&&<div className="row-actions">{person.category==='colaborador'?<button onClick={()=>choose(person)}>{person.locker_id?'Transferir armário':'Atribuir armário'}</button>:<>
+            <button onClick={()=>startEdit(person)}>Editar</button><button onClick={()=>status(person)}>Encerrar</button>
+            {person.needs_fixed&&!person.locker_id&&<button onClick={()=>exception(person)}>Exceção</button>}</>}</div>}</td></tr>)}</tbody></table></div>
+    </section>
+    {!readonly&&<section className="card"><div className="section-head"><div><h2>{editing?`Editar ${editing.name}`:'Cadastrar pessoa externa'}</h2>
+      <p>Colaboradores da filial vêm da planilha de matrículas. Cadastre aqui promotores e terceirizados.</p></div>{editing&&<button onClick={()=>{setEditing(null);setForm(empty);}}>Cancelar edição</button>}</div>
+      <form className="form-grid" onSubmit={save}><label>Nome<input required minLength={2} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label>
+        <label>Categoria<select value={form.category} onChange={event=>setForm({...form,category:event.target.value,needsFixed:event.target.value==='promotor_fixo'})}>
+          <option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Promotor roteirista</option><option value="terceirizado">Terceirizado</option></select></label>
+        <label>Matrícula<input required={form.category==='promotor_fixo'} value={form.registration} onChange={event=>setForm({...form,registration:event.target.value})}/></label>
+        <label>Empresa / marca<input value={form.company} onChange={event=>setForm({...form,company:event.target.value})}/></label>
+        <label>Setor<input value={form.department} onChange={event=>setForm({...form,department:event.target.value})}/></label>
+        <label>Função<input value={form.functionName} onChange={event=>setForm({...form,functionName:event.target.value})}/></label>
+        <label className="check"><input type="checkbox" checked={form.needsFixed} onChange={event=>setForm({...form,needsFixed:event.target.checked})}/>Precisa de armário fixo</label>
+        <button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar cadastro'}</button></form>
+    </section>}
   </>;
 }
-const labelCategory=(value:string)=>({colaborador:'Colaborador',promotor_fixo:'Promotor fixo',roteirista:'Roteirista',terceirizado:'Terceirizado'} as Record<string,string>)[value]??value;

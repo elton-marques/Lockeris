@@ -12,22 +12,22 @@ import ExcelJS from 'exceljs';
 type Auth={cookie:string;csrf:string};
 const uuid=()=>randomUUID();
 async function send(auth:Auth,method:'POST'|'PATCH',url:string,payload:Record<string,unknown>){return app.inject({method,url,payload,headers:{cookie:auth.cookie,'x-csrf-token':auth.csrf}});}
-async function login():Promise<Auth>{const response=await app.inject({method:'POST',url:'/api/auth/login',payload:{email:'test@example.invalid',password:'Testing-Password-123'}});expect(response.statusCode).toBe(200);return {cookie:response.headers['set-cookie']!.toString().split(';')[0],csrf:response.json().csrf};}
-async function session():Promise<Auth>{const user=(await pool.query<{id:string}>('SELECT id FROM users WHERE email=$1',['test@example.invalid'])).rows[0],token=uuid(),csrf=uuid();await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);return {cookie:`armarios_session=${token}`,csrf};}
-async function setup(){const auth=await login();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();const location=(await send(auth,'POST',`/api/branches/${branch.id}/locations`,{operationId:uuid(),name:'Principal'})).json();return {auth,branch,location};}
-async function setupWithoutLogin(){const auth=await session();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();const location=(await send(auth,'POST',`/api/branches/${branch.id}/locations`,{operationId:uuid(),name:'Principal'})).json();return {auth,branch,location};}
-async function locker(auth:Auth,branchId:string,locationId:string,number:string,capacity=1,size='padrao',modality='fixo'){const response=await send(auth,'POST',`/api/branches/${branchId}/lockers`,{operationId:uuid(),locationId,number,size,capacity,modality,condition:'disponivel'});expect(response.statusCode).toBe(200);return response.json();}
+async function login():Promise<Auth>{const response=await app.inject({method:'POST',url:'/api/auth/login',payload:{username:'test',password:'Testing-Password-123'}});expect(response.statusCode).toBe(200);return {cookie:response.headers['set-cookie']!.toString().split(';')[0],csrf:response.json().csrf};}
+async function session():Promise<Auth>{const user=(await pool.query<{id:string}>('SELECT id FROM users WHERE username=$1',['test'])).rows[0],token=uuid(),csrf=uuid();await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);return {cookie:`armarios_session=${token}`,csrf};}
+async function setup(){const auth=await login();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();return {auth,branch};}
+async function setupWithoutLogin(){const auth=await session();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();return {auth,branch};}
+async function locker(auth:Auth,branchId:string,number:string,capacity=1,size='padrao',modality='fixo'){const response=await send(auth,'POST',`/api/branches/${branchId}/lockers`,{operationId:uuid(),number,size,capacity,modality,condition:'disponivel'});expect(response.statusCode).toBe(200);return response.json();}
 async function person(auth:Auth,branchId:string,name:string,registration:string){const response=await send(auth,'POST',`/api/branches/${branchId}/people`,{operationId:uuid(),name,category:'promotor_fixo',registration,needsFixed:true,origin:'manual'});expect(response.statusCode).toBe(200);return response.json();}
 function form(fields:Record<string,string>,filename:string,content:string){const boundary='armarios-test-boundary';const pieces:string[]=[];for(const [key,value] of Object.entries(fields))pieces.push(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`);pieces.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: text/csv\r\n\r\n${content}\r\n--${boundary}--\r\n`);return {payload:pieces.join(''),headers:{'content-type':`multipart/form-data; boundary=${boundary}`}};}
 function binaryForm(fields:Record<string,string>,filename:string,content:Buffer){const boundary='armarios-binary-test';const parts:Buffer[]=[];for(const [key,value] of Object.entries(fields))parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n`),content,Buffer.from(`\r\n--${boundary}--\r\n`));return {payload:Buffer.concat(parts),headers:{'content-type':`multipart/form-data; boundary=${boundary}`}};}
 
 beforeAll(async()=>{if(!process.env.DATABASE_URL?.includes('armarios_test'))throw new Error('Use o banco armarios_test');process.env.DEVICE_SECRET_KEY='integration-device-key-with-over-thirty-two-characters';await app.ready();});
-beforeEach(async()=>{await pool.query('TRUNCATE branches,people,users CASCADE');await pool.query("INSERT INTO users(email,password_hash,role,must_change_password) VALUES($1,$2,'geral',false)",['test@example.invalid',await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);});
+beforeEach(async()=>{await pool.query('TRUNCATE branches,people,users CASCADE');await pool.query("INSERT INTO users(username,password_hash,role,must_change_password) VALUES($1,$2,'geral',false)",['test',await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);});
 afterAll(async()=>{await app.close();});
 
 describe('regras transacionais',()=>{
   it('aceita uma única disputa pela última capacidade e não duplica operação',async()=>{
-    const {auth,branch,location}=await setup();const cabinet=await locker(auth,branch.id,location.id,'101');const a=await person(auth,branch.id,'Pessoa A','0001'),b=await person(auth,branch.id,'Pessoa B','0002');
+    const {auth,branch}=await setup();const cabinet=await locker(auth,branch.id,'101');const a=await person(auth,branch.id,'Pessoa A','0001'),b=await person(auth,branch.id,'Pessoa B','0002');
     const payloadA={operationId:uuid(),personId:a.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,modality:'fixo',seasonal:false};
     const payloadB={operationId:uuid(),personId:b.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,modality:'fixo',seasonal:false};
     const [first,second]=await Promise.all([send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,payloadA),send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,payloadB)]);
@@ -38,7 +38,7 @@ describe('regras transacionais',()=>{
     expect((await pool.query('SELECT id FROM allocations WHERE ended_at IS NULL')).rowCount).toBe(1);
   });
   it('preserva outra pessoa ao liberar e impede liberação antiga',async()=>{
-    const {auth,branch,location}=await setup();const cabinet=await locker(auth,branch.id,location.id,'360',2,'grande');const a=await person(auth,branch.id,'Pessoa A','0001'),b=await person(auth,branch.id,'Pessoa B','0002');
+    const {auth,branch}=await setup();const cabinet=await locker(auth,branch.id,'360',2,'grande');const a=await person(auth,branch.id,'Pessoa A','0001'),b=await person(auth,branch.id,'Pessoa B','0002');
     const first=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:a.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false});expect(first.statusCode).toBe(200);
     const second=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:b.person_id,lockerId:cabinet.id,expectedVersion:2,modality:'fixo',seasonal:false,sharingReason:'Cobertura temporária',sharingDueAt:new Date(Date.now()+86400000).toISOString()});expect(second.statusCode).toBe(200);
     const release=await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,{operationId:uuid(),allocationId:first.json().id,expectedVersion:1});expect(release.statusCode).toBe(200);
@@ -47,21 +47,24 @@ describe('regras transacionais',()=>{
     const old=await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,{operationId:uuid(),allocationId:first.json().id,expectedVersion:1});expect(old.statusCode).toBe(409);
   });
   it('transfere integralmente e rejeita versão antiga da alocação',async()=>{
-    const {auth,branch,location}=await setupWithoutLogin();
-    const source=await locker(auth,branch.id,location.id,'A'),destination=await locker(auth,branch.id,location.id,'B');
+    const {auth,branch}=await setupWithoutLogin();
+    const source=await locker(auth,branch.id,'A'),destination=await locker(auth,branch.id,'B');
     const member=await person(auth,branch.id,'Pessoa A','0001');
     const first=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:source.id,expectedVersion:1,modality:'fixo',seasonal:false});expect(first.statusCode).toBe(200);
-    const payload={operationId:uuid(),allocationId:first.json().id,expectedAllocationVersion:1,destinationLockerId:destination.id,sourceVersion:2,destinationVersion:1};
+    const payload={operationId:uuid(),allocationId:first.json().id,expectedAllocationVersion:1,destinationLockerId:destination.id,sourceVersion:2,destinationVersion:1,reason:'Altura mais confortável',keyCopyAvailable:false};
     const transferred=await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,payload);expect(transferred.statusCode).toBe(200);
     expect((await pool.query<{locker_id:string}>('SELECT locker_id FROM allocations WHERE person_id=$1 AND ended_at IS NULL',[member.person_id])).rows).toEqual([{locker_id:destination.id}]);
+    expect((await pool.query('SELECT key_copy_available FROM lockers WHERE id=$1',[destination.id])).rows[0].key_copy_available).toBe(false);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers/${source.id}/key-copy`,{operationId:uuid(),expectedVersion:3,available:true})).statusCode).toBe(200);
+    expect((await pool.query('SELECT key_copy_available FROM lockers WHERE id=$1',[source.id])).rows[0].key_copy_available).toBe(true);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,{...payload,operationId:uuid()})).statusCode).toBe(409);
-    const secondDestination=await locker(auth,branch.id,location.id,'C');
-    const stale=await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,{operationId:uuid(),allocationId:transferred.json().id,expectedAllocationVersion:999,destinationLockerId:secondDestination.id,sourceVersion:2,destinationVersion:1});expect(stale.statusCode).toBe(409);
+    const secondDestination=await locker(auth,branch.id,'C');
+    const stale=await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,{operationId:uuid(),allocationId:transferred.json().id,expectedAllocationVersion:999,destinationLockerId:secondDestination.id,sourceVersion:2,destinationVersion:1,reason:'Altura mais confortável'});expect(stale.statusCode).toBe(409);
     expect((await pool.query<{locker_id:string}>('SELECT locker_id FROM allocations WHERE person_id=$1 AND ended_at IS NULL',[member.person_id])).rows[0].locker_id).toBe(destination.id);
   });
   it('preserva ocupação ao encerrar atuação e exige prazo e capacidade no compartilhamento',async()=>{
-    const {auth,branch,location}=await setupWithoutLogin();
-    const shared=await locker(auth,branch.id,location.id,'Grande',3,'grande'),other=await locker(auth,branch.id,location.id,'Outro');
+    const {auth,branch}=await setupWithoutLogin();
+    const shared=await locker(auth,branch.id,'Grande',3,'grande'),other=await locker(auth,branch.id,'Outro');
     const a=await person(auth,branch.id,'Pessoa A','1001'),b=await person(auth,branch.id,'Pessoa B','1002'),c=await person(auth,branch.id,'Pessoa C','1003');
     const occupy=(personId:string,lockerId:string,expectedVersion:number,extra:Record<string,unknown>={})=>send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId,lockerId,expectedVersion,modality:'fixo',seasonal:false,...extra});
     const first=await occupy(a.person_id,shared.id,1);expect(first.statusCode).toBe(200);
@@ -82,17 +85,15 @@ describe('regras transacionais',()=>{
     const release=await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,{operationId:uuid(),allocationId:second.json().id,expectedVersion:1});expect(release.statusCode).toBe(200);
     expect((await pool.query('SELECT id FROM sharings WHERE locker_id=$1 AND ended_at IS NULL',[shared.id])).rowCount).toBe(0);
   });
-  it('mantém versão estável de pendência aberta e exige revisão para espera e exceção',async()=>{
+  it('mantém a pendência aberta até atribuição ou exceção',async()=>{
     const {auth,branch}=await setupWithoutLogin();const member=await person(auth,branch.id,'Promotora','1001');
     const pending=(await pool.query<{id:string;version:number;state:string}>("SELECT id,version,state FROM pending_items WHERE branch_id=$1 AND kind='sem_armario'",[branch.id])).rows[0];
     expect(pending.version).toBe(1);
-    const waiting=await send(auth,'POST',`/api/branches/${branch.id}/pending/${pending.id}/wait`,{operationId:uuid(),expectedVersion:1,reason:'Aguardando espaço disponível'});expect(waiting.statusCode).toBe(200);
-    expect(waiting.json().version).toBe(2);
     await transaction(client=>refreshPending(client,branch.id));
-    expect((await pool.query<{version:number}>('SELECT version FROM pending_items WHERE id=$1',[pending.id])).rows[0].version).toBe(2);
-    expect((await send(auth,'POST',`/api/branches/${branch.id}/pending/${pending.id}/wait`,{operationId:uuid(),expectedVersion:1,reason:'Motivo antigo'})).statusCode).toBe(409);
+    expect((await pool.query<{version:number}>('SELECT version FROM pending_items WHERE id=$1',[pending.id])).rows[0].version).toBe(1);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/pending/${pending.id}/resolve`,{operationId:uuid(),expectedVersion:1,resolution:'Aguardando armário'})).statusCode).toBe(409);
     const exception=await send(auth,'POST',`/api/branches/${branch.id}/people/${member.id}/exception`,{operationId:uuid(),expectedVersion:1,reason:'Atuação externa sem uso fixo'});expect(exception.statusCode).toBe(200);
-    expect((await pool.query<{state:string;version:number}>('SELECT state,version FROM pending_items WHERE id=$1',[pending.id])).rows[0]).toMatchObject({state:'resolvida',version:3});
+    expect((await pool.query<{state:string;version:number}>('SELECT state,version FROM pending_items WHERE id=$1',[pending.id])).rows[0]).toMatchObject({state:'resolvida',version:2});
     expect((await send(auth,'POST',`/api/branches/${branch.id}/people/${member.id}/exception`,{operationId:uuid(),expectedVersion:1,reason:'Motivo antigo'})).statusCode).toBe(409);
   });
   it('mantém matrícula manual e mostra conflito na TI',async()=>{
@@ -105,41 +106,93 @@ describe('regras transacionais',()=>{
     const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/${preview.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true,resolutions:{'0007':'converter_para_ti'}});expect(confirmed.statusCode).toBe(200);
     expect((await pool.query("SELECT count(*) FROM memberships WHERE registration='0007'")).rows[0].count).toBe('1');
   });
-  it('mantém ausentes e cadastros manuais, recalcula ocupações e recusa lote antigo ou repetido',async()=>{
-    const {auth,branch,location}=await setupWithoutLogin();
+  it('retira ausentes da base ativa, mantém armário pendente e recusa lote antigo ou repetido',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
     const manual=await person(auth,branch.id,'Promotora','0099');
-    const fields=(date:string)=>({operationId:uuid(),sheet:'CSV',headerRow:'1',extractedOn:date,mapping:JSON.stringify({registration:'MATRICULA',name:'NOME'}),encoding:'utf8',delimiter:';'});
-    const prepare=async(date:string,content:string)=>{const upload=form(fields(date),'ti.csv',`MATRICULA;NOME\r\n${content}`);return app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/ti/prepare`,...upload,headers:{...upload.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});};
-    const first=await prepare('2026-09-01','0001;Colaborador A\r\n0002;Colaborador B\r\n');expect(first.statusCode).toBe(200);
+    const fields=(date:string)=>({operationId:uuid(),sheet:'CSV',headerRow:'1',extractedOn:date,mapping:JSON.stringify({registration:'MATRICULA',name:'NOME',department:'SETOR',functionName:'CARGO'}),encoding:'utf8',delimiter:';'});
+    const prepare=async(date:string,content:string)=>{const upload=form(fields(date),'colaboradores.csv',`MATRICULA;NOME;SETOR;CARGO\r\n${content}`);return app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/ti/prepare`,...upload,headers:{...upload.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});};
+    const first=await prepare('2026-09-01','0001;Colaborador A;Loja;Operador\r\n0002;Colaborador B;Loja;Operador\r\n');expect(first.statusCode).toBe(200);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${first.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(200);
     const member=(await pool.query<{person_id:string}>('SELECT person_id FROM memberships WHERE branch_id=$1 AND registration=$2',[branch.id,'0001'])).rows[0];
-    const cabinet=await locker(auth,branch.id,location.id,'TI-1');
+    const cabinet=await locker(auth,branch.id,'TI-1');
     const occupied=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,modality:'fixo',seasonal:false});expect(occupied.statusCode).toBe(200);
-    const second=await prepare('2026-09-20','0002;Colaborador B alterado\r\n');expect(second.statusCode).toBe(200);expect(second.json().counts.absent).toBe(1);
-    const third=await prepare('2026-09-21','0002;Colaborador B alterado\r\n');expect(third.statusCode).toBe(200);
+    const second=await prepare('2026-09-20','0002;Colaborador B alterado;Loja;Operador\r\n');expect(second.statusCode).toBe(200);expect(second.json().counts.absent).toBe(1);
+    const third=await prepare('2026-09-21','0002;Colaborador B alterado;Loja;Operador\r\n');expect(third.statusCode).toBe(200);
     const confirmation={operationId:uuid(),acknowledgeComplete:true};
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${second.json().importId}/confirm`,confirmation)).statusCode).toBe(200);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${second.json().importId}/confirm`,confirmation)).statusCode).toBe(200);
     expect((await pool.query("SELECT id FROM pending_items WHERE kind='ausente_ti' AND state='aberta'")).rowCount).toBe(1);
     expect((await pool.query('SELECT id FROM allocations WHERE id=$1 AND ended_at IS NULL',[occupied.json().id])).rowCount).toBe(1);
+    expect((await pool.query("SELECT status FROM memberships WHERE registration='0001'")).rows[0].status).toBe('encerrado');
+    expect((await app.inject({method:'GET',url:`/api/branches/${branch.id}/people`,headers:{cookie:auth.cookie}})).json().some((row:{registration:string})=>row.registration==='0001')).toBe(false);
     expect((await pool.query('SELECT status,origin FROM memberships WHERE person_id=$1',[manual.person_id])).rows[0]).toMatchObject({status:'ativo',origin:'manual'});
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${third.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(409);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${second.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(409);
-    const older=await prepare('2026-09-10','0002;Colaborador B\r\n');expect(older.statusCode).toBe(200);
+    const older=await prepare('2026-09-10','0002;Colaborador B;Loja;Operador\r\n');expect(older.statusCode).toBe(200);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${older.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(409);
     const empty=await prepare('2026-10-01','');expect(empty.statusCode).toBe(422);
-    const returned=await prepare('2026-10-01','0001;Colaborador A\r\n0002;Colaborador B alterado\r\n');expect(returned.statusCode).toBe(200);
+    const returned=await prepare('2026-10-01','0001;Colaborador A;Loja;Operador\r\n0002;Colaborador B alterado;Loja;Operador\r\n');expect(returned.statusCode).toBe(200);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${returned.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(200);
     expect((await pool.query("SELECT id FROM pending_items WHERE kind='ausente_ti' AND state='aberta'")).rowCount).toBe(0);
     expect((await pool.query('SELECT id FROM people WHERE id=$1',[member.person_id])).rowCount).toBe(1);
+    expect((await pool.query("SELECT status FROM memberships WHERE registration='0001'")).rows[0].status).toBe('ativo');
+  });
+  it('busca por matrícula, atribui armário, mostra troca ao operador e limpa selecionados',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const employee=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Ana Exemplo') RETURNING id")).rows[0];
+    const member=(await pool.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
+      VALUES($1,$2,'colaborador','ti','0001','Loja','Operadora',true,true) RETURNING id`,[employee.id,branch.id])).rows[0];
+    const other=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Bia Exemplo') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed,ti_present)
+      VALUES($1,$2,'colaborador','ti','0002',true,true)`,[other.id,branch.id]);
+    const lookup=await app.inject({method:'GET',url:`/api/branches/${branch.id}/people/registration/0001`,headers:{cookie:auth.cookie}});
+    expect(lookup.statusCode).toBe(200);expect(lookup.json()).toMatchObject({name:'Ana Exemplo',department:'Loja',function_name:'Operadora'});
+    const sector=await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'10',size:'padrao',capacity:1,modality:'fixo',condition:'disponivel',sectorOccupant:'Restaurante FC'});
+    expect(sector.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:employee.id,lockerId:sector.json().id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(409);
+    const first=await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'11',size:'padrao',capacity:1,modality:'fixo',condition:'disponivel'});
+    const second=await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'12',size:'padrao',capacity:1,modality:'fixo',condition:'disponivel'});
+    const occupied=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:lookup.json().person_id,lockerId:first.json().id,expectedVersion:1,modality:'fixo',seasonal:false});
+    expect(occupied.statusCode).toBe(200);
+    const moved=await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,{operationId:uuid(),allocationId:occupied.json().id,
+      expectedAllocationVersion:1,destinationLockerId:second.json().id,sourceVersion:2,destinationVersion:1,reason:'Armário mais alto'});
+    expect(moved.statusCode).toBe(200);
+    const operator=(await pool.query<{id:string}>("INSERT INTO users(username,password_hash,role,branch_id,must_change_password) VALUES('operador','unused','operador',$1,false) RETURNING id",[branch.id])).rows[0];
+    const token=uuid(),csrf=uuid();
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),operator.id,hash(csrf)]);
+    const operatorCookie=`armarios_session=${token}`;
+    const transfers=await app.inject({method:'GET',url:`/api/branches/${branch.id}/transfers`,headers:{cookie:operatorCookie}});
+    expect(transfers.statusCode).toBe(200);expect(transfers.json()[0]).toMatchObject({source_number:'11',destination_number:'12',reason:'Armário mais alto'});
+    expect((await app.inject({method:'GET',url:`/api/branches/${branch.id}/history`,headers:{cookie:operatorCookie}})).statusCode).toBe(403);
+    const selected=await send(auth,'POST',`/api/branches/${branch.id}/people/archive`,{operationId:uuid(),all:false,membershipIds:[member.id]});
+    expect(selected.json().removed).toBe(1);
+    expect((await pool.query("SELECT id FROM pending_items WHERE kind='ausente_ti' AND state='aberta'")).rowCount).toBe(1);
+    expect((await app.inject({method:'GET',url:`/api/branches/${branch.id}/people/registration/0001`,headers:{cookie:auth.cookie}})).statusCode).toBe(404);
+    const all=await send(auth,'POST',`/api/branches/${branch.id}/people/archive`,{operationId:uuid(),all:true,membershipIds:[]});
+    expect(all.json().removed).toBe(1);
+    expect((await pool.query("SELECT count(*) FROM memberships WHERE branch_id=$1 AND category='colaborador' AND status='ativo'",[branch.id])).rows[0].count).toBe('0');
+  });
+  it('permite reimportar a mesma planilha após limpar a base ativa',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const fields=()=>({operationId:uuid(),sheet:'CSV',headerRow:'1',extractedOn:'2026-09-01',
+      mapping:JSON.stringify({registration:'MATRICULA',name:'NOME',department:'SETOR',functionName:'CARGO'}),encoding:'utf8',delimiter:';'});
+    const upload=async()=>{const file=form(fields(),'colaboradores.csv','MATRICULA;NOME;SETOR;CARGO\r\n0001;Ana Exemplo;Loja;Operadora\r\n');
+      return app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/ti/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});};
+    const first=await upload();expect(first.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${first.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/people/archive`,{operationId:uuid(),all:true,membershipIds:[]})).json().removed).toBe(1);
+    const again=await upload();expect(again.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${again.json().importId}/confirm`,
+      {operationId:uuid(),acknowledgeComplete:true,sameDateCorrection:true})).statusCode).toBe(200);
+    expect((await pool.query("SELECT status FROM memberships WHERE registration='0001'")).rows[0].status).toBe('ativo');
   });
   it('resiste a dez operadores simultâneos no último armário',async()=>{
-    const {auth:admin,branch,location}=await setup();const cabinet=await locker(admin,branch.id,location.id,'Único');
+    const {auth:admin,branch}=await setup();const cabinet=await locker(admin,branch.id,'Único');
     const actors:Auth[]=[],persons:string[]=[];
     for(let i=0;i<10;i++){
       const personId=(await person(admin,branch.id,`Pessoa ${i}`,`T${i.toString().padStart(3,'0')}`)).person_id;
       const token=uuid(),csrf=uuid();
-      const user=(await pool.query<{id:string}>("INSERT INTO users(email,password_hash,role,branch_id,must_change_password) VALUES($1,'unused','operador',$2,false) RETURNING id",[`operador${i}@example.invalid`,branch.id])).rows[0];
+      const user=(await pool.query<{id:string}>("INSERT INTO users(username,password_hash,role,branch_id,must_change_password) VALUES($1,'unused','operador',$2,false) RETURNING id",[`operador${i}`,branch.id])).rows[0];
       await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);
       actors.push({cookie:`armarios_session=${token}`,csrf});persons.push(personId);
     }
@@ -151,53 +204,71 @@ describe('regras transacionais',()=>{
   it('bloqueia filial alheia, escrita de consulta e dispositivo revogado',async()=>{
     const {auth,branch}=await setup();
     const other=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Outra Filial',timezone:'America/Fortaleza'})).json();
-    const readUser=(await pool.query<{id:string}>("INSERT INTO users(email,password_hash,role,branch_id,must_change_password) VALUES($1,$2,'consulta',$3,false) RETURNING id",['consulta@example.invalid',await argon2.hash('Consult-Password-123',{type:argon2.argon2id}),branch.id])).rows[0];
+    const readUser=(await pool.query<{id:string}>("INSERT INTO users(username,password_hash,role,branch_id,must_change_password) VALUES($1,$2,'consulta',$3,false) RETURNING id",['consulta',await argon2.hash('Consult-Password-123',{type:argon2.argon2id}),branch.id])).rows[0];
     const token=uuid(),csrf=uuid(),consult={cookie:`armarios_session=${token}`,csrf};
     await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),readUser.id,hash(csrf)]);
     const denied=await app.inject({method:'GET',url:`/api/branches/${other.id}/lockers`,headers:{cookie:consult.cookie}});expect(denied.statusCode).toBe(403);
-    const write=await send(consult,'POST',`/api/branches/${branch.id}/locations`,{operationId:uuid(),name:'Sem permissão'});expect(write.statusCode).toBe(403);
+    const write=await send(consult,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'Sem permissão',size:'padrao',capacity:1,modality:'fixo'});expect(write.statusCode).toBe(403);
     const device=await send(auth,'POST',`/api/branches/${branch.id}/devices`,{operationId:uuid(),label:'PC teste'});expect(device.statusCode).toBe(200);
     const snapshot=await app.inject({method:'GET',url:`/api/branches/${branch.id}/offline`,headers:{cookie:auth.cookie,'x-device-secret':device.json().secret}});expect(snapshot.statusCode).toBe(200);
     const revoke=await send(auth,'POST',`/api/branches/${branch.id}/devices/${device.json().id}/revoke`,{operationId:uuid(),expectedVersion:1});expect(revoke.statusCode).toBe(200);
     const rejected=await app.inject({method:'GET',url:`/api/branches/${branch.id}/offline`,headers:{cookie:auth.cookie,'x-device-secret':device.json().secret}});expect(rejected.statusCode).toBe(403);
   });
-  it('preserva incerteza e histórico na migração fictícia',async()=>{
-    const {auth,branch,location}=await setupWithoutLogin();
-    const workbook=new ExcelJS.Workbook();
-    const lockersSheet=workbook.addWorksheet('ARMÁRIOS');
-    lockersSheet.addRow(['N°','NOME','MATRÍCULA','SETOR','FUNÇÃO','STATUS','DUPLO','VAGA','MODIFICADO','OBSERVAÇÃO','ENDEREÇO']);
-    lockersSheet.addRow(['1','Pessoa Exemplo','0001','Loja','Operador','OCUPADO',false,1,'2020-01-01','','']);
-    lockersSheet.addRow(['2',{formula:'A1'},'','','','OCUPADO',false,1,'','','']);
-    const roster=workbook.addWorksheet('COLABORADORES');roster.addRow(['MATRÍCULA','NOME','FUNÇÃO','SETOR']);roster.addRow(['0001','Pessoa Exemplo','Operador','Loja']);
-    const banco=workbook.addWorksheet('BANCO DE DADOS');banco.addRow(['ARMÁRIO','NOME','MATRÍCULA','SETOR','FUNÇÃO']);banco.addRow(['2','','','','']);
-    const history=workbook.addWorksheet('HISTÓRICO');history.addRow(['DATA','AÇÃO']);history.addRow(['data não confiável','registro legado']);
-    const file=binaryForm({operationId:uuid()},'legado.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
+  it('importa uma única aba, liga matrícula existente e registra setor sem pessoa',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const existing=await person(auth,branch.id,'Pessoa Exemplo','0001');
+    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Armários');
+    sheet.addRow(['NÚMERO','NOME','MATRÍCULA','SETOR OCUPANTE','STATUS','DUPLO']);
+    sheet.addRow(['1','Pessoa Exemplo','0001','','OCUPADO',false]);
+    sheet.addRow(['2','','','Jerinana','OCUPADO',false]);
+    sheet.addRow(['3','','','','OCUPADO',false]);
+    const file=binaryForm({operationId:uuid()},'Armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
     const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
-    expect(prepared.statusCode).toBe(200);expect(prepared.json().physicalCount).toBe(2);expect(prepared.json().formulaIssues).toHaveLength(1);
-    expect(prepared.json().sourceProposals).toHaveLength(2);
-    expect(prepared.json().sourceProposals[1]).toMatchObject({number:'2',proposedCapacity:1,uncertain:true});
-    const body={operationId:uuid(),locationId:location.id,confirmCapacities:true,acceptSuggestedCategories:true,duplicateDecisions:{}};
-    const blocked=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,body);expect(blocked.statusCode).toBe(422);
-    const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{...body,operationId:uuid(),acceptBancoSuggestions:true});expect(confirmed.statusCode).toBe(200);
-    const migrated=await pool.query<{started_at:null;original_start_unknown:boolean}>('SELECT started_at,original_start_unknown FROM allocations');
-    expect(migrated.rows).toHaveLength(1);expect(migrated.rows[0].started_at).toBeNull();expect(migrated.rows[0].original_start_unknown).toBe(true);
-    expect((await pool.query("SELECT id FROM lockers WHERE migration_status='inconclusivo'")).rowCount).toBe(1);
-    expect((await pool.query('SELECT id FROM legacy_history')).rowCount).toBe(1);
-  });
-  it('não transforma número duplicado em duas vagas e abre identificação conflitante',async()=>{
-    const {auth,branch,location}=await setupWithoutLogin();
-    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('ARMÁRIOS');
-    sheet.addRow(['N°','NOME','MATRÍCULA','STATUS','DUPLO']);
-    sheet.addRow(['360','Pessoa Exemplo','0001','OCUPADO',true]);
-    sheet.addRow(['360','','','DISPONÍVEL',true]);
-    const file=binaryForm({operationId:uuid()},'duplicado.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
-    const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
-    expect(prepared.statusCode).toBe(200);expect(prepared.json().duplicateNumbers).toEqual(['360']);expect(prepared.json().physicalCount).toBe(1);
-    const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),locationId:location.id,confirmCapacities:true,acceptSuggestedCategories:true,duplicateDecisions:{'360':'same_physical'}});
+    expect(prepared.statusCode).toBe(200);expect(prepared.json()).toMatchObject({physicalCount:3,sectorCount:1,uncertainCount:1});
+    const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),acknowledgeReviewed:true});
     expect(confirmed.statusCode).toBe(200);
-    expect((await pool.query('SELECT id FROM lockers')).rowCount).toBe(1);
-    expect((await pool.query("SELECT id FROM pending_items WHERE kind='identificacao_conflitante' AND state='aberta'")).rowCount).toBe(1);
-    expect((await pool.query("SELECT id FROM lockers WHERE migration_status='inconclusivo'")).rowCount).toBe(1);
+    expect((await pool.query('SELECT count(*) FROM people')).rows[0].count).toBe('1');
+    expect((await pool.query('SELECT person_id FROM allocations')).rows[0].person_id).toBe(existing.person_id);
+    expect((await pool.query("SELECT sector_occupant FROM lockers WHERE number='2'")).rows[0].sector_occupant).toBe('Jerinana');
+    expect((await pool.query("SELECT id FROM pending_items WHERE kind='migracao_inconclusiva' AND state='aberta'")).rowCount).toBe(1);
+  });
+  it('recusa armários duplicados e arquivo com várias abas',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Armários');
+    sheet.addRow(['N°','NOME','MATRÍCULA','STATUS','DUPLO']);sheet.addRow(['360','Pessoa Exemplo','0001','OCUPADO',false]);sheet.addRow(['360','Outra pessoa','0002','OCUPADO',false]);
+    const upload=async(content:ExcelJS.Workbook)=>{const file=binaryForm({operationId:uuid()},'Armarios.xlsx',Buffer.from(await content.xlsx.writeBuffer()));
+      return app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});};
+    expect((await upload(workbook)).statusCode).toBe(422);
+    workbook.addWorksheet('Outra aba');
+    expect((await upload(workbook)).statusCode).toBe(422);
+  });
+  it('lê a planilha atual: armário duplo, setor, matrícula invisível e nomes pendentes',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Página1');
+    sheet.addRow(['N°','NOME','MATRÍCULA','SETOR','FUNÇÃO','STATUS','DUPLO']);
+    sheet.addRow([360,'Ana Exemplo',101,'Loja','Operadora','OCUPADO','verdadeiro']);
+    sheet.addRow([360,'Bia Exemplo',102,'Loja','Operadora','OCUPADO','true']);
+    sheet.addRow([361,'Caio Vinicius','\u200b','','','OCUPADO','falso']);
+    sheet.addRow([362,'Caio Vinícius','\u200b','','','OCUPADO','false']);
+    sheet.addRow([363,'','\u200b','RESTAURANTE FC','','OCUPADO','false']);
+    sheet.addRow([364,'','\u200b','','PROMOTOR(A)','OCUPADO','false']);
+    sheet.addRow([365,'','\u200b','','','DISPONÍVEL','true']);
+    const file=binaryForm({operationId:uuid()},'armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
+    const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({sourceRows:7,physicalCount:6,occupiedCount:5,doubleCount:2,sectorCount:1,uncertainCount:3,repeatedNameCount:1});
+    const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),acknowledgeReviewed:true});
+    expect(confirmed.statusCode).toBe(200);
+    expect((await pool.query("SELECT count(*) FROM lockers WHERE branch_id=$1",[branch.id])).rows[0].count).toBe('6');
+    expect((await pool.query("SELECT is_double,capacity FROM lockers WHERE branch_id=$1 AND number='360'",[branch.id])).rows[0]).toMatchObject({is_double:true,capacity:2});
+    expect((await pool.query("SELECT count(*) FROM allocations a JOIN lockers l ON l.id=a.locker_id WHERE l.branch_id=$1 AND l.number='360' AND a.ended_at IS NULL",[branch.id])).rows[0].count).toBe('2');
+    expect((await pool.query("SELECT sector_occupant FROM lockers WHERE branch_id=$1 AND number='363'",[branch.id])).rows[0].sector_occupant).toBe('RESTAURANTE FC');
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='migracao_inconclusiva' AND state='aberta'",[branch.id])).rows[0].count).toBe('3');
+    const emptyDouble=(await pool.query<{id:string}>("SELECT id FROM lockers WHERE branch_id=$1 AND number='365'",[branch.id])).rows[0];
+    const first=await person(auth,branch.id,'Dora Exemplo','0103'),second=await person(auth,branch.id,'Eva Exemplo','0104');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:first.person_id,lockerId:emptyDouble.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:second.person_id,lockerId:emptyDouble.id,expectedVersion:2,modality:'fixo',seasonal:false})).statusCode).toBe(200);
+    expect((await pool.query('SELECT count(*) FROM sharings WHERE locker_id=$1',[emptyDouble.id])).rows[0].count).toBe('0');
   });
 });
 

@@ -6,7 +6,7 @@ import { hash, pool, fail } from './db.js';
 
 export type Actor = { id: string; role: 'geral' | 'filial_admin' | 'operador' | 'consulta'; branch_id: string | null; must_change_password: boolean };
 declare module 'fastify' { interface FastifyRequest { actor?: Actor } }
-const loginInput = z.object({ email: z.email(), password: z.string().min(1) });
+const loginInput = z.object({ username: z.string().trim().min(1), password: z.string().min(1) });
 const cookieName = 'armarios_session';
 const secure = process.env.COOKIE_SECURE !== 'false';
 
@@ -33,9 +33,9 @@ export function adminAccess(actor: Actor, branchId: string): void {
   if (!['geral','filial_admin'].includes(actor.role)) fail(403, 'PERMISSAO', 'Acesso administrativo necessário');
 }
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/auth/login', { config: { rateLimit: { max: 5, timeWindow: '15 minutes', keyGenerator: request => { const body=request.body as {email?:unknown}|undefined; return typeof body?.email==='string'?body.email.trim().toLowerCase():request.ip; } } } }, async (request, reply) => {
+  app.post('/api/auth/login', { config: { rateLimit: { max: 5, timeWindow: '15 minutes', keyGenerator: request => { const body=request.body as {username?:unknown}|undefined; return typeof body?.username==='string'?body.username.trim().toLowerCase():request.ip; } } } }, async (request, reply) => {
     const input = loginInput.parse(request.body);
-    const { rows } = await pool.query<{ id: string; password_hash: string; active: boolean; role: Actor['role']; branch_id: string | null; must_change_password: boolean }>('SELECT * FROM users WHERE lower(email)=lower($1)', [input.email]);
+    const { rows } = await pool.query<{ id: string; password_hash: string; active: boolean; role: Actor['role']; branch_id: string | null; must_change_password: boolean }>('SELECT * FROM users WHERE lower(username)=lower($1)', [input.username]);
     const user = rows[0];
     if (!user?.active || !(await argon2.verify(user.password_hash, input.password))) fail(401, 'CREDENCIAIS', 'Credenciais inválidas');
     const token = randomBytes(32).toString('base64url');

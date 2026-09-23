@@ -9,7 +9,7 @@ import {Pending} from './pages/Pending';
 import {History} from './pages/History';
 import {Admin} from './pages/Admin';
 
-export type PageProps={branchId:string;readonly:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
+export type PageProps={branchId:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
 type Branch={id:string;name:string;timezone:string};
 const tabs=[['painel','Painel'],['pessoas','Pessoas'],['movimentacoes','Movimentações'],['importacao','Importação'],['pendencias','Pendências'],['historico','Histórico'],['administracao','Administração']] as const;
 const pendingLogoutKey='armarios-pending-logout';
@@ -54,11 +54,12 @@ export default function App(){
   if(offlineUnavailable&&!user)return <main className="center"><section className="auth-card"><h1>Consulta indisponível</h1><p>Não há cópia offline válida neste navegador. Conecte-se para entrar e atualizar os dados.</p></section></main>;
   if(!user)return <Login onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
   if(user.mustChangePassword)return <Password onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
-  const props:PageProps={branchId,readonly:offline||user.role==='consulta',copy:offline?copy:null,refresh,notice:setMessage};
+  const admin=['geral','filial_admin'].includes(user.role);
+  const props:PageProps={branchId,readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-icon">▥</span><div><strong>Armários</strong><small>Gestão operacional</small></div></div>
-      <nav aria-label="Navegação principal">{tabs.filter(([key])=>offline?['painel','pessoas','pendencias'].includes(key):key!=='administracao'||['geral','filial_admin'].includes(user.role)).map(([key,label])=><button key={key} className={page===key?'nav-item active':'nav-item'} onClick={()=>setPage(key)}>{label}</button>)}</nav>
+      <nav aria-label="Navegação principal">{tabs.filter(([key])=>offline?['painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin).map(([key,label])=><button key={key} className={page===key?'nav-item active':'nav-item'} onClick={()=>setPage(key)}>{label}</button>)}</nav>
       <div className="sidebar-footer"><span>{user.role.replace('_',' ')}</span><button onClick={logout}>Sair</button></div>
     </aside>
     <div className="main-area">
@@ -77,9 +78,9 @@ export default function App(){
 }
 
 function Login({onLogin}:{onLogin:(result:{user:User})=>void}){
-  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
-  async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{email,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
-  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><div className="brand"><span className="brand-icon">▥</span><div><strong>Gestão de Armários</strong><small>Acesso interno</small></div></div><h1>Entrar</h1><p>Use sua conta autorizada para acessar a filial.</p><label>E-mail<input type="email" required autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
+  const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><div className="brand"><span className="brand-icon">▥</span><div><strong>Gestão de Armários</strong><small>Acesso interno</small></div></div><h1>Entrar</h1><p>Use seu nome de usuário e senha para acessar a filial.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
 }
 function Password({onDone}:{onDone:()=>void}){
   const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState('');

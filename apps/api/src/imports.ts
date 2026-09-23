@@ -13,7 +13,7 @@ import { refreshPending } from './pending.js';
 export type Sheet = { name: string; rows: string[][] };
 type Mapping = { registration: string; name: string; department?: string; functionName?: string };
 type TiRow = { row: number; registration: string; name: string; department: string | null; functionName: string | null };
-type Existing = { id: string; person_id: string; registration: string; name: string; department: string | null; function_name: string | null; category: string; origin: string; ti_present: boolean | null };
+type Existing = { id: string; person_id: string; registration: string; name: string; department: string | null; function_name: string | null; category: string; origin: string; status: string; ti_present: boolean | null };
 const route = z.object({ branchId: id });
 const routeImport = z.object({ branchId: id, importId: id });
 const norm = (s: string) => s.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
@@ -72,7 +72,7 @@ function select(sheet: Sheet, headerRow: number, mapping: Mapping): TiRow[] {
   if (!headers) fail(422,'CABECALHO','Linha de cabeçalho não encontrada');
   const ix=(name?:string)=>name?headers.indexOf(norm(name)):-1;
   const registration=ix(mapping.registration),name=ix(mapping.name),department=ix(mapping.department),functionName=ix(mapping.functionName);
-  if (registration<0||name<0||(mapping.department&&department<0)||(mapping.functionName&&functionName<0)) fail(422,'MAPEAMENTO','Cabeçalho mapeado não encontrado');
+  if (registration<0||name<0||department<0||functionName<0) fail(422,'MAPEAMENTO','Mapeie matrícula, nome, setor e cargo ou função');
   const rows:TiRow[]=[],seen=new Map<string,number>();
   for(let i=headerRow;i<sheet.rows.length;i++) {
     const row=sheet.rows[i],reg=(row[registration]??'').trim(),personName=(row[name]??'').trim();
@@ -80,7 +80,7 @@ function select(sheet: Sheet, headerRow: number, mapping: Mapping): TiRow[] {
     const formula=values.find(x=>x.startsWith('#FORMULA_SEM_RESULTADO@'));
     if(formula) fail(422,'FORMULA',`Fórmula sem resultado em ${formula.split('@')[1]}`);
     if (!row.some(x=>x.trim())) continue;
-    if (!reg||!personName) fail(422,'LINHA',`Matrícula e nome obrigatórios em ${sheet.name}, linha ${i+1}`);
+    if (!reg||!personName||!row[department]?.trim()||!row[functionName]?.trim()) fail(422,'LINHA',`Matrícula, nome, setor e cargo ou função obrigatórios em ${sheet.name}, linha ${i+1}`);
     if (seen.has(reg)) fail(422,'DUPLICADA',`Matrícula ${reg} duplicada nas linhas ${seen.get(reg)} e ${i+1}`);
     seen.set(reg,i+1);
     rows.push({row:i+1,registration:reg,name:personName,department:department<0?null:row[department]?.trim()||null,functionName:functionName<0?null:row[functionName]?.trim()||null});
@@ -98,11 +98,11 @@ function difference(rows:TiRow[],existing:Existing[]) {
     const old=byReg.get(row.registration);
     if(!old) inclusions.push(row);
     else if(old.category!=='colaborador'||old.origin!=='ti') conflicts.push({row:row.row,registration:row.registration,existing:old});
-    else if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName||!old.ti_present) changes.push({row,before:old});
+    else if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName||!old.ti_present||old.status!=='ativo') changes.push({row,before:old});
     else unchanged.push(row);
   }
-  const absences=existing.filter(x=>x.category==='colaborador'&&x.origin==='ti'&&!seen.has(x.registration));
-  return {inclusions,changes,absences,unchanged,conflicts,counts:{previous:existing.filter(x=>x.category==='colaborador'&&x.origin==='ti'&&x.ti_present).length,current:rows.length,absent:absences.length}};
+  const absences=existing.filter(x=>x.category==='colaborador'&&x.status==='ativo'&&!seen.has(x.registration));
+  return {inclusions,changes,absences,unchanged,conflicts,counts:{previous:existing.filter(x=>x.category==='colaborador'&&x.status==='ativo').length,current:rows.length,absent:absences.length}};
 }
 
 export async function importRoutes(app:FastifyInstance):Promise<void> {
@@ -119,7 +119,7 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
     const buffer=await data.toBuffer(),fields=data.fields as Record<string,{value?:unknown}>;
     const values=Object.fromEntries(Object.entries(fields).map(([key,field])=>[key,field.value]));
     const input=z.object({operationId:id,sheet:z.string(),headerRow:z.coerce.number().int().positive(),extractedOn:z.iso.date(),mapping:z.string(),encoding:z.string().default('utf8'),delimiter:z.string().default('')}).parse(values);
-    const mapping=z.object({registration:z.string(),name:z.string(),department:z.string().optional(),functionName:z.string().optional()}).parse(JSON.parse(input.mapping));
+    const mapping=z.object({registration:z.string().min(1),name:z.string().min(1),department:z.string().min(1),functionName:z.string().min(1)}).parse(JSON.parse(input.mapping));
     const sheet=(await parseFile(buffer,data.filename,input.encoding,input.delimiter)).find(x=>x.name===input.sheet);
     if(!sheet) fail(422,'ABA','Aba não encontrada');
     const rows=select(sheet,input.headerRow,mapping);
@@ -153,8 +153,6 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
       if(String(branch.ti_revision)!==String(batch.base_revision)) fail(409,'PREVIA_DESATUALIZADA','Outro lote foi aplicado; refaça a comparação');
       if(branch.ti_extracted_on&&batch.extracted_on<branch.ti_extracted_on) fail(409,'DATA','Extração anterior à vigente');
       if(branch.ti_extracted_on&&batch.extracted_on===branch.ti_extracted_on&&!body.sameDateCorrection) fail(409,'MESMA_DATA','Confirme explicitamente a correção da mesma data');
-      const duplicate=await client.query('SELECT id FROM imports WHERE branch_id=$1 AND kind=$2 AND file_hash=$3 AND state=$4',[branchId,'ti',batch.file_hash,'applied']);
-      if(duplicate.rows[0]) fail(409,'ARQUIVO_REPETIDO','Arquivo já aplicado');
       const diff=difference(batch.raw_rows,await existingFor(branchId,client));
       const conflicts=diff.conflicts as {registration:string}[];
       if(conflicts.some(x=>body.resolutions[x.registration]!=='converter_para_ti')) fail(409,'CONFLITOS','Resolva todas as matrículas conflitantes');
@@ -168,7 +166,7 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
         let membershipId:string;
         if(old) {
           membershipId=old.id;
-          await client.query(`UPDATE memberships SET category='colaborador',origin='ti',department=$2,function_name=$3,ti_present=true,version=version+1,updated_at=now() WHERE id=$1`,[old.id,row.department,row.functionName]);
+          await client.query(`UPDATE memberships SET category='colaborador',origin='ti',department=$2,function_name=$3,ti_present=true,status='ativo',version=version+1,updated_at=now() WHERE id=$1`,[old.id,row.department,row.functionName]);
           await client.query('UPDATE people SET name=$2 WHERE id=$1',[old.person_id,row.name]);
           if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName) {
             await event(client,branchId,actor.id,'dados_ti_alterados','membership',old.id,{before:old,after:row,importId});
@@ -183,7 +181,7 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
         }
         await client.query('INSERT INTO import_sources(import_id,sheet_name,row_number,entity_type,entity_id,raw) VALUES($1,$2,$3,$4,$5,$6)',[importId,batch.sheet_name,row.row,'membership',membershipId,JSON.stringify(row)]);
       }
-      await client.query(`UPDATE memberships SET ti_present=false,version=version+1,updated_at=now() WHERE branch_id=$1 AND category='colaborador' AND origin='ti' AND registration <> ALL($2::text[])`,[branchId,[...seen]]);
+      await client.query(`UPDATE memberships SET ti_present=false,status='encerrado',version=version+1,updated_at=now() WHERE branch_id=$1 AND category='colaborador' AND status='ativo' AND (registration IS NULL OR registration <> ALL($2::text[]))`,[branchId,[...seen]]);
       await client.query('UPDATE branches SET ti_revision=ti_revision+1,ti_extracted_on=$2,version=version+1 WHERE id=$1',[branchId,batch.extracted_on]);
       await client.query("UPDATE imports SET state='applied',applied_at=now(),preview=$2 WHERE id=$1",[importId,JSON.stringify(diff)]);
       await refreshPending(client,branchId);

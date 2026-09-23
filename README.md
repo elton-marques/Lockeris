@@ -1,68 +1,68 @@
 # Gestão de Armários
 
-Aplicação interna para ocupação de armários por filial. A interface e a API estão em português brasileiro. A instalação local usa PostgreSQL, Fastify e React; não depende do Google Apps Script.
+Aplicação interna para acompanhar os armários e seus ocupantes por filial. A interface e a API estão em português brasileiro. A instalação usa PostgreSQL, Fastify e React.
 
-## Estrutura
+## Como os dados entram
 
-- `apps/api`: API, módulos de operação, importação, autenticação e migrações SQL.
-- `apps/web`: interface React e PWA de consulta offline.
-- `packages/contracts`: contratos Zod compartilhados.
-- `scripts`: backup e teste de restauração.
-- `e2e` e `apps/api/test`: testes com dados fictícios.
+1. **Colaboradores:** o administrador envia uma planilha XLSX com **matrícula, nome, setor e cargo ou função**. Cada matrícula identifica uma única pessoa. A prévia mostra inclusões, alterações e ausências antes da confirmação. A nova planilha passa a ser a lista de colaboradores ativos. Matrículas repetidas ou linhas incompletas são recusadas.
+2. **Armários:** uma planilha XLSX com **uma única aba** faz a carga inicial. O cabeçalho fica na primeira linha, com `N°` (ou `NÚMERO`/`ARMÁRIO`), `NOME`, `MATRÍCULA`, `SETOR`, `FUNÇÃO` (ou `CARGO`) e `STATUS` (`OCUPADO` ou `DISPONÍVEL`). A coluna `DUPLO` é opcional e aceita `verdadeiro`/`falso`, `true`/`false` ou `sim`/`não`. O número repetido em duas linhas ocupadas representa um único armário duplo com duas pessoas; números repetidos em outras condições são recusados. Um armário duplo pode ter só uma pessoa ou estar vazio. Se não houver nome nem matrícula, o valor de `SETOR` identifica o setor ocupante, como `Jerinana` ou `Restaurante FC`. Ocupantes sem matrícula e armários marcados como ocupados sem identificação ficam pendentes de conferência, sem associação automática pelo nome à base mensal de colaboradores.
+3. **Uso diário:** encontre o colaborador pela matrícula para ver seus dados e atribuir ou transferir um armário. No painel, os armários aparecem em ordem numérica; clique em um deles para abrir o cadastro na mesma tela e pesquise qualquer pessoa ativa por nome ou matrícula. Informe se existe cópia da chave e, se quiser, uma observação. Uma transferência exige motivo e aparece no histórico de trocas para operadores. Os filtros mostram livres, ocupados, pendentes, duplos e setores. O registro técnico de eventos e a importação ficam restritos aos administradores.
+
+A carga de armários acontece uma vez por filial; depois, armários individuais podem ser cadastrados em Administração.
+
+Quando uma matrícula sai da nova planilha, seu cadastro deixa de aparecer na base ativa. Se ainda houver uma ocupação, o armário continua ocupado e surge uma pendência para conferir a devolução. O histórico não é apagado. Na tela Pessoas, o administrador também pode selecionar colaboradores específicos ou limpar toda a base ativa. Armários de setores contam como ocupados e não aceitam atribuição a pessoas enquanto o setor estiver registrado.
 
 ## Iniciar com Docker Compose
 
-Requer Docker Desktop com o serviço iniciado. Na raiz do projeto, crie `.env` a partir de `.env.example`. Defina uma senha forte em `POSTGRES_PASSWORD` e uma chave aleatória de pelo menos 32 caracteres em `DEVICE_SECRET_KEY`. Mantenha `.env` fora do Git. Para a execução local em HTTP, use `COOKIE_SECURE=false`.
+Requer Docker Desktop em execução. Na raiz do projeto, crie `.env` a partir de `.env.example`. Defina uma senha forte em `POSTGRES_PASSWORD` e uma chave aleatória de pelo menos 32 caracteres em `DEVICE_SECRET_KEY`. Para testar em HTTP, use `COOKIE_SECURE=false`.
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d --build
 ```
 
-Acesse `http://localhost:8080`. A API responde em `http://localhost:8080/api/health`; a documentação OpenAPI fica em `/api/docs`. O PostgreSQL e a porta direta da API escutam apenas em `127.0.0.1`.
+Abra [http://localhost:8080](http://localhost:8080). A saúde da API fica em `/api/health` e a documentação OpenAPI em `/api/docs`. O banco e a porta direta da API escutam apenas em `127.0.0.1`.
 
-Crie o primeiro administrador geral **uma única vez**. A senha temporária deve ter ao menos 12 caracteres e será trocada no primeiro acesso:
+Em um banco novo, crie o primeiro administrador uma vez. A senha temporária deve ter pelo menos 12 caracteres e será trocada no primeiro acesso:
 
 ```powershell
-$bootstrapEmail = Read-Host 'E-mail do administrador'
+$bootstrapUsername = Read-Host 'Nome de usuário do administrador'
 $bootstrapPassword = Read-Host 'Senha temporária (12+ caracteres)' -AsSecureString
 $bootstrapPlain = [System.Net.NetworkCredential]::new('', $bootstrapPassword).Password
-docker compose exec -e "BOOTSTRAP_EMAIL=$bootstrapEmail" -e "BOOTSTRAP_PASSWORD=$bootstrapPlain" api npm run db:bootstrap
+docker compose exec -e "BOOTSTRAP_USERNAME=$bootstrapUsername" -e "BOOTSTRAP_PASSWORD=$bootstrapPlain" api npm run db:bootstrap
 Remove-Variable bootstrapPlain,bootstrapPassword
 ```
 
-No primeiro acesso, crie a filial e seu administrador, depois os locais. Cadastre `Restaurante` e `Jerinana` quando fizerem parte do mapa físico. A criação de dados fictícios é opcional e usa uma filial separada:
+Se já existe um usuário, o bootstrap não será executado de novo. O comando abaixo cria dados fictícios em uma filial separada e deve ser usado somente quando você quiser essa demonstração:
 
 ```powershell
 docker compose exec -e DEMO_SEED=true api npm run db:seed
 ```
 
-Não use a filial de demonstração para importar a planilha real: a migração inicial só confirma em uma filial sem pessoas nem armários.
+Se você não sabe a senha de um usuário existente, escolha outra. O comando abaixo encerra as sessões desse usuário e exige a troca da senha temporária no próximo acesso:
 
-## Desenvolvimento local
+```powershell
+$resetUsername = Read-Host 'Nome de usuário existente'
+$resetPassword = Read-Host 'Nova senha temporária (12+ caracteres)' -AsSecureString
+$resetPlain = [System.Net.NetworkCredential]::new('', $resetPassword).Password
+docker compose exec -e "RESET_USERNAME=$resetUsername" -e "RESET_PASSWORD=$resetPlain" api npm run db:reset-password
+Remove-Variable resetPlain,resetPassword
+```
 
-Com o banco do Compose ativo, em PowerShell:
+## Desenvolvimento e testes
+
+Com o PostgreSQL do Compose ativo:
 
 ```powershell
 npm ci
-$env:DATABASE_URL = 'postgres://armarios:<senha-local>@localhost:5432/armarios'
+$env:DATABASE_URL = 'postgres://armarios:<senha-configurada>@localhost:5432/armarios'
 $env:COOKIE_SECURE = 'false'
 $env:DEVICE_SECRET_KEY = '<chave-aleatoria-de-32-caracteres-ou-mais>'
 npm run db:migrate
 npm run dev
 ```
 
-O Vite abre em `http://localhost:5173` e encaminha `/api` para a API em `localhost:3001`. Para um banco novo, execute `npm run db:bootstrap` com `BOOTSTRAP_EMAIL` e `BOOTSTRAP_PASSWORD` no ambiente. Não coloque credenciais reais no código ou em comandos versionados.
-
-## Operação e importação
-
-- A aba `ARMÁRIOS` é a fonte da migração inicial. A prévia mostra todas as linhas, inclusive armários sem pessoa, para revisar local, números duplicados, capacidades e categorias sugeridas. Armários com identificação ou ocupação incerta ficam bloqueados para novas entradas. `DUPLO` propõe porte grande e capacidade 2, sem criar duas vagas permanentes. `MODIFICADO` é preservado como dado de origem, não como início da ocupação.
-- A planilha fornecida contém **478 linhas para 477 números distintos**, com o número 360 duplicado. Há **515 células de fórmula sem resultado armazenado** nas colunas de nome, setor e função da aba `ARMÁRIOS`. A prévia mostra a localização de cada uma. Sugestões da aba `BANCO DE DADOS` só entram após confirmação explícita. Células sem correspondência única exigem valor revisado. Matrículas gravadas como número no XLSX podem ter perdido zeros à esquerda antes da importação; confira e corrija a fonte quando necessário.
-- A atualização da TI aceita XLSX ou CSV de até 10 MB, com seleção de aba, linha de cabeçalho, colunas, codificação e delimitador. A confirmação exige declarar que o arquivo é a lista completa dos ativos da filial. Conflitos de matrícula manual são resolvidos individualmente. Ausência da TI gera pendência, sem liberar armário ou inativar cadastros manuais.
-- Uma entrada em armário já ocupado exige motivo e previsão de compartilhamento. O limite de ocupantes é configurável. Liberações identificam a alocação específica. O painel não trata um armário grande ocupado como livre.
-- A consulta offline exige autorização do navegador em **Administração**, autenticação online recente e cópia válida. O prazo é o término da sessão online, no máximo 24 horas desde o login. A cópia contém armários, ocupantes e pendências abertas. Logout apaga a cópia; a saída feita offline encerra a sessão no servidor ao reconectar. A Administração lista e revoga dispositivos; revogação recebida ao reconectar apaga a cópia. Alterações e exportações não funcionam offline. O navegador conserva a autorização do dispositivo após logout, mas precisa de novo login online para gerar uma nova cópia.
-
-## Verificação
+O Vite abre em `http://localhost:5173` e encaminha `/api` para `localhost:3001`.
 
 ```powershell
 npm run typecheck
@@ -70,33 +70,26 @@ npm run lint
 npm run build
 ```
 
-Os testes de integração exigem um banco isolado e migrado:
+Os testes de integração e de navegador limpam dados dos **bancos de teste**. Crie e migre esses bancos isolados antes de executar:
 
 ```powershell
 docker compose exec -T db psql -U armarios -d postgres -c 'CREATE DATABASE armarios_test;'
-$env:DATABASE_URL = 'postgres://armarios:<senha-local>@localhost:5432/armarios_test'
+$env:DATABASE_URL = 'postgres://armarios:<senha-configurada>@localhost:5432/armarios_test'
 npm run db:migrate
-$env:COOKIE_SECURE = 'false'
 npm run test
-```
 
-Os testes de navegador usam outro banco, `armarios_e2e`, Chrome ou Edge instalado e portas locais 3002/5174. A preparação cria somente pessoas fictícias e recria os dados desse banco:
-
-```powershell
 docker compose exec -T db psql -U armarios -d postgres -c 'CREATE DATABASE armarios_e2e;'
-$env:DATABASE_URL = 'postgres://armarios:<senha-local>@localhost:5432/armarios_e2e'
+$env:DATABASE_URL = 'postgres://armarios:<senha-configurada>@localhost:5432/armarios_e2e'
 npm run db:migrate
 $env:E2E_DATABASE_URL = $env:DATABASE_URL
 npm run test:e2e
-$env:E2E_BROWSER_CHANNEL = 'msedge'
-npm run test:e2e
 ```
 
-Capturas da verificação visual ficam em `test-results/visual/` e não são versionadas. Não aponte os testes para um banco real: eles limpam as tabelas do banco isolado antes de executar.
+O teste de navegador usa Chrome por padrão. Para Edge, defina `$env:E2E_BROWSER_CHANNEL = 'msedge'`. As capturas ficam em `test-results/visual/`.
 
-## Backup e restauração
+## Backup
 
-O serviço `backup` do Compose cria um dump PostgreSQL em `backups/` ao iniciar e a cada 24 horas, mantendo os últimos 30 dias. Essa pasta não entra no Git. Monitore o serviço e copie os dumps para armazenamento protegido fora do servidor; um backup só no mesmo disco não cobre perda da máquina.
+O serviço `backup` salva dumps PostgreSQL em `backups/` a cada 24 horas e mantém os últimos 30 dias. Copie os dumps para armazenamento protegido fora da máquina.
 
 ```powershell
 docker compose logs backup
@@ -104,12 +97,4 @@ $backup = Get-ChildItem .\backups -Filter *.dump | Sort-Object LastWriteTime -De
 .\scripts\restore-test.ps1 -BackupFile $backup.FullName -DatabaseName armarios_restore_test
 ```
 
-O script restaura em **outro banco** e imprime as contagens de filiais, armários, alocações, lotes e eventos. Para repetir o teste, escolha outro nome de banco ou remova o banco de teste de modo consciente. Nunca restaure por cima do banco operacional sem um procedimento de parada, cópia e validação separado.
-
-## Empacotamento e limites de implantação
-
-`docker compose build api web` gera as imagens. A publicação em produção exige hospedagem, domínio e HTTPS externo; configure `COOKIE_SECURE=true`, uma senha forte de PostgreSQL, chave de dispositivos própria e proteção do diretório de backups. O Compose deste repositório é uma base de execução integrada, sem contratação ou publicação automática.
-
-O piloto de Caruaru depende da revisão humana dos dados legados. A aplicação não afirma que armários inconclusivos estão disponíveis. Chrome e Edge foram cobertos pelo fluxo de navegador automatizado; a operação com dados reais ainda exige aceite no PC da supervisão.
-
-O `npm audit --omit=dev` ainda aponta dois avisos moderados para `uuid@8.3.2`, dependência transitiva do ExcelJS. A versão atual do ExcelJS usa `uuid.v4()` sem buffer no caminho encontrado no projeto; a correção definitiva depende de uma atualização compatível da biblioteca. Reavalie esses avisos antes da implantação.
+O teste de restauração usa outro banco. Não restaure por cima dos dados operacionais sem uma cópia e validação separadas.
