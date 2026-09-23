@@ -13,7 +13,7 @@ export function People({branchId,readonly,copy,refresh,notice,admin=false}:PageP
   const [people,setPeople]=useState<Person[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[q,setQ]=useState(''),[category,setCategory]=useState('');
   const [form,setForm]=useState(empty),[editing,setEditing]=useState<Person|null>(null),[busy,setBusy]=useState(false);
   const [selected,setSelected]=useState<string[]>([]),[registration,setRegistration]=useState(''),[found,setFound]=useState<Lookup|null>(null),[lockerId,setLockerId]=useState('');
-  const [keyCopy,setKeyCopy]=useState(''),[transferReason,setTransferReason]=useState(''),[assignmentNote,setAssignmentNote]=useState('');
+  const [keyCopy,setKeyCopy]=useState('sim'),[transferReason,setTransferReason]=useState(''),[assignmentNote,setAssignmentNote]=useState('');
   async function load(){if(copy){setPeople((copy.people as Person[]).filter(person=>person.status==='ativo'));setLockers(copy.lockers as Locker[]);return;}
     const [persons,cabinets]=await Promise.all([api<Person[]>(`/branches/${branchId}/people`),api<Locker[]>(`/branches/${branchId}/lockers`)]);
     setPeople(persons);setLockers(cabinets);
@@ -38,7 +38,7 @@ export function People({branchId,readonly,copy,refresh,notice,admin=false}:PageP
     try{await post(`/branches/${branchId}/people/${person.id}/exception`,{operationId:op(),expectedVersion:person.version,reason});
       await load();refresh();notice('Exceção registrada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
   async function lookup(){
-    if(!registration.trim())return;setBusy(true);setFound(null);setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');
+    if(!registration.trim())return;setBusy(true);setFound(null);setLockerId('');setKeyCopy('sim');setTransferReason('');setAssignmentNote('');
     try{setFound(await api<Lookup>(`/branches/${branchId}/people/registration/${encodeURIComponent(registration.trim())}`));}
     catch(error){notice(error instanceof Error?error.message:'Matrícula não encontrada');}finally{setBusy(false);}
   }
@@ -53,11 +53,11 @@ export function People({branchId,readonly,copy,refresh,notice,admin=false}:PageP
       }else await post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:found.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,
         modality:cabinet.modality,seasonal:false,note:assignmentNote.trim()||null,keyCopyAvailable:keyCopy==='sim'});
       await load();refresh();notice(`${found.name} ${source?'foi transferido para':'recebeu'} o armário ${cabinet.number}.`);
-      setRegistration('');setFound(null);setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');
+      setRegistration('');setFound(null);setLockerId('');setKeyCopy('sim');setTransferReason('');setAssignmentNote('');
     }catch(error){notice(error instanceof Error?error.message:'Falha na atribuição');}finally{setBusy(false);}
   }
   function choose(person:Person){setRegistration(person.registration??'');setFound({id:person.id,person_id:person.person_id,registration:person.registration??'',
-    name:person.name,department:person.department,function_name:person.function_name,locker_id:person.locker_id});setLockerId('');setKeyCopy('');setTransferReason('');setAssignmentNote('');}
+    name:person.name,department:person.department,function_name:person.function_name,locker_id:person.locker_id});setLockerId('');setKeyCopy('sim');setTransferReason('');setAssignmentNote('');}
   async function archive(all=false){
     if(!all&&!selected.length)return;
     const count=all?'todos os colaboradores ativos':`${selected.length} colaborador(es)`;
@@ -75,7 +75,7 @@ export function People({branchId,readonly,copy,refresh,notice,admin=false}:PageP
         {found.locker_id&&<p>Ocupa o armário {lockers.find(item=>item.id===found.locker_id)?.number??'atual'}. Selecione outro para transferir.</p>}
         <div className="form-grid"><label>Armário de destino<select value={lockerId} onChange={event=>setLockerId(event.target.value)}>
           <option value="">Selecione</option>{available.filter(item=>item.id!==found.locker_id&&(!found.locker_id||item.modality===lockers.find(source=>source.id===found.locker_id)?.modality)).map(item=><option value={item.id} key={item.id}>Armário {item.number}{item.is_double?' · Duplo':''}</option>)}</select></label>
-          <label>Cópia da chave<select required value={keyCopy} onChange={event=>setKeyCopy(event.target.value)}><option value="">Selecione sim ou não</option><option value="sim">Sim</option><option value="nao">Não</option></select></label>
+          <label>Cópia da chave<select required value={keyCopy} onChange={event=>setKeyCopy(event.target.value)}><option value="sim">Sim</option><option value="nao">Não</option></select></label>
           {found.locker_id&&<label>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
           <label>Observação (opcional)<input value={assignmentNote} onChange={event=>setAssignmentNote(event.target.value)}/></label>
           <button className="primary" disabled={busy||!lockerId||!keyCopy||!!found.locker_id&&transferReason.trim().length<3} onClick={assign}>{found.locker_id?'Transferir armário':'Atribuir armário'}</button></div></div>}

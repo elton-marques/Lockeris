@@ -5,6 +5,7 @@ import { authenticate, branchAccess, adminAccess } from './auth.js';
 import { pool, transaction, one, fail } from './db.js';
 import { idempotent, event } from './operations.js';
 import { refreshPending } from './pending.js';
+import {registrationKey} from './registration.js';
 
 const routeBranch = z.object({ branchId: id });
 const routeItem = z.object({ branchId: id, itemId: id });
@@ -36,10 +37,13 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches/:branchId/people/registration/:registration', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId);
     const { registration } = z.object({ registration: z.string().trim().min(1) }).parse(request.params);
-    const { rows } = await pool.query(`SELECT m.id,m.person_id,m.registration,p.name,m.department,m.function_name,a.locker_id
+    const { rows } = await pool.query<{registration:string;origin:string}>(`SELECT m.id,m.person_id,m.registration,m.origin,p.name,m.department,m.function_name,a.locker_id
       FROM memberships m JOIN people p ON p.id=m.person_id LEFT JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
-      WHERE m.branch_id=$1 AND m.registration=$2 AND m.category='colaborador' AND m.status='ativo'`,[branchId,registration]);
-    return rows[0]??fail(404,'MATRICULA','Matrícula não encontrada na base ativa de colaboradores');
+      WHERE m.branch_id=$1 AND m.registration IS NOT NULL AND m.category='colaborador' AND m.status='ativo'`,[branchId]);
+    const matches=rows.filter(row=>registrationKey(row.registration)===registrationKey(registration))
+      .sort((a,b)=>Number(b.origin==='ti')-Number(a.origin==='ti'));
+    if(matches.length>1&&matches[0].origin===matches[1].origin)fail(409,'MATRICULA_AMBIGUA','Mais de um cadastro usa esta matrícula; confira a base');
+    return matches[0]??fail(404,'MATRICULA','Matrícula não encontrada na base ativa de colaboradores');
   });
   app.post('/api/branches/:branchId/people/archive', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); adminAccess(actor,branchId);
@@ -103,7 +107,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches/:branchId/lockers', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId);
     const query = z.object({ q: z.string().optional(), condition: z.string().optional() }).parse(request.query);
-    return (await pool.query(`SELECT l.*,coalesce(json_agg(json_build_object('allocationId',a.id,'allocationVersion',a.version,'personId',a.person_id,'name',p.name,'registration',m.registration,'department',m.department,'dueAt',a.due_at)) FILTER (WHERE a.id IS NOT NULL),'[]') occupants
+    return (await pool.query(`SELECT l.*,coalesce(json_agg(json_build_object('allocationId',a.id,'allocationVersion',a.version,'personId',a.person_id,'membershipId',m.id,'membershipVersion',m.version,'origin',m.origin,'name',p.name,'registration',m.registration,'department',m.department,'functionName',m.function_name,'dueAt',a.due_at)) FILTER (WHERE a.id IS NOT NULL),'[]') occupants
       FROM lockers l LEFT JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
       LEFT JOIN people p ON p.id=a.person_id LEFT JOIN memberships m ON m.person_id=p.id AND m.branch_id=l.branch_id
       WHERE l.branch_id=$1 AND ($2::text IS NULL OR l.number ILIKE '%'||$2||'%') AND ($3::text IS NULL OR l.condition=$3)

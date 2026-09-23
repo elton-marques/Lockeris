@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { createHmac } from 'node:crypto';
 import argon2 from 'argon2';
 import Papa from 'papaparse';
@@ -8,8 +8,41 @@ import { authenticate, branchAccess, adminAccess } from './auth.js';
 import { hash, pool, transaction, one, fail } from './db.js';
 import { idempotent, event } from './operations.js';
 import { refreshPending } from './pending.js';
+import {registrationKey} from './registration.js';
 
 const route=z.object({branchId:id}),routeItem=z.object({branchId:id,itemId:id});
+const pendingDetailsSql=(openOnly:boolean)=>`SELECT p.*,pe.name person_name,m.person_id,m.registration,m.department,m.function_name,m.origin,m.ti_present,
+  m.version membership_version,COALESCE(l.id,al.id,sl.id,season_l.id) pending_locker_id,
+  COALESCE(l.number,al.number,sl.number,season_l.number) locker_number,
+  COALESCE(l.version,al.version,sl.version,season_l.version) locker_version,
+  COALESCE(l.sector_occupant,al.sector_occupant,sl.sector_occupant,season_l.sector_occupant) sector_occupant,
+  COALESCE(l.is_double,al.is_double,sl.is_double,season_l.is_double) is_double,
+  COALESCE(l.condition,al.condition,sl.condition,season_l.condition) condition,
+  COALESCE(l.key_copy_available,al.key_copy_available,sl.key_copy_available,season_l.key_copy_available) key_copy_available,
+  COALESCE(l.migration_status,al.migration_status,sl.migration_status,season_l.migration_status) migration_status,
+  a.id allocation_id,a.version allocation_version,al.number allocation_locker_number,
+  s.version sharing_version,s.due_at sharing_due_at,season.version seasonal_version,season.due_at seasonal_due_at,
+  occupants.data occupants,source.data source_rows
+  FROM pending_items p
+  LEFT JOIN memberships m ON p.subject_type='membership' AND m.id=p.subject_id
+  LEFT JOIN people pe ON pe.id=m.person_id
+  LEFT JOIN lockers l ON p.subject_type='locker' AND l.id=p.subject_id
+  LEFT JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
+  LEFT JOIN lockers al ON al.id=a.locker_id
+  LEFT JOIN sharings s ON p.subject_type='sharing' AND s.id=p.subject_id
+  LEFT JOIN lockers sl ON sl.id=s.locker_id
+  LEFT JOIN allocations season ON p.subject_type='allocation' AND season.id=p.subject_id
+  LEFT JOIN lockers season_l ON season_l.id=season.locker_id
+  LEFT JOIN LATERAL (SELECT coalesce(json_agg(json_build_object('allocationId',oa.id,'allocationVersion',oa.version,
+    'membershipId',om.id,'membershipVersion',om.version,'personId',op.id,'name',op.name,'registration',om.registration,
+    'department',om.department,'functionName',om.function_name,'origin',om.origin) ORDER BY op.name),'[]') data
+    FROM allocations oa JOIN people op ON op.id=oa.person_id
+    LEFT JOIN memberships om ON om.person_id=op.id AND om.branch_id=p.branch_id
+    WHERE oa.locker_id=COALESCE(l.id,al.id,sl.id,season_l.id) AND oa.ended_at IS NULL) occupants ON true
+  LEFT JOIN LATERAL (SELECT coalesce(json_agg(src.raw ORDER BY src.row_number),'[]') data
+    FROM import_sources src JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
+    WHERE src.entity_type='locker' AND src.entity_id=COALESCE(l.id,al.id,sl.id,season_l.id)) source ON true
+  WHERE p.branch_id=$1 ${openOnly?"AND p.state='aberta'":''} ORDER BY p.state,p.updated_at DESC LIMIT 1000`;
 export async function managementRoutes(app:FastifyInstance):Promise<void> {
   app.get('/api/branches/:branchId/dashboard',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
@@ -23,18 +56,91 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    return (await pool.query(`SELECT p.*,pe.name person_name,m.registration,m.version membership_version,l.number locker_number,l.version locker_version,
-      COALESCE(l.id,a.locker_id,s.locker_id,season.locker_id) pending_locker_id,
-      a.id allocation_id,a.version allocation_version,a.locker_id allocation_locker_id,al.number allocation_locker_number,
-      s.version sharing_version,s.due_at sharing_due_at,season.version seasonal_version,season.due_at seasonal_due_at
-      FROM pending_items p
-      LEFT JOIN memberships m ON p.subject_type='membership' AND m.id=p.subject_id LEFT JOIN people pe ON pe.id=m.person_id
-      LEFT JOIN lockers l ON p.subject_type='locker' AND l.id=p.subject_id
-      LEFT JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL LEFT JOIN lockers al ON al.id=a.locker_id
-      LEFT JOIN sharings s ON p.subject_type='sharing' AND s.id=p.subject_id
-      LEFT JOIN allocations season ON p.subject_type='allocation' AND season.id=p.subject_id
-      WHERE p.branch_id=$1 ORDER BY p.state,p.updated_at DESC LIMIT 1000`,[branchId])).rows;
+    return (await pool.query(pendingDetailsSql(false),[branchId])).rows;
   });
+  async function reviseLocker(request:FastifyRequest,direct:boolean){
+    const actor=await authenticate(request),{branchId,itemId}=routeItem.parse(request.params);adminAccess(actor,branchId);
+    const body=operation.extend({expectedVersion:z.number().int().positive().optional(),expectedLockerVersion:z.number().int().positive(),
+      number:z.string().trim().min(1).max(40),isDouble:z.boolean(),sectorOccupant:z.string().trim().max(120).nullable(),
+      condition:z.enum(['disponivel','manutencao','bloqueado']).optional(),keyCopyAvailable:z.boolean().optional(),
+      finalize:z.boolean().default(false),occupant:z.object({allocationId:id.optional(),membershipId:id.optional(),expectedMembershipVersion:z.number().int().positive().optional(),
+        name:z.string().trim().max(200),registration:z.string().trim().max(80).nullable(),
+        department:z.string().trim().max(200).nullable(),functionName:z.string().trim().max(200).nullable()}).nullable()}).parse(request.body);
+    return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
+      const pending=direct?null:await one<{version:number;state:string;kind:string;subject_type:string;subject_id:string}>(client,
+        'SELECT * FROM pending_items WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
+      if(pending&&(pending.version!==body.expectedVersion||pending.state!=='aberta'))fail(409,'VERSAO','Pendência alterada; recarregue');
+      const lockerId=direct?itemId:pending!.subject_type==='locker'?pending!.subject_id:(await client.query<{locker_id:string}>(`SELECT a.locker_id FROM memberships m
+        JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL WHERE m.id=$1 AND m.branch_id=$2`,[pending!.subject_id,branchId])).rows[0]?.locker_id;
+      if(!lockerId)fail(409,'ARMARIO','Esta pendência não possui armário para revisar');
+      const locker=await one<{id:string;version:number;number:string;capacity:number;is_double:boolean;sector_occupant:string|null}>(client,
+        'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[lockerId,branchId]);
+      if(locker.version!==body.expectedLockerVersion)fail(409,'VERSAO','Armário alterado; recarregue');
+      const count=Number((await client.query<{count:string}>('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[lockerId])).rows[0].count);
+      if(count>(body.isDouble?2:1))fail(409,'OCUPACAO','Armário com duas pessoas deve continuar duplo');
+      if(body.sectorOccupant&&(count||body.occupant))fail(409,'OCUPACAO','Um armário com pessoa não pode ser ocupado por setor');
+      let officialName:string|null=null;
+      if(body.occupant){
+        const allocation=body.occupant.allocationId?await one<{person_id:string}>(client,'SELECT person_id FROM allocations WHERE id=$1 AND locker_id=$2 AND ended_at IS NULL FOR UPDATE',
+          [body.occupant.allocationId,lockerId]):null;
+        const member=allocation?await one<{id:string;person_id:string;origin:string;version:number;registration:string|null;department:string|null;function_name:string|null;name:string}>(client,
+          `SELECT m.*,p.name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.id=$1 AND m.branch_id=$2 FOR UPDATE OF m`,
+          [body.occupant.membershipId,branchId]):null;
+        if(allocation&&(member?.person_id!==allocation.person_id||member.version!==body.occupant.expectedMembershipVersion))fail(409,'VERSAO','Ocupante alterado; recarregue');
+        if(!allocation&&count>=(body.isDouble?2:1))fail(409,'CAPACIDADE','Armário sem vaga para outra pessoa');
+        const candidates=body.occupant.registration?(await client.query<{id:string;person_id:string;registration:string;name:string}>(`SELECT m.id,m.person_id,m.registration,p.name
+          FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.branch_id=$1 AND m.origin='ti' AND m.status='ativo' AND m.ti_present=true`,[branchId])).rows
+          .filter(row=>registrationKey(row.registration)===registrationKey(body.occupant!.registration!)):[];
+        if(candidates.length>1)fail(409,'MATRICULA_AMBIGUA','Mais de um colaborador corresponde à matrícula informada');
+        const official=candidates[0];
+        if(official){
+          officialName=official.name;
+          if(official.person_id!==member?.person_id){
+            if(member&&member.origin!=='migracao')fail(409,'VINCULO','A correção automática de matrícula exige um ocupante da carga inicial');
+            const occupied=await client.query('SELECT id FROM allocations WHERE person_id=$1 AND ended_at IS NULL FOR UPDATE',[official.person_id]);
+            if(occupied.rowCount)fail(409,'OCUPACAO','O colaborador desta matrícula já ocupa outro armário');
+            if(allocation){
+              await client.query('UPDATE allocations SET person_id=$2,version=version+1 WHERE id=$1',[body.occupant.allocationId,official.person_id]);
+              await client.query("UPDATE memberships SET status='encerrado',ti_present=false,version=version+1,updated_at=now() WHERE id=$1",[member!.id]);
+            }else await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason,started_by)
+              VALUES($1,$2,$3,'fixo',NULL,true,now(),'Ocupação identificada na revisão',$4)`,[branchId,lockerId,official.person_id,actor.id]);
+          }
+        }else{
+          if(member?.origin==='ti')fail(409,'BASE_COLABORADORES','Dados oficiais devem ser corrigidos na próxima planilha de colaboradores');
+          if(!body.occupant.name)fail(422,'NOME','Informe o nome quando a matrícula não constar na base atual');
+          const duplicate=body.occupant.registration?(await client.query<{registration:string}>(`SELECT registration FROM memberships
+            WHERE branch_id=$1 AND ($2::uuid IS NULL OR id<>$2) AND registration IS NOT NULL`,[branchId,member?.id??null])).rows
+            .some(row=>registrationKey(row.registration)===registrationKey(body.occupant!.registration!)):false;
+          if(duplicate)fail(409,'MATRICULA_DUPLICADA','Matrícula já usada em outro cadastro');
+          if(member){
+            await client.query('UPDATE people SET name=$2 WHERE id=$1',[member.person_id,body.occupant.name]);
+            await client.query(`UPDATE memberships SET registration=$2,department=$3,function_name=$4,version=version+1,updated_at=now()
+              WHERE id=$1`,[member.id,body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null]);
+          }else{
+            const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[body.occupant.name])).rows[0];
+            const collaborator=!!body.occupant.registration;
+            await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)
+              VALUES($1,$2,$3,'migracao',$4,$5,$6,true,$7,$8)`,[person.id,branchId,collaborator?'colaborador':'terceirizado',
+              body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null,
+              collaborator?false:null,collaborator?'encerrado':'ativo']);
+            await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason,started_by)
+              VALUES($1,$2,$3,'fixo',NULL,true,now(),'Ocupação identificada na revisão',$4)`,[branchId,lockerId,person.id,actor.id]);
+          }
+        }
+      }
+      const updated=await client.query(`UPDATE lockers SET number=$2,is_double=$3,capacity=$4,sector_occupant=$5,
+        migration_status=CASE WHEN $6::boolean THEN 'conferido' ELSE migration_status END,condition=COALESCE($7,condition),
+        key_copy_available=CASE WHEN $9::boolean THEN $8 ELSE key_copy_available END,
+        version=version+1 WHERE id=$1 RETURNING *`,
+        [lockerId,body.number,body.isDouble,body.isDouble?2:1,body.sectorOccupant,body.finalize&&pending?.kind==='migracao_inconclusiva',
+          body.condition??null,body.keyCopyAvailable??null,body.keyCopyAvailable!==undefined]);
+      await event(client,branchId,actor.id,direct?'armario_revisado':'pendencia_revisada',direct?'locker':'pending',itemId,{lockerBefore:locker.number,lockerAfter:body.number,officialName});
+      await refreshPending(client,branchId);
+      return {locker:updated.rows[0],officialName};
+    }));
+  }
+  app.post('/api/branches/:branchId/pending/:itemId/revise',request=>reviseLocker(request,false));
+  app.post('/api/branches/:branchId/lockers/:itemId/revise',request=>reviseLocker(request,true));
   app.post('/api/branches/:branchId/pending/:itemId/resolve',async request=>{
     const actor=await authenticate(request),{branchId,itemId}=routeItem.parse(request.params);branchAccess(actor,branchId,true);
     const body=operation.extend({expectedVersion:z.number().int().positive(),resolution:z.string().min(3).max(1000)}).parse(request.body);
@@ -154,16 +260,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
         a.locker_id,l.number FROM memberships m JOIN people p ON p.id=m.person_id
         LEFT JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL LEFT JOIN lockers l ON l.id=a.locker_id
         WHERE m.branch_id=$1 AND (a.id IS NOT NULL OR EXISTS(SELECT 1 FROM pending_items pend WHERE pend.branch_id=$1 AND pend.subject_type='membership' AND pend.subject_id=m.id AND pend.state='aberta'))`,[branchId]);
-      const pending=await client.query(`SELECT p.id,p.kind,p.subject_type,p.subject_id,p.state,p.reason,pe.name person_name,m.registration,
-        COALESCE(l.id,a.locker_id,s.locker_id,season.locker_id) pending_locker_id,
-        l.number locker_number,al.number allocation_locker_number
-        FROM pending_items p LEFT JOIN memberships m ON p.subject_type='membership' AND m.id=p.subject_id
-        LEFT JOIN people pe ON pe.id=m.person_id LEFT JOIN lockers l ON p.subject_type='locker' AND l.id=p.subject_id
-        LEFT JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
-        LEFT JOIN lockers al ON al.id=a.locker_id
-        LEFT JOIN sharings s ON p.subject_type='sharing' AND s.id=p.subject_id
-        LEFT JOIN allocations season ON p.subject_type='allocation' AND season.id=p.subject_id
-        WHERE p.branch_id=$1 AND p.state=$2`,[branchId,'aberta']);
+      const pending=await client.query(pendingDetailsSql(true),[branchId]);
       const branch=await client.query<{name:string}>('SELECT name FROM branches WHERE id=$1',[branchId]);
       const session=await client.query<{expires_at:Date}>('SELECT expires_at FROM sessions WHERE id_hash=$1',[hash(request.cookies.armarios_session??'')]);
       const issuedAt=new Date();return {issuedAt:issuedAt.toISOString(),expiresAt:session.rows[0].expires_at,branchId,branchName:branch.rows[0].name,userId:actor.id,deviceId:device.rows[0].id,lockers:lockers.rows,people:people.rows,pending:pending.rows};

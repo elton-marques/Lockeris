@@ -6,6 +6,7 @@ import {hash,transaction,one,fail} from './db.js';
 import {parseFile,type Sheet} from './imports.js';
 import {event,idempotent} from './operations.js';
 import {refreshPending} from './pending.js';
+import {registrationKey} from './registration.js';
 
 type LockerRow={
   row:number;number:string;name:string;registration:string;department:string;functionName:string;
@@ -48,8 +49,9 @@ export function rowsFrom(sheet:Sheet):LockerRow[]{
     if(!sectorOccupant&&!registration&&sectorNames.has(norm(name))){sectorOccupant=name;name='';}
     if(sectorOccupant&&(name||registration))fail(422,'OCUPANTE',`Linha ${index+1}: informe um setor ou uma pessoa, não ambos`);
     if(registration){
-      if(registrations.has(registration))fail(422,'MATRICULA_DUPLICADA',`Matrícula ${registration} aparece em mais de um armário`);
-      registrations.add(registration);
+      const key=registrationKey(registration);
+      if(registrations.has(key))fail(422,'MATRICULA_DUPLICADA',`Matrícula ${registration} aparece em mais de um armário`);
+      registrations.add(key);
     }
     if(status==='DISPONÍVEL'&&(name||registration||sectorOccupant))fail(422,'STATUS',`Linha ${index+1}: armário disponível tem ocupante`);
     const doubleText=norm(value(raw,doubleColumn));
@@ -111,6 +113,8 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
       if(batch.state!=='prepared')fail(409,'LOTE','Lote já confirmado');
       if(String(branch.ti_revision)!==String(batch.base_revision))fail(409,'PREVIA_DESATUALIZADA','A base de colaboradores mudou; refaça a prévia');
       const lockers=new Map<string,string>();
+      const roster=(await client.query<{id:string;person_id:string;registration:string}>(`SELECT id,person_id,registration FROM memberships
+        WHERE branch_id=$1 AND registration IS NOT NULL`,[branchId])).rows;
       for(const row of batch.raw_rows){
         let lockerId=lockers.get(row.number);
         if(!lockerId){
@@ -122,12 +126,12 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
         await client.query('INSERT INTO import_sources(import_id,sheet_name,row_number,entity_type,entity_id,raw) VALUES($1,$2,$3,$4,$5,$6)',
           [importId,batch.sheet_name,row.row,'locker',lockerId,JSON.stringify(row)]);
         if(row.sectorOccupant||(!row.name&&!row.registration))continue;
-        const existing=row.registration?(await client.query<{id:string;person_id:string}>(`SELECT id,person_id FROM memberships WHERE branch_id=$1 AND registration=$2`,
-          [branchId,row.registration])).rows[0]:null;
+        const candidates=row.registration?roster.filter(member=>registrationKey(member.registration)===registrationKey(row.registration)):[];
+        if(candidates.length>1)fail(409,'MATRICULA_AMBIGUA',`Matrícula ${row.registration} corresponde a mais de um colaborador`);
+        const existing=candidates[0]??null;
         let personId=existing?.person_id,membershipId=existing?.id;
         if(!personId){
-          if(!row.name)fail(422,'NOME',`Armário ${row.number}: informe o nome da pessoa para a matrícula ${row.registration}`);
-          personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name])).rows[0].id;
+          personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name||`Matrícula ${row.registration}`])).rows[0].id;
           const promoter=norm(row.functionName).includes('PROMOTOR');
           const category=promoter?(row.registration?'promotor_fixo':'roteirista'):(row.registration?'colaborador':'terceirizado');
           membershipId=(await client.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)

@@ -9,6 +9,7 @@ import { authenticate, adminAccess } from './auth.js';
 import { hash, pool, transaction, one, fail } from './db.js';
 import { event,idempotent } from './operations.js';
 import { refreshPending } from './pending.js';
+import {registrationKey} from './registration.js';
 
 export type Sheet = { name: string; rows: string[][] };
 type Mapping = { registration: string; name: string; department?: string; functionName?: string };
@@ -81,8 +82,9 @@ function select(sheet: Sheet, headerRow: number, mapping: Mapping): TiRow[] {
     if(formula) fail(422,'FORMULA',`Fórmula sem resultado em ${formula.split('@')[1]}`);
     if (!row.some(x=>x.trim())) continue;
     if (!reg||!personName||!row[department]?.trim()||!row[functionName]?.trim()) fail(422,'LINHA',`Matrícula, nome, setor e cargo ou função obrigatórios em ${sheet.name}, linha ${i+1}`);
-    if (seen.has(reg)) fail(422,'DUPLICADA',`Matrícula ${reg} duplicada nas linhas ${seen.get(reg)} e ${i+1}`);
-    seen.set(reg,i+1);
+    const key=registrationKey(reg);
+    if (seen.has(key)) fail(422,'DUPLICADA',`Matrícula ${reg} duplicada nas linhas ${seen.get(key)} e ${i+1}`);
+    seen.set(key,i+1);
     rows.push({row:i+1,registration:reg,name:personName,department:department<0?null:row[department]?.trim()||null,functionName:functionName<0?null:row[functionName]?.trim()||null});
   }
   if (!rows.length) fail(422,'VAZIO','A base não contém colaboradores');
@@ -92,17 +94,26 @@ async function existingFor(branchId:string,db:typeof pool|import('./db.js').Clie
   return (await db.query<Existing>('SELECT m.*,p.name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.branch_id=$1',[branchId])).rows;
 }
 function difference(rows:TiRow[],existing:Existing[]) {
-  const byReg=new Map(existing.filter(x=>x.registration).map(x=>[x.registration,x])),seen=new Set(rows.map(x=>x.registration));
+  const byReg=byRegistration(existing),seen=new Set(rows.map(x=>registrationKey(x.registration)));
   const inclusions:TiRow[]=[],changes:unknown[]=[],unchanged:TiRow[]=[],conflicts:unknown[]=[];
   for(const row of rows) {
-    const old=byReg.get(row.registration);
+    const old=byReg.get(registrationKey(row.registration));
     if(!old) inclusions.push(row);
-    else if(old.category!=='colaborador'||old.origin!=='ti') conflicts.push({row:row.row,registration:row.registration,existing:old});
-    else if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName||!old.ti_present||old.status!=='ativo') changes.push({row,before:old});
+    else if(old.category!=='colaborador'||!['ti','migracao'].includes(old.origin)) conflicts.push({row:row.row,registration:row.registration,existing:old});
+    else if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName||old.registration!==row.registration||!old.ti_present||old.status!=='ativo') changes.push({row,before:old});
     else unchanged.push(row);
   }
-  const absences=existing.filter(x=>x.category==='colaborador'&&x.status==='ativo'&&!seen.has(x.registration));
-  return {inclusions,changes,absences,unchanged,conflicts,counts:{previous:existing.filter(x=>x.category==='colaborador'&&x.status==='ativo').length,current:rows.length,absent:absences.length}};
+  const absences=existing.filter(x=>x.category==='colaborador'&&x.origin==='ti'&&x.status==='ativo'&&!seen.has(registrationKey(x.registration)));
+  return {inclusions,changes,absences,unchanged,conflicts,counts:{previous:existing.filter(x=>x.category==='colaborador'&&x.origin==='ti'&&x.status==='ativo').length,current:rows.length,absent:absences.length}};
+}
+function byRegistration(existing:Existing[]):Map<string,Existing>{
+  const result=new Map<string,Existing>();
+  for(const member of existing)if(member.registration){
+    const key=registrationKey(member.registration);
+    if(result.has(key))fail(409,'MATRICULA_AMBIGUA',`Matrícula ${member.registration} corresponde a dois cadastros; confira antes de importar`);
+    result.set(key,member);
+  }
+  return result;
 }
 
 export async function importRoutes(app:FastifyInstance):Promise<void> {
@@ -158,17 +169,19 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
       if(conflicts.some(x=>body.resolutions[x.registration]!=='converter_para_ti')) fail(409,'CONFLITOS','Resolva todas as matrículas conflitantes');
       if(Object.keys(body.resolutions).some(x=>!conflicts.some(c=>c.registration===x))) fail(422,'RESOLUCAO','Resolução sem conflito correspondente');
       await client.query('INSERT INTO operations(id,branch_id,actor_id,payload_hash) VALUES($1,$2,$3,$4)',[body.operationId,branchId,actor.id,payloadHash]);
-      const byReg=new Map((await existingFor(branchId,client)).filter(x=>x.registration).map(x=>[x.registration,x]));
+      const existing=await existingFor(branchId,client),byReg=byRegistration(existing);
       const seen=new Set<string>();
       for(const row of batch.raw_rows) {
-        seen.add(row.registration);
-        const old=byReg.get(row.registration);
+        const key=registrationKey(row.registration);
+        seen.add(key);
+        const old=byReg.get(key);
         let membershipId:string;
         if(old) {
           membershipId=old.id;
-          await client.query(`UPDATE memberships SET category='colaborador',origin='ti',department=$2,function_name=$3,ti_present=true,status='ativo',version=version+1,updated_at=now() WHERE id=$1`,[old.id,row.department,row.functionName]);
+          await client.query(`UPDATE memberships SET category='colaborador',origin='ti',department=$2,function_name=$3,registration=$4,
+            ti_present=true,status='ativo',version=version+1,updated_at=now() WHERE id=$1`,[old.id,row.department,row.functionName,row.registration]);
           await client.query('UPDATE people SET name=$2 WHERE id=$1',[old.person_id,row.name]);
-          if(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName) {
+          if(old.origin==='ti'&&(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName)) {
             await event(client,branchId,actor.id,'dados_ti_alterados','membership',old.id,{before:old,after:row,importId});
             await client.query(`INSERT INTO pending_items(branch_id,kind,subject_type,subject_id,reason) VALUES($1,'dados_alterados','membership',$2,$3)
               ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta',reason=$3,updated_at=now(),version=pending_items.version+1`,[branchId,old.id,`Lote ${importId}`]);
@@ -181,7 +194,8 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
         }
         await client.query('INSERT INTO import_sources(import_id,sheet_name,row_number,entity_type,entity_id,raw) VALUES($1,$2,$3,$4,$5,$6)',[importId,batch.sheet_name,row.row,'membership',membershipId,JSON.stringify(row)]);
       }
-      await client.query(`UPDATE memberships SET ti_present=false,status='encerrado',version=version+1,updated_at=now() WHERE branch_id=$1 AND category='colaborador' AND status='ativo' AND (registration IS NULL OR registration <> ALL($2::text[]))`,[branchId,[...seen]]);
+      const removed=existing.filter(member=>member.category==='colaborador'&&member.status==='ativo'&&!seen.has(registrationKey(member.registration)));
+      if(removed.length)await client.query(`UPDATE memberships SET ti_present=false,status='encerrado',version=version+1,updated_at=now() WHERE id=ANY($1::uuid[])`,[removed.map(member=>member.id)]);
       await client.query('UPDATE branches SET ti_revision=ti_revision+1,ti_extracted_on=$2,version=version+1 WHERE id=$1',[branchId,batch.extracted_on]);
       await client.query("UPDATE imports SET state='applied',applied_at=now(),preview=$2 WHERE id=$1",[importId,JSON.stringify(diff)]);
       await refreshPending(client,branchId);

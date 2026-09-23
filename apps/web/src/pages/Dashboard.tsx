@@ -2,7 +2,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 
-type Occupant={allocationId:string;allocationVersion:number;personId:string;name:string;registration:string|null;department:string|null;dueAt:string|null};
+type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
 type Person={person_id:string;name:string;registration:string|null;department:string|null;status:string;locker_id:string|null;number:string|null};
@@ -14,12 +14,14 @@ const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=(locker:Locker)=>[locker.sector_occupant,...locker.occupants.map(item=>item.department)].filter((value):value is string=>!!value);
 
-export function Dashboard({branchId,readonly,copy,refresh,notice}:PageProps){
+export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
   const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[stats,setStats]=useState<Stats|null>(null),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(''),[sectorFilter,setSectorFilter]=useState(''),[keyFilter,setKeyFilter]=useState(''),[doubleOnly,setDoubleOnly]=useState(false);
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
   const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
+  const [edit,setEdit]=useState({number:'',isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim',name:'',registration:'',department:'',functionName:''});
+  const [editOccupantId,setEditOccupantId]=useState(''),[createOccupant,setCreateOccupant]=useState(false);
 
   async function load(){
     if(copy){setLockers(copy.lockers as Locker[]);setPeople(copy.people as Person[]);setPending(copy.pending as Pending[]);setStats(null);return;}
@@ -48,10 +50,10 @@ export function Dashboard({branchId,readonly,copy,refresh,notice}:PageProps){
     if(sectorFilter&&!sectors(locker).includes(sectorFilter))return false;
     if(keyFilter==='sim'&&locker.key_copy_available!==true)return false;
     if(keyFilter==='nao'&&locker.key_copy_available!==false)return false;
-    if(keyFilter==='desconhecida'&&locker.key_copy_available!==null)return false;
     return !query||[locker.number,...sectors(locker),...locker.occupants.flatMap(item=>[item.name,item.registration??''])].some(value=>lower(value).includes(lower(query)));
   }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,doubleOnly]);
   const locker=lockers.find(item=>item.id===selected);
+  const editOccupant=locker?.occupants.find(item=>item.allocationId===editOccupantId);
   const matches=people.filter(person=>person.status==='ativo'&&(!personQuery||[person.name,person.registration??''].some(value=>lower(value).includes(lower(personQuery)))))
     .sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   const chosen=people.find(person=>person.person_id===personId);
@@ -62,16 +64,29 @@ export function Dashboard({branchId,readonly,copy,refresh,notice}:PageProps){
 
   function openLocker(item:Locker){
     setPersonQuery('');setPersonId('');setNote('');setTransferReason('');setSharingReason('');setSharingDue('');
-    setKeyCopy(item.key_copy_available===null?'':item.key_copy_available?'sim':'nao');setSelected(item.id);
+    setKeyCopy(item.key_copy_available===false?'nao':'sim');setCreateOccupant(false);
+    setEditOccupantId(item.occupants[0]?.allocationId??'');fillEdit(item,item.occupants[0]);setSelected(item.id);
   }
-  async function act(callback:()=>Promise<unknown>,message:string,close=false){
+  function fillEdit(item:Locker,occupant?:Occupant){setEdit({number:item.number,isDouble:item.is_double,condition:item.condition,
+    sectorOccupant:item.sector_occupant??'',keyCopy:item.key_copy_available===false?'nao':'sim',
+    name:occupant?.name??'',registration:occupant?.registration??'',department:occupant?.department??'',functionName:occupant?.functionName??''});}
+  function chooseEditOccupant(item:Locker,id:string){setEditOccupantId(id);fillEdit(item,item.occupants.find(person=>person.allocationId===id));}
+  async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string),close=false){
     setBusy(true);
-    try{await callback();await load();refresh();notice(message);if(close)setSelected(null);}
+    try{const result=await callback();await load();refresh();notice(typeof message==='string'?message:message(result));if(close)setSelected(null);}
     catch(error){notice(error instanceof Error?error.message:'Falha na operação');}
     finally{setBusy(false);}
   }
   function saveKey(){if(!locker||!keyCopy)return;act(()=>post(`/branches/${branchId}/lockers/${locker.id}/key-copy`,
     {operationId:op(),expectedVersion:locker.version,available:keyCopy==='sim'}),'Situação da cópia da chave atualizada.');}
+  function saveLocker(event:React.FormEvent){event.preventDefault();if(!locker||!admin||!edit.number.trim())return;
+    act(()=>post<{officialName:string|null}>(`/branches/${branchId}/lockers/${locker.id}/revise`,{operationId:op(),expectedLockerVersion:locker.version,
+      number:edit.number.trim(),isDouble:edit.isDouble,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
+      sectorOccupant:createOccupant?null:edit.sectorOccupant.trim()||null,
+      occupant:editOccupant||createOccupant?{allocationId:editOccupant?.allocationId,membershipId:editOccupant?.membershipId,
+        expectedMembershipVersion:editOccupant?.membershipVersion,name:edit.name.trim(),registration:edit.registration.trim()||null,
+        department:edit.department.trim()||null,functionName:edit.functionName.trim()||null}:null}),
+    result=>`Dados do armário atualizados.${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`,true);}
   function assign(event:React.FormEvent){
     event.preventDefault();if(!locker||!chosen||!keyCopy||!canEnter||source?.id===locker.id)return;
     const keyCopyAvailable=keyCopy==='sim';
@@ -115,7 +130,7 @@ export function Dashboard({branchId,readonly,copy,refresh,notice}:PageProps){
         <label>Setor<select value={sectorFilter} onChange={event=>setSectorFilter(event.target.value)}><option value="">Todos</option>
           {sectorOptions.map(sector=><option key={sector} value={sector}>{sector}</option>)}</select></label>
         <label>Filtrar por cópia da chave<select value={keyFilter} onChange={event=>setKeyFilter(event.target.value)}><option value="">Todas</option>
-          <option value="sim">Com cópia</option><option value="nao">Sem cópia</option><option value="desconhecida">Não informado</option></select></label>
+          <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
         <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
       </div>
       <div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
@@ -130,16 +145,39 @@ export function Dashboard({branchId,readonly,copy,refresh,notice}:PageProps){
       <section className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
         <div className="section-head"><div><h2 id="locker-dialog-title">Armário {locker.number}{locker.is_double?' · Duplo':''}</h2>
           <p>{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {locker.condition}</p></div>
-          <button ref={closeRef} type="button" onClick={()=>setSelected(null)}>Fechar</button></div>
+            <div className="row-actions"><button ref={closeRef} type="button" onClick={()=>setSelected(null)}>Fechar</button></div></div>
         {locker.migration_status==='inconclusivo'&&<p className="warning">Ocupação pendente de conferência. Novas entradas estão bloqueadas.</p>}
         {locker.sector_occupant&&<p><strong>Setor ocupante:</strong> {locker.sector_occupant}</p>}
         {locker.occupants.length>0&&<div className="list"><h3>Ocupantes</h3>{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>
           <div><strong>{occupant.name}</strong><small>{occupant.registration?`Matrícula ${occupant.registration}`:'Sem matrícula'}{occupant.department?` · ${occupant.department}`:''}</small></div>
           {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Registrar saída</button>}</div>)}</div>}
-        <div className="locker-key"><label>Cópia da chave<select value={keyCopy} onChange={event=>setKeyCopy(event.target.value)} disabled={readonly} aria-required="true">
-          <option value="">Selecione sim ou não</option><option value="sim">Sim</option><option value="nao">Não</option></select></label>
-          {!readonly&&<button type="button" disabled={busy||!keyCopy||keyCopy===(locker.key_copy_available===null?'':locker.key_copy_available?'sim':'nao')} onClick={saveKey}>Salvar situação da chave</button>}</div>
+        {!admin&&<div className="locker-key"><label>Cópia da chave<select value={keyCopy} onChange={event=>setKeyCopy(event.target.value)} disabled={readonly} aria-required="true">
+          <option value="sim">Sim</option><option value="nao">Não</option></select></label>
+          {!readonly&&<button type="button" disabled={busy||!keyCopy||keyCopy===(locker.key_copy_available===false?'nao':'sim')} onClick={saveKey}>Salvar situação da chave</button>}</div>}
+        {admin&&!readonly&&<form className="pending-editor" onSubmit={saveLocker}><h3>Editar dados do armário</h3>
+          <p>Se a matrícula constar na base atual, o cadastro oficial será usado para o ocupante.</p>
+          <div className="form-grid"><label>Número do armário<input required value={edit.number} onChange={event=>setEdit({...edit,number:event.target.value})}/></label>
+            <label className="check"><input type="checkbox" checked={edit.isDouble} onChange={event=>setEdit({...edit,isDouble:event.target.checked})}/>Armário duplo</label>
+            <label>Situação<select value={edit.condition} onChange={event=>setEdit({...edit,condition:event.target.value})}>
+              <option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="bloqueado">Bloqueado</option></select></label>
+            <label>Existe cópia da chave?<select value={edit.keyCopy} onChange={event=>setEdit({...edit,keyCopy:event.target.value})}>
+              <option value="sim">Sim</option><option value="nao">Não</option></select></label>
+            {locker.occupants.length>1&&<label>Ocupante a corrigir<select value={editOccupantId} onChange={event=>chooseEditOccupant(locker,event.target.value)}>
+              {locker.occupants.map(item=><option key={item.allocationId} value={item.allocationId}>{item.name} · {item.registration??'Sem matrícula'}</option>)}</select></label>}
+            {!editOccupant&&<label className="check"><input type="checkbox" checked={createOccupant} onChange={event=>{setCreateOccupant(event.target.checked);setEdit({...edit,sectorOccupant:''});}}/>Cadastrar ocupante manualmente</label>}
+            {editOccupant||createOccupant?<>
+              <label>Nome<input value={edit.name} disabled={editOccupant?.origin==='ti'} onChange={event=>setEdit({...edit,name:event.target.value})}/></label>
+              <label>Matrícula<input value={edit.registration} disabled={editOccupant?.origin==='ti'} onChange={event=>setEdit({...edit,registration:event.target.value})}/></label>
+              <label>Setor<input value={edit.department} disabled={editOccupant?.origin==='ti'} onChange={event=>setEdit({...edit,department:event.target.value})}/></label>
+              <label>Função<input value={edit.functionName} disabled={editOccupant?.origin==='ti'} onChange={event=>setEdit({...edit,functionName:event.target.value})}/></label>
+            </>:<label>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>}
+          </div>
+          {editOccupant?.origin==='ti'&&<p className="muted">Nome, matrícula, setor e função vêm da base de colaboradores.</p>}
+          <button className="primary" disabled={busy||!edit.number.trim()||(createOccupant&&!edit.name.trim()&&!edit.registration.trim())}>Salvar dados do armário</button>
+        </form>}
         {canEnter&&<form className="locker-entry" onSubmit={assign}><h3>Cadastrar pessoa neste armário</h3>
+          {admin&&<label>Cópia da chave ao atribuir<select value={keyCopy} onChange={event=>setKeyCopy(event.target.value)}>
+            <option value="sim">Sim</option><option value="nao">Não</option></select></label>}
           <label>Pesquisar pessoa por nome ou matrícula<input value={personQuery} onChange={event=>{setPersonQuery(event.target.value);setPersonId('');}} placeholder="Digite nome ou matrícula"/></label>
           <label>Pessoas cadastradas<select required size={Math.min(7,Math.max(3,matches.length+1))} value={personId} onChange={event=>setPersonId(event.target.value)}>
             <option value="">Selecione uma pessoa</option>{matches.map(person=><option key={person.person_id} value={person.person_id}>

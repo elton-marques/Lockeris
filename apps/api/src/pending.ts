@@ -12,7 +12,8 @@ export async function refreshPending(client: Client, branchId: string): Promise<
       AND NOT EXISTS(SELECT 1 FROM need_exceptions e WHERE e.membership_id=m.id)
     UNION ALL
     SELECT 'atuacao_encerrada','membership',m.id FROM memberships m
-      JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL WHERE m.branch_id=$1 AND m.status='encerrado'
+      JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
+      WHERE m.branch_id=$1 AND m.status='encerrado' AND NOT (m.category='colaborador' AND m.ti_present=false)
     UNION ALL
     SELECT 'sazonal_vencida','allocation',a.id FROM allocations a JOIN branches b ON b.id=a.branch_id
       WHERE a.branch_id=$1 AND a.ended_at IS NULL AND a.seasonal AND (a.due_at AT TIME ZONE b.timezone)::date < (now() AT TIME ZONE b.timezone)::date

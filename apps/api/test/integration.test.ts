@@ -219,7 +219,7 @@ describe('regras transacionais',()=>{
     const existing=await person(auth,branch.id,'Pessoa Exemplo','0001');
     const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Armários');
     sheet.addRow(['NÚMERO','NOME','MATRÍCULA','SETOR OCUPANTE','STATUS','DUPLO']);
-    sheet.addRow(['1','Pessoa Exemplo','0001','','OCUPADO',false]);
+    sheet.addRow(['1','Nome incorreto na planilha','00-01','','OCUPADO',false]);
     sheet.addRow(['2','','','Jerinana','OCUPADO',false]);
     sheet.addRow(['3','','','','OCUPADO',false]);
     const file=binaryForm({operationId:uuid()},'Armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
@@ -229,8 +229,77 @@ describe('regras transacionais',()=>{
     expect(confirmed.statusCode).toBe(200);
     expect((await pool.query('SELECT count(*) FROM people')).rows[0].count).toBe('1');
     expect((await pool.query('SELECT person_id FROM allocations')).rows[0].person_id).toBe(existing.person_id);
+    expect((await pool.query('SELECT name FROM people WHERE id=$1',[existing.person_id])).rows[0].name).toBe('Pessoa Exemplo');
     expect((await pool.query("SELECT sector_occupant FROM lockers WHERE number='2'")).rows[0].sector_occupant).toBe('Jerinana');
     expect((await pool.query("SELECT id FROM pending_items WHERE kind='migracao_inconclusiva' AND state='aberta'")).rowCount).toBe(1);
+    const pending=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/pending`,headers:{cookie:auth.cookie}})).json();
+    expect(pending.find((item:{locker_number:string})=>item.locker_number==='3')).toMatchObject({source_rows:[{number:'3'}],occupants:[]});
+  });
+  it('usa matrícula para corrigir a ocupação importada quando a base de colaboradores chega depois',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Armários');
+    sheet.addRow(['N°','NOME','MATRÍCULA','SETOR','FUNÇÃO','STATUS','DUPLO']);
+    sheet.addRow(['232','Nome incorreto','29-968','Loja','Atendente','OCUPADO',false]);
+    sheet.addRow(['233','','29-969','Loja','Atendente','OCUPADO',false]);
+    const file=binaryForm({operationId:uuid()},'armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
+    const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
+    expect(prepared.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),acknowledgeReviewed:true})).statusCode).toBe(200);
+    const fields={operationId:uuid(),sheet:'CSV',headerRow:'1',extractedOn:'2026-09-23',mapping:JSON.stringify({registration:'MATRICULA',name:'NOME',department:'SETOR',functionName:'FUNCAO'}),encoding:'utf8',delimiter:';'};
+    const upload=form(fields,'colaboradores.csv','MATRICULA;NOME;SETOR;FUNCAO\r\n29968;Stephanie Oficial;Caixa;Operadora\r\n29969;Marina Oficial;Loja;Atendente\r\n');
+    const preview=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/ti/prepare`,...upload,headers:{...upload.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
+    expect(preview.statusCode).toBe(200);expect(preview.json().conflicts).toHaveLength(0);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/${preview.json().importId}/confirm`,{operationId:uuid(),acknowledgeComplete:true})).statusCode).toBe(200);
+    const current=(await pool.query(`SELECT p.name,m.registration,m.department,m.function_name,m.origin,l.number FROM allocations a
+      JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.number='232'`)).rows[0];
+    expect(current).toMatchObject({name:'Stephanie Oficial',registration:'29968',department:'Caixa',function_name:'Operadora',origin:'ti',number:'232'});
+    expect((await pool.query(`SELECT p.name FROM allocations a JOIN people p ON p.id=a.person_id JOIN lockers l ON l.id=a.locker_id WHERE l.number='233'`)).rows[0].name).toBe('Marina Oficial');
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE state='aberta' AND kind IN ('ausente_ti','dados_alterados','atuacao_encerrada')")).rows[0].count).toBe('0');
+    const lookup=await app.inject({method:'GET',url:`/api/branches/${branch.id}/people/registration/29-968`,headers:{cookie:auth.cookie}});
+    expect(lookup.statusCode).toBe(200);expect(lookup.json().name).toBe('Stephanie Oficial');
+  });
+  it('permite corrigir dados na pendência e vincular o ocupante pela matrícula oficial',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const official=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Nome Oficial') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
+      VALUES($1,$2,'colaborador','ti','0001','Caixa','Operadora',true,true)`,[official.id,branch.id]);
+    const workbook=new ExcelJS.Workbook(),sheet=workbook.addWorksheet('Armários');
+    sheet.addRow(['N°','NOME','MATRÍCULA','SETOR','FUNÇÃO','STATUS']);
+    sheet.addRow(['11','Nome errado','','','', 'OCUPADO']);
+    const file=binaryForm({operationId:uuid()},'armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
+    const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
+    expect(prepared.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),acknowledgeReviewed:true})).statusCode).toBe(200);
+    type ReviewItem={id:string;version:number;kind:string;locker_version:number;occupants:{allocationId:string;membershipId:string;membershipVersion:number}[]};
+    const getReview=async()=>((await app.inject({method:'GET',url:`/api/branches/${branch.id}/pending`,headers:{cookie:auth.cookie}})).json() as ReviewItem[])
+      .find(item=>item.kind==='migracao_inconclusiva')!;
+    const first=await getReview();
+    const corrected=await send(auth,'POST',`/api/branches/${branch.id}/pending/${first.id}/revise`,{operationId:uuid(),expectedVersion:first.version,
+      expectedLockerVersion:first.locker_version,number:'11',isDouble:true,sectorOccupant:null,finalize:false,
+      occupant:{allocationId:first.occupants[0].allocationId,membershipId:first.occupants[0].membershipId,
+        expectedMembershipVersion:first.occupants[0].membershipVersion,name:'Nome conferido',registration:null,department:'Loja',functionName:'Atendente'}});
+    expect(corrected.statusCode).toBe(200);
+    expect((await pool.query("SELECT p.name,m.department FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.number='11'")).rows[0])
+      .toMatchObject({name:'Nome conferido',department:'Loja'});
+    const second=await getReview();
+    const linked=await send(auth,'POST',`/api/branches/${branch.id}/pending/${second.id}/revise`,{operationId:uuid(),expectedVersion:second.version,
+      expectedLockerVersion:second.locker_version,number:'11',isDouble:true,sectorOccupant:null,finalize:true,
+      occupant:{allocationId:second.occupants[0].allocationId,membershipId:second.occupants[0].membershipId,
+        expectedMembershipVersion:second.occupants[0].membershipVersion,name:'Nome ainda errado',registration:'00-01',department:'Outro',functionName:'Outra'}});
+    expect(linked.statusCode).toBe(200);expect(linked.json().officialName).toBe('Nome Oficial');
+    expect((await pool.query("SELECT p.name,m.department,m.function_name,l.is_double,l.capacity FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.number='11' AND a.ended_at IS NULL")).rows[0])
+      .toMatchObject({name:'Nome Oficial',department:'Caixa',function_name:'Operadora',is_double:true,capacity:2});
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE kind='migracao_inconclusiva' AND state='aberta'")).rows[0].count).toBe('0');
+    const blank=await locker(auth,branch.id,'12');
+    await pool.query("UPDATE lockers SET migration_status='inconclusivo' WHERE id=$1",[blank.id]);
+    await transaction(client=>refreshPending(client,branch.id));
+    const blankPending=await getReview();
+    const filled=await send(auth,'POST',`/api/branches/${branch.id}/pending/${blankPending.id}/revise`,{operationId:uuid(),expectedVersion:blankPending.version,
+      expectedLockerVersion:blankPending.locker_version,number:'12',isDouble:false,sectorOccupant:null,finalize:true,
+      occupant:{name:'Pessoa identificada',registration:null,department:'Loja',functionName:'Apoio'}});
+    expect(filled.statusCode).toBe(200);
+    expect((await pool.query("SELECT p.name,m.department FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.number='12'")).rows[0])
+      .toMatchObject({name:'Pessoa identificada',department:'Loja'});
   });
   it('recusa armários duplicados e arquivo com várias abas',async()=>{
     const {auth,branch}=await setupWithoutLogin();
@@ -269,6 +338,19 @@ describe('regras transacionais',()=>{
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:first.person_id,lockerId:emptyDouble.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:second.person_id,lockerId:emptyDouble.id,expectedVersion:2,modality:'fixo',seasonal:false})).statusCode).toBe(200);
     expect((await pool.query('SELECT count(*) FROM sharings WHERE locker_id=$1',[emptyDouble.id])).rows[0].count).toBe('0');
+  });
+  it('inicia com cópia de chave e permite editar o armário diretamente pelo painel',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'20');
+    expect(cabinet.key_copy_available).toBe(true);
+    const changed=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{
+      operationId:uuid(),expectedLockerVersion:cabinet.version,number:'21',isDouble:true,condition:'manutencao',
+      keyCopyAvailable:false,sectorOccupant:'Restaurante FC',occupant:null});
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().locker).toMatchObject({number:'21',is_double:true,capacity:2,condition:'manutencao',
+      key_copy_available:false,sector_occupant:'Restaurante FC'});
+    const listed=await app.inject({method:'GET',url:`/api/branches/${branch.id}/lockers`,headers:{cookie:auth.cookie}});
+    expect(listed.json()[0]).toMatchObject({number:'21',key_copy_available:false,sector_occupant:'Restaurante FC'});
   });
 });
 
