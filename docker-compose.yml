@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: armarios
+      POSTGRES_USER: armarios
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-armarios}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U armarios"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://armarios:${POSTGRES_PASSWORD:-armarios}@db:5432/armarios
+      PORT: 3001
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEVICE_SECRET_KEY: ${DEVICE_SECRET_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: armarios
+      PGPASSWORD: ${POSTGRES_PASSWORD:-armarios}
+      PGDATABASE: armarios
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    command: ["sh", "/backup.sh"]
+volumes:
+  postgres_data:

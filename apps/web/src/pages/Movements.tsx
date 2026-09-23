@@ -1,0 +1,12 @@
+import {useEffect,useState} from 'react';
+import {api,op,post} from '../api';
+import type {PageProps} from '../App';
+type Allocation={id:string;person_id:string;name:string;number:string;location_name:string;modality:string;started_at:string|null;ended_at:string|null;due_at:string|null;seasonal:boolean;version:number};
+export function Movements({branchId,readonly,copy,refresh,notice}:PageProps){
+  const [items,setItems]=useState<Allocation[]>([]),[filter,setFilter]=useState('ativas');
+  async function load(){if(!copy)setItems(await api<Allocation[]>(`/branches/${branchId}/allocations`));}
+  useEffect(()=>{load().catch(e=>notice(e.message));},[branchId,copy]);
+  async function release(item:Allocation){if(!window.confirm(`Registrar devolução de ${item.name} em ${item.location_name} · ${item.number}?`))return;try{await post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.id,expectedVersion:item.version});await load();refresh();notice('Devolução registrada.');}catch(e){notice(e instanceof Error?e.message:'Falha');}}
+  const shown=items.filter(x=>filter==='todas'||(filter==='rotativos'?x.modality==='rotativo'&&x.ended_at===null:filter==='ativas'?x.ended_at===null:x.ended_at!==null));
+  return <section className="card"><div className="section-head"><div><h2>Movimentações e rotativos</h2><p>Entradas rotativas permanecem ativas até devolução registrada.</p></div><label>Exibir<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="ativas">Ativas</option><option value="rotativos">Rotativos ativos</option><option value="encerradas">Encerradas</option><option value="todas">Todas</option></select></label></div>{copy?<p>Movimentações detalhadas não ficam disponíveis offline. Consulte os ocupantes no painel.</p>:<div className="table-wrap"><table><thead><tr><th>Pessoa</th><th>Armário</th><th>Modalidade</th><th>Entrada</th><th>Previsão</th><th>Saída</th><th>Ação</th></tr></thead><tbody>{shown.map(x=><tr key={x.id}><td>{x.name}</td><td>{x.location_name} · {x.number}</td><td>{x.modality==='rotativo'?'Rotativo':'Fixo'}{x.seasonal?' · sazonal':''}</td><td>{x.started_at?new Date(x.started_at).toLocaleString('pt-BR'):'Início original desconhecido'}</td><td>{x.due_at?new Date(x.due_at).toLocaleDateString('pt-BR'):'—'}</td><td>{x.ended_at?new Date(x.ended_at).toLocaleString('pt-BR'):'Ativa'}</td><td>{!readonly&&!x.ended_at&&<button onClick={()=>release(x)}>Registrar devolução</button>}</td></tr>)}</tbody></table></div>}</section>;
+}

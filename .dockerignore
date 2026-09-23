@@ -1,0 +1,12 @@
+node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+backups
+test-results
+playwright-report
+*.xlsx
+*.csv
+.git

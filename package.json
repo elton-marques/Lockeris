@@ -1,0 +1,30 @@
+{
+  "name": "gestao-armarios",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @armarios/api",
+    "dev:web": "npm run dev -w @armarios/web",
+    "build": "npm run build -w @armarios/contracts && npm run build -w @armarios/api && npm run build -w @armarios/web",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:migrate": "npm run migrate -w @armarios/api",
+    "db:bootstrap": "npm run bootstrap -w @armarios/api",
+    "db:seed": "npm run seed -w @armarios/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.5.2",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.36.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.0",
+    "vitest": "^3.2.4"
+  },
+  "overrides": { "@fastify/static": "^10.1.4" }
+}
