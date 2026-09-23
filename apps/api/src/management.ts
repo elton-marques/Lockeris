@@ -61,7 +61,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
   async function reviseLocker(request:FastifyRequest,direct:boolean){
     const actor=await authenticate(request),{branchId,itemId}=routeItem.parse(request.params);adminAccess(actor,branchId);
     const body=operation.extend({expectedVersion:z.number().int().positive().optional(),expectedLockerVersion:z.number().int().positive(),
-      number:z.string().trim().min(1).max(40),isDouble:z.boolean(),sectorOccupant:z.string().trim().max(120).nullable(),
+      number:z.never().optional(),isDouble:z.boolean(),sectorOccupant:z.string().trim().max(120).nullable(),
       condition:z.enum(['disponivel','manutencao','bloqueado']).optional(),keyCopyAvailable:z.boolean().optional(),
       finalize:z.boolean().default(false),occupant:z.object({allocationId:id.optional(),membershipId:id.optional(),expectedMembershipVersion:z.number().int().positive().optional(),
         name:z.string().trim().max(200),registration:z.string().trim().max(80).nullable(),
@@ -73,7 +73,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
       const lockerId=direct?itemId:pending!.subject_type==='locker'?pending!.subject_id:(await client.query<{locker_id:string}>(`SELECT a.locker_id FROM memberships m
         JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL WHERE m.id=$1 AND m.branch_id=$2`,[pending!.subject_id,branchId])).rows[0]?.locker_id;
       if(!lockerId)fail(409,'ARMARIO','Esta pendência não possui armário para revisar');
-      const locker=await one<{id:string;version:number;number:string;capacity:number;is_double:boolean;sector_occupant:string|null}>(client,
+      const locker=await one<{id:string;version:number;number:string;modality:string;capacity:number;is_double:boolean;sector_occupant:string|null}>(client,
         'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[lockerId,branchId]);
       if(locker.version!==body.expectedLockerVersion)fail(409,'VERSAO','Armário alterado; recarregue');
       const count=Number((await client.query<{count:string}>('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[lockerId])).rows[0].count);
@@ -96,23 +96,28 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
         if(official){
           officialName=official.name;
           if(official.person_id!==member?.person_id){
-            if(member&&member.origin!=='migracao')fail(409,'VINCULO','A correção automática de matrícula exige um ocupante da carga inicial');
-            const occupied=await client.query('SELECT id FROM allocations WHERE person_id=$1 AND ended_at IS NULL FOR UPDATE',[official.person_id]);
-            if(occupied.rowCount)fail(409,'OCUPACAO','O colaborador desta matrícula já ocupa outro armário');
-            if(allocation){
+            const occupied=await client.query<{number:string}>(`SELECT l.number FROM allocations a JOIN lockers l ON l.id=a.locker_id
+              WHERE a.person_id=$1 AND a.ended_at IS NULL FOR UPDATE OF a`,[official.person_id]);
+            if(occupied.rowCount)fail(409,'OCUPACAO',`A matrícula já ocupa o armário ${occupied.rows[0].number}; faça a transferência antes`);
+            if(allocation&&member?.origin==='migracao'){
               await client.query('UPDATE allocations SET person_id=$2,version=version+1 WHERE id=$1',[body.occupant.allocationId,official.person_id]);
               await client.query("UPDATE memberships SET status='encerrado',ti_present=false,version=version+1,updated_at=now() WHERE id=$1",[member!.id]);
-            }else await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason,started_by)
-              VALUES($1,$2,$3,'fixo',NULL,true,now(),'Ocupação identificada na revisão',$4)`,[branchId,lockerId,official.person_id,actor.id]);
+            }else{
+              if(allocation)await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,version=version+1 WHERE id=$1',[body.occupant.allocationId,actor.id]);
+              await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,reason,started_by)
+                VALUES($1,$2,$3,$4,now(),'Ocupante alterado no cadastro do armário',$5)`,[branchId,lockerId,official.person_id,locker.modality,actor.id]);
+            }
           }
         }else{
-          if(member?.origin==='ti')fail(409,'BASE_COLABORADORES','Dados oficiais devem ser corrigidos na próxima planilha de colaboradores');
+          if(member?.origin==='ti'&&registrationKey(member.registration??'')===registrationKey(body.occupant.registration??'')){
+            // The current roster member stays authoritative while other locker fields are reviewed.
+          }else{
           if(!body.occupant.name)fail(422,'NOME','Informe o nome quando a matrícula não constar na base atual');
           const duplicate=body.occupant.registration?(await client.query<{registration:string}>(`SELECT registration FROM memberships
             WHERE branch_id=$1 AND ($2::uuid IS NULL OR id<>$2) AND registration IS NOT NULL`,[branchId,member?.id??null])).rows
             .some(row=>registrationKey(row.registration)===registrationKey(body.occupant!.registration!)):false;
           if(duplicate)fail(409,'MATRICULA_DUPLICADA','Matrícula já usada em outro cadastro');
-          if(member){
+          if(member&&member.origin!=='ti'){
             await client.query('UPDATE people SET name=$2 WHERE id=$1',[member.person_id,body.occupant.name]);
             await client.query(`UPDATE memberships SET registration=$2,department=$3,function_name=$4,version=version+1,updated_at=now()
               WHERE id=$1`,[member.id,body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null]);
@@ -123,18 +128,20 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
               VALUES($1,$2,$3,'migracao',$4,$5,$6,true,$7,$8)`,[person.id,branchId,collaborator?'colaborador':'terceirizado',
               body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null,
               collaborator?false:null,collaborator?'encerrado':'ativo']);
-            await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason,started_by)
-              VALUES($1,$2,$3,'fixo',NULL,true,now(),'Ocupação identificada na revisão',$4)`,[branchId,lockerId,person.id,actor.id]);
+            if(allocation)await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,version=version+1 WHERE id=$1',[body.occupant.allocationId,actor.id]);
+            await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,reason,started_by)
+              VALUES($1,$2,$3,$4,now(),'Ocupante informado no cadastro do armário',$5)`,[branchId,lockerId,person.id,locker.modality,actor.id]);
+          }
           }
         }
       }
-      const updated=await client.query(`UPDATE lockers SET number=$2,is_double=$3,capacity=$4,sector_occupant=$5,
-        migration_status=CASE WHEN $6::boolean THEN 'conferido' ELSE migration_status END,condition=COALESCE($7,condition),
-        key_copy_available=CASE WHEN $9::boolean THEN $8 ELSE key_copy_available END,
+      const updated=await client.query(`UPDATE lockers SET is_double=$2,capacity=$3,sector_occupant=$4,
+        migration_status=CASE WHEN $5::boolean THEN 'conferido' ELSE migration_status END,condition=COALESCE($6,condition),
+        key_copy_available=CASE WHEN $8::boolean THEN $7 ELSE key_copy_available END,
         version=version+1 WHERE id=$1 RETURNING *`,
-        [lockerId,body.number,body.isDouble,body.isDouble?2:1,body.sectorOccupant,body.finalize&&pending?.kind==='migracao_inconclusiva',
+        [lockerId,body.isDouble,body.isDouble?2:1,body.sectorOccupant,body.finalize&&pending?.kind==='migracao_inconclusiva',
           body.condition??null,body.keyCopyAvailable??null,body.keyCopyAvailable!==undefined]);
-      await event(client,branchId,actor.id,direct?'armario_revisado':'pendencia_revisada',direct?'locker':'pending',itemId,{lockerBefore:locker.number,lockerAfter:body.number,officialName});
+      await event(client,branchId,actor.id,direct?'armario_revisado':'pendencia_revisada',direct?'locker':'pending',itemId,{lockerNumber:locker.number,officialName});
       await refreshPending(client,branchId);
       return {locker:updated.rows[0],officialName};
     }));

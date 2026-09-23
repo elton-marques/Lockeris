@@ -34,6 +34,16 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       WHERE m.branch_id=$1 AND m.status='ativo' AND ($2::text IS NULL OR p.name ILIKE '%'||$2||'%' OR m.registration ILIKE '%'||$2||'%') AND ($3::text IS NULL OR m.category=$3)
       ORDER BY p.name LIMIT 1000`,[branchId,query.q ?? null,query.category ?? null])).rows;
   });
+  app.get('/api/branches/:branchId/people/registrations', async request => {
+    const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId);
+    return (await pool.query(`SELECT m.registration,p.name,m.department,m.function_name "functionName",l.number "lockerNumber"
+      FROM memberships m JOIN people p ON p.id=m.person_id
+      LEFT JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
+      LEFT JOIN lockers l ON l.id=a.locker_id
+      WHERE m.branch_id=$1 AND m.category='colaborador' AND m.origin='ti' AND m.status='ativo'
+        AND m.ti_present=true AND m.registration IS NOT NULL
+      ORDER BY m.registration,p.name`,[branchId])).rows;
+  });
   app.get('/api/branches/:branchId/people/registration/:registration', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId);
     const { registration } = z.object({ registration: z.string().trim().min(1) }).parse(request.params);
@@ -136,7 +146,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
   app.patch('/api/branches/:branchId/lockers/:itemId', async request => {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); adminAccess(actor,branchId);
-    const body = lockerInput.partial().extend({ operationId: id, expectedVersion: z.number().int().positive(), migrationStatus: z.enum(['conferido','inconclusivo']).optional() }).parse(request.body);
+    const body = lockerInput.partial().extend({ operationId: id, expectedVersion: z.number().int().positive(), migrationStatus: z.enum(['conferido','inconclusivo']).optional(), number:z.never().optional() }).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
       const old = await one<{ version: number; capacity: number; is_double:boolean }>(client,'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Armário alterado; recarregue');
@@ -145,10 +155,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if((body.isDouble??old.is_double)&&(body.capacity??old.capacity)<2)fail(422,'CAPACIDADE','Armário duplo precisa de capacidade para duas pessoas');
       if(body.isDouble===false&&Number(count.rows[0].count)>1)fail(409,'OCUPACAO','Armário com duas pessoas não pode deixar de ser duplo');
       if (body.sectorOccupant && Number(count.rows[0].count)) fail(409,'OCUPACAO','Libere a ocupação da pessoa antes de atribuir o armário a um setor');
-      const { rows } = await client.query(`UPDATE lockers SET number=COALESCE($2,number),size=COALESCE($3,size),capacity=COALESCE($4,capacity),
-        modality=COALESCE($5,modality),destination=COALESCE($6,destination),condition=COALESCE($7,condition),migration_status=COALESCE($8,migration_status),
-        sector_occupant=CASE WHEN $10::boolean THEN $9 ELSE sector_occupant END,is_double=COALESCE($11,is_double),version=version+1 WHERE id=$1 RETURNING *`,
-        [itemId,body.number,body.size,body.capacity,body.modality,body.destination,body.condition,body.migrationStatus,body.sectorOccupant??null,body.sectorOccupant!==undefined,body.isDouble]);
+      const { rows } = await client.query(`UPDATE lockers SET size=COALESCE($2,size),capacity=COALESCE($3,capacity),
+        modality=COALESCE($4,modality),destination=COALESCE($5,destination),condition=COALESCE($6,condition),migration_status=COALESCE($7,migration_status),
+        sector_occupant=CASE WHEN $9::boolean THEN $8 ELSE sector_occupant END,is_double=COALESCE($10,is_double),version=version+1 WHERE id=$1 RETURNING *`,
+        [itemId,body.size,body.capacity,body.modality,body.destination,body.condition,body.migrationStatus,body.sectorOccupant??null,body.sectorOccupant!==undefined,body.isDouble]);
       await event(client,branchId,actor.id,'armario_alterado','locker',itemId,{ before: old, after: rows[0] });
       await refreshPending(client,branchId); return rows[0];
     }));

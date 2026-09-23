@@ -49,6 +49,8 @@
 .pending-editor h3 { margin-bottom: 6px; }
 .pending-editor p { color: #65778b; font-size: .88rem; }
 .pending-editor .form-grid { margin: 16px 0; }
+.fixed-locker-number { display: block; margin-top: 6px; padding: 10px 11px; border: 1px solid #d8e0e8; border-radius: 8px; background: #f5f7f9; }
+.registration-match { grid-column: 1 / -1; margin: -8px 0 0; }
 .pending-actions { border-top: 1px solid #e1e8ee; padding-top: 18px; display: grid; gap: 12px; }
 .pending-actions textarea { display: block; width: 100%; margin-top: 6px; border: 1px solid #cbd5e0; border-radius: 8px; padding: 10px; font: inherit; }
 .pending-actions label:not(.check) { max-width: 650px; }

@@ -3,6 +3,10 @@ import {mkdir} from 'node:fs/promises';
 import ExcelJS from 'exceljs';
 import {Pool} from 'pg';
 import argon2 from 'argon2';
+import {createHash,randomBytes} from 'node:crypto';
+
+async function createAdminAlias(pool:Pool,username:string){await pool.query(`INSERT INTO users(username,password_hash,role,branch_id,must_change_password)
+  SELECT $1,password_hash,role,branch_id,false FROM users WHERE username='e2e'`,[username]);}
 
 test('login, painel, compartilhamento, promotor, TI, pendências e offline',async({page,context})=>{
   await mkdir('test-results/visual',{recursive:true});
@@ -106,9 +110,10 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
       SELECT id,'103','padrao',1,'fixo' FROM branches WHERE name='Caruaru Demonstração'`);
     await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,is_double,modality)
       SELECT id,'104','padrao',2,true,'fixo' FROM branches WHERE name='Caruaru Demonstração'`);
+    await createAdminAlias(pool,'e2e-status');
   }finally{await pool.end();}
   await page.goto('/');
-  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Nome de usuário').fill('e2e-status');
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile').filter({hasText:'101'})).toHaveClass(/has-pending/);
@@ -142,9 +147,9 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
   try{await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,modality)
     SELECT b.id,n::text,'padrao',1,'fixo' FROM branches b CROSS JOIN generate_series(1,477) n
-    WHERE b.name='Caruaru Demonstração' ON CONFLICT(branch_id,number) DO NOTHING`);}finally{await pool.end();}
+    WHERE b.name='Caruaru Demonstração' ON CONFLICT(branch_id,number) DO NOTHING`);await createAdminAlias(pool,'e2e-477');}finally{await pool.end();}
   await page.goto('/');
-  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Nome de usuário').fill('e2e-477');
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile')).toHaveCount(477);
@@ -153,6 +158,8 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await page.locator('.locker-tile').last().click();
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('heading',{name:'Armário 477'})).toBeVisible();
+  await expect(dialog.getByText('Número do armário (fixo)')).toBeVisible();
+  await expect(dialog.getByLabel('Número do armário')).toHaveCount(0);
   await expect(dialog.getByLabel('Existe cópia da chave?')).toHaveValue('sim');
   await page.screenshot({path:'test-results/visual/11-edicao-armario.png'});
   await dialog.getByLabel('Armário duplo').check();
@@ -168,13 +175,14 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
 });
 
 test('pendências de armários seguem ordem numérica e abrem conferência',async({page})=>{
+  await mkdir('test-results/visual',{recursive:true});
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
   try{await pool.query(`UPDATE lockers SET migration_status='inconclusivo' WHERE number IN ('12','101');
     INSERT INTO pending_items(branch_id,kind,subject_type,subject_id)
     SELECT branch_id,'migracao_inconclusiva','locker',id FROM lockers WHERE number IN ('12','101')
-    ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta'`);}finally{await pool.end();}
+    ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta'`);await createAdminAlias(pool,'e2e-pending');}finally{await pool.end();}
   await page.goto('/');
-  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Nome de usuário').fill('e2e-pending');
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
   await page.getByRole('button',{name:'Pendências',exact:true}).click();
@@ -187,6 +195,11 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   await expect(dialog.getByRole('button',{name:'Concluir conferência'})).toBeDisabled();
   await dialog.getByLabel('Conferi os dados acima').check();
   await expect(dialog.getByRole('button',{name:'Concluir conferência'})).toBeEnabled();
+  await dialog.getByLabel('Cadastrar ocupante').check();
+  await expect(dialog.locator('datalist option')).toHaveCount(2);
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0001');
+  await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Ana Exemplo');
+  await dialog.getByLabel('Cadastrar ocupante').uncheck();
   await dialog.getByLabel('Setor ocupante').fill('Restaurante FC revisado');
   await dialog.getByRole('button',{name:'Salvar correções'}).click();
   await expect(page.locator('.notice')).toContainText('Correções salvas');
@@ -195,4 +208,60 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Concluir conferência'}).click();
   await expect(page.locator('.notice')).toContainText('conferência concluída');
+  await page.getByLabel('Exibir').selectOption('resolvida');
+  await expect(page.getByRole('heading',{name:'Histórico de pendências resolvidas'})).toBeVisible();
+  await expect(page.locator('.pending-item').filter({hasText:'Armário 12'})).toContainText('Motivo: Os dados importados deste armário precisavam de conferência.');
+  await expect(page.locator('.pending-item').filter({hasText:'Armário 12'})).toContainText('Resolução: Os dados do armário foram conferidos.');
+  await page.screenshot({path:'test-results/visual/12-pendencias-resolvidas.png'});
+});
+
+test('card troca matrícula e permite segundo ocupante depois de marcar duplo',async({page})=>{
+  await mkdir('test-results/visual',{recursive:true});
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    await pool.query("INSERT INTO lockers(branch_id,number,size,capacity,modality) VALUES($1,'500','padrao',1,'fixo')",[branch.id]);
+    for(const [registration,name] of [['0004','Dora Oficial'],['0005','Eva Oficial']]){
+      const person=(await pool.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[name])).rows[0];
+      await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
+        VALUES($1,$2,'colaborador','ti',$3,'Loja','Operadora',true,true)`,[person.id,branch.id,registration]);
+    }
+    await createAdminAlias(pool,'e2e-card');
+    const user=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='e2e-card'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",
+      [digest(token),user.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Armários'})).toBeVisible();
+  await page.getByLabel('Buscar armário, nome ou matrícula').fill('500');
+  await page.locator('.locker-tile').filter({hasText:'500'}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Armário duplo').check();
+  await dialog.getByLabel('Cadastrar ocupante').check();
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0004');
+  await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Dora Oficial');
+  await expect(dialog.locator('datalist option')).toHaveCount(4);
+  await page.screenshot({path:'test-results/visual/13-edicao-matricula.png'});
+  await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
+  await expect(page.locator('.notice')).toContainText('Dora Oficial');
+  await page.locator('.locker-tile').filter({hasText:'500'}).click();
+  await expect(dialog.getByLabel('Adicionar segundo ocupante')).toBeVisible();
+  await dialog.getByLabel('Adicionar segundo ocupante').check();
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0005');
+  await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Eva Oficial');
+  await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
+  await page.locator('.locker-tile').filter({hasText:'500'}).click();
+  await expect(dialog.locator('.list-row')).toHaveCount(2);
+  await dialog.getByLabel('Ocupante a corrigir').selectOption({label:'Dora Oficial · 0004'});
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('9999');
+  await dialog.getByLabel('Nome',{exact:true}).fill('Pessoa conferida');
+  await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
+  await expect(page.locator('.notice')).toContainText('atualizados');
+  await page.locator('.locker-tile').filter({hasText:'500'}).click();
+  await expect(dialog.getByText('Pessoa conferida',{exact:true})).toBeVisible();
+  await expect(dialog.getByText('Eva Oficial',{exact:true})).toBeVisible();
 });

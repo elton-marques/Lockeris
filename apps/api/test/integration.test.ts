@@ -275,7 +275,7 @@ describe('regras transacionais',()=>{
       .find(item=>item.kind==='migracao_inconclusiva')!;
     const first=await getReview();
     const corrected=await send(auth,'POST',`/api/branches/${branch.id}/pending/${first.id}/revise`,{operationId:uuid(),expectedVersion:first.version,
-      expectedLockerVersion:first.locker_version,number:'11',isDouble:true,sectorOccupant:null,finalize:false,
+      expectedLockerVersion:first.locker_version,isDouble:true,sectorOccupant:null,finalize:false,
       occupant:{allocationId:first.occupants[0].allocationId,membershipId:first.occupants[0].membershipId,
         expectedMembershipVersion:first.occupants[0].membershipVersion,name:'Nome conferido',registration:null,department:'Loja',functionName:'Atendente'}});
     expect(corrected.statusCode).toBe(200);
@@ -283,7 +283,7 @@ describe('regras transacionais',()=>{
       .toMatchObject({name:'Nome conferido',department:'Loja'});
     const second=await getReview();
     const linked=await send(auth,'POST',`/api/branches/${branch.id}/pending/${second.id}/revise`,{operationId:uuid(),expectedVersion:second.version,
-      expectedLockerVersion:second.locker_version,number:'11',isDouble:true,sectorOccupant:null,finalize:true,
+      expectedLockerVersion:second.locker_version,isDouble:true,sectorOccupant:null,finalize:true,
       occupant:{allocationId:second.occupants[0].allocationId,membershipId:second.occupants[0].membershipId,
         expectedMembershipVersion:second.occupants[0].membershipVersion,name:'Nome ainda errado',registration:'00-01',department:'Outro',functionName:'Outra'}});
     expect(linked.statusCode).toBe(200);expect(linked.json().officialName).toBe('Nome Oficial');
@@ -295,7 +295,7 @@ describe('regras transacionais',()=>{
     await transaction(client=>refreshPending(client,branch.id));
     const blankPending=await getReview();
     const filled=await send(auth,'POST',`/api/branches/${branch.id}/pending/${blankPending.id}/revise`,{operationId:uuid(),expectedVersion:blankPending.version,
-      expectedLockerVersion:blankPending.locker_version,number:'12',isDouble:false,sectorOccupant:null,finalize:true,
+      expectedLockerVersion:blankPending.locker_version,isDouble:false,sectorOccupant:null,finalize:true,
       occupant:{name:'Pessoa identificada',registration:null,department:'Loja',functionName:'Apoio'}});
     expect(filled.statusCode).toBe(200);
     expect((await pool.query("SELECT p.name,m.department FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.number='12'")).rows[0])
@@ -344,13 +344,57 @@ describe('regras transacionais',()=>{
     const cabinet=await locker(auth,branch.id,'20');
     expect(cabinet.key_copy_available).toBe(true);
     const changed=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{
-      operationId:uuid(),expectedLockerVersion:cabinet.version,number:'21',isDouble:true,condition:'manutencao',
+      operationId:uuid(),expectedLockerVersion:cabinet.version,isDouble:true,condition:'manutencao',
       keyCopyAvailable:false,sectorOccupant:'Restaurante FC',occupant:null});
     expect(changed.statusCode).toBe(200);
-    expect(changed.json().locker).toMatchObject({number:'21',is_double:true,capacity:2,condition:'manutencao',
+    expect(changed.json().locker).toMatchObject({number:'20',is_double:true,capacity:2,condition:'manutencao',
       key_copy_available:false,sector_occupant:'Restaurante FC'});
     const listed=await app.inject({method:'GET',url:`/api/branches/${branch.id}/lockers`,headers:{cookie:auth.cookie}});
-    expect(listed.json()[0]).toMatchObject({number:'21',key_copy_available:false,sector_occupant:'Restaurante FC'});
+    expect(listed.json()[0]).toMatchObject({number:'20',key_copy_available:false,sector_occupant:'Restaurante FC'});
+    expect((await send(auth,'PATCH',`/api/branches/${branch.id}/lockers/${cabinet.id}`,{
+      operationId:uuid(),expectedVersion:changed.json().locker.version,number:'21'})).statusCode).toBe(422);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{
+      operationId:uuid(),expectedLockerVersion:changed.json().locker.version,number:'21',isDouble:true,
+      condition:'manutencao',keyCopyAvailable:false,sectorOccupant:'Restaurante FC',occupant:null})).statusCode).toBe(422);
+  });
+  it('troca ocupante por matrícula, oferece toda a base ativa e adiciona a segunda pessoa ao duplo',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'30');
+    const members:Record<string,string>={};
+    for(const [registration,name] of [['0001','Ana Oficial'],['0002','Bia Oficial'],['0003','Caio Oficial']]){
+      const p=(await pool.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[name])).rows[0];
+      await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
+        VALUES($1,$2,'colaborador','ti',$3,'Loja','Operação',true,true)`,[p.id,branch.id,registration]);
+      members[registration]=p.id;
+    }
+    const roster=await app.inject({method:'GET',url:`/api/branches/${branch.id}/people/registrations`,headers:{cookie:auth.cookie}});
+    expect(roster.statusCode).toBe(200);expect(roster.json().map((item:{registration:string})=>item.registration)).toEqual(['0001','0002','0003']);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:members['0001'],
+      lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
+    type Entry={id:string;version:number;occupants:{allocationId:string;membershipId:string;membershipVersion:number;registration:string}[]};
+    const current=async()=>((await app.inject({method:'GET',url:`/api/branches/${branch.id}/lockers`,headers:{cookie:auth.cookie}})).json() as Entry[])[0];
+    const first=await current();
+    const replaced=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{operationId:uuid(),
+      expectedLockerVersion:first.version,isDouble:true,sectorOccupant:null,occupant:{allocationId:first.occupants[0].allocationId,
+        membershipId:first.occupants[0].membershipId,expectedMembershipVersion:first.occupants[0].membershipVersion,
+        name:'Nome errado',registration:'00-02',department:null,functionName:null}});
+    expect(replaced.statusCode).toBe(200);expect(replaced.json().officialName).toBe('Bia Oficial');
+    expect((await pool.query('SELECT count(*) FROM allocations WHERE person_id=$1 AND ended_at IS NOT NULL',[members['0001']])).rows[0].count).toBe('1');
+    const second=await current();
+    const added=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{operationId:uuid(),
+      expectedLockerVersion:second.version,isDouble:true,sectorOccupant:null,occupant:{name:'Nome errado',registration:'0003',department:null,functionName:null}});
+    expect(added.statusCode).toBe(200);expect(added.json().officialName).toBe('Caio Oficial');
+    expect((await pool.query('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[cabinet.id])).rows[0].count).toBe('2');
+    const third=await current();
+    const bia=third.occupants.find(item=>item.registration==='0002')!;
+    const manual=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{operationId:uuid(),
+      expectedLockerVersion:third.version,isDouble:true,sectorOccupant:null,occupant:{allocationId:bia.allocationId,
+        membershipId:bia.membershipId,expectedMembershipVersion:bia.membershipVersion,
+        name:'Pessoa conferida',registration:'9999',department:'Caixa',functionName:'Apoio'}});
+    expect(manual.statusCode).toBe(200);
+    expect((await pool.query("SELECT p.name,m.registration FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id WHERE a.locker_id=$1 AND a.ended_at IS NULL ORDER BY m.registration",[cabinet.id])).rows)
+      .toEqual([{name:'Caio Oficial',registration:'0003'},{name:'Pessoa conferida',registration:'9999'}]);
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE kind='ausente_ti' AND state='aberta'")).rows[0].count).toBe('1');
   });
 });
 
