@@ -5,6 +5,13 @@ export async function refreshPending(client: Client, branchId: string): Promise<
     SELECT 'ausente_ti' kind,'membership' subject_type,m.id subject_id FROM memberships m
       JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
       WHERE m.branch_id=$1 AND m.category='colaborador' AND m.ti_present=false
+      AND NOT EXISTS(
+        SELECT 1 FROM memberships current_ti
+        WHERE current_ti.branch_id=m.branch_id AND current_ti.category='colaborador'
+          AND current_ti.origin='ti' AND current_ti.status='ativo' AND current_ti.ti_present=true
+          AND regexp_replace(upper(trim(current_ti.registration)), '[[:space:]./-]', '', 'g')=
+              regexp_replace(upper(trim(m.registration)), '[[:space:]./-]', '', 'g')
+      )
     UNION ALL
     SELECT 'sem_armario','membership',m.id FROM memberships m
       WHERE m.branch_id=$1 AND m.status='ativo' AND m.needs_fixed
