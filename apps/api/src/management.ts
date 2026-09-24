@@ -159,6 +159,32 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
       await event(client,branchId,actor.id,'pendencia_resolvida','pending',itemId,{resolution:body.resolution});return rows[0];
     }));
   });
+  app.post('/api/branches/:branchId/pending/bulk-resolve',async request=>{
+    const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId,true);
+    const body=operation.extend({items:z.array(z.object({id,expectedVersion:z.number().int().positive()})).min(1).max(100),resolution:z.string().min(3).max(1000)}).parse(request.body);
+    return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
+      const results:{id:string;status:'resolvida'|'falhou';message?:string}[]=[];
+      for(const item of body.items){
+        const savepoint=`bulk_item_${results.length}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
+        try{
+          const pending=await one<{kind:string;state:string;version:number}>(client,
+            'SELECT kind,state,version FROM pending_items WHERE id=$1 AND branch_id=$2 FOR UPDATE',[item.id,branchId]);
+          if(pending.version!==item.expectedVersion||pending.state!=='aberta')fail(409,'VERSAO','Pendência alterada; recarregue');
+          if(!['dados_alterados','identificacao_conflitante'].includes(pending.kind))fail(409,'CONDICAO','Esta pendência exige conferência individual');
+          await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,resolved_by=$3,updated_at=now(),version=version+1 WHERE id=$1",[item.id,body.resolution,actor.id]);
+          await event(client,branchId,actor.id,'pendencia_resolvida','pending',item.id,{resolution:body.resolution,bulk:true});
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          results.push({id:item.id,status:'resolvida'});
+        }catch(error){
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          results.push({id:item.id,status:'falhou',message:error instanceof Error?error.message:'Não foi possível resolver'});
+        }
+      }
+      return {results,succeeded:results.filter(item=>item.status==='resolvida').length,failed:results.filter(item=>item.status==='falhou').length};
+    }));
+  });
   app.post('/api/branches/:branchId/people/:itemId/exception',async request=>{
     const actor=await authenticate(request),{branchId,itemId}=routeItem.parse(request.params);branchAccess(actor,branchId,true);
     const body=operation.extend({expectedVersion:z.number().int().positive(),reason:z.string().min(3).max(1000)}).parse(request.body);

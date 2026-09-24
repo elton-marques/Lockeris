@@ -39,6 +39,7 @@ const originalReason=(item:Item)=>({sem_armario:'A pessoa estava ativa e precisa
   compartilhamento_vencido:'A data prevista para o compartilhamento terminou.',
   dados_alterados:'Os dados da pessoa mudaram na base atual.',
   identificacao_conflitante:'Os dados de identificação apresentaram divergência.'} as Record<string,string>)[item.kind]??item.reason??'Registro criado para conferência.';
+const canBulkResolve=(item:Item)=>item.state==='aberta'&&['dados_alterados','identificacao_conflitante'].includes(item.kind);
 const searchText=(item:Item)=>[item.locker_number,item.person_name,item.registration,item.department,item.function_name,item.sector_occupant,
   ...(item.occupants??[]).flatMap(person=>[person.name,person.registration,person.department])].join(' ').toLocaleLowerCase('pt-BR');
 const emptyEdit={isDouble:false,condition:'disponivel',keyCopy:'sim',sectorOccupant:'',name:'',registration:'',department:'',functionName:''};
@@ -46,6 +47,7 @@ const emptyEdit={isDouble:false,condition:'disponivel',keyCopy:'sim',sectorOccup
 export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
   const [items,setItems]=useState<Item[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[stateFilter,setStateFilter]=useState('aberta'),[tab,setTab]=useState<'lockers'|'people'>('lockers');
   const [query,setQuery]=useState(''),[selectedId,setSelectedId]=useState<string|null>(null),[reviewed,setReviewed]=useState(false);
+  const [selectedIds,setSelectedIds]=useState<Set<string>>(new Set()),[bulkResolution,setBulkResolution]=useState('');
   const [note,setNote]=useState(''),[due,setDue]=useState(''),[busy,setBusy]=useState(false),closeRef=useRef<HTMLButtonElement>(null);
   const [edit,setEdit]=useState(emptyEdit),[occupantId,setOccupantId]=useState(''),[createPerson,setCreatePerson]=useState(false),[lockerId,setLockerId]=useState(''),[keyCopy,setKeyCopy]=useState('');
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
@@ -86,6 +88,18 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
   async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string)){setBusy(true);try{const result=await callback();try{await load();refresh();notice(typeof message==='string'?message:message(result));setSelectedId(null);}
       catch{notice('A ação foi concluída, mas a lista não foi atualizada. Recarregue antes de agir novamente.');}}
     catch(error){notice(error instanceof Error?error.message:'Falha na operação');}finally{setBusy(false);}}
+  function toggleBulk(id:string,checked:boolean){setSelectedIds(current=>{const next=new Set(current);if(checked)next.add(id);else next.delete(id);return next;});}
+  async function bulkResolve(){
+    const selectedItems=items.filter(item=>selectedIds.has(item.id)&&canBulkResolve(item));
+    if(!selectedItems.length||bulkResolution.trim().length<3)return;
+    setBusy(true);
+    try{
+      const result=await post<{succeeded:number;failed:number}>(`/branches/${branchId}/pending/bulk-resolve`,{operationId:op(),
+        items:selectedItems.map(item=>({id:item.id,expectedVersion:item.version})),resolution:bulkResolution.trim()});
+      setSelectedIds(new Set());setBulkResolution('');await load();refresh();
+      notice(`${result.succeeded} pendência(s) resolvida(s)${result.failed?`; ${result.failed} não puderam ser resolvidas`:'.'}`);
+    }catch(error){notice(error instanceof Error?error.message:'Falha na resolução em lote');}finally{setBusy(false);}
+  }
   function saveReview(finalize=false){if(!selected||!selected.locker_number||!selected.locker_version||!reviewed)return;
     const occupant=selected.occupants?.find(person=>person.allocationId===occupantId);
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/pending/${selected.id}/revise`,{
@@ -146,10 +160,15 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
       <div className="filters"><label>Buscar<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome, matrícula ou setor"/></label>
         <label>Exibir<select value={stateFilter} onChange={event=>setStateFilter(event.target.value)}><option value="aberta">Abertas</option>
           <option value="resolvida">Resolvidas</option><option value="todas">Todas</option></select></label></div>
+      {!readonly&&selectedIds.size>0&&<div className="bulk-action-bar" role="region" aria-label="Ações em lote">
+        <strong>{selectedIds.size} selecionada(s)</strong><label>Justificativa da resolução<input value={bulkResolution} onChange={event=>setBulkResolution(event.target.value)} placeholder="Descreva a decisão" minLength={3}/></label>
+        <button type="button" className="primary" disabled={busy||bulkResolution.trim().length<3} onClick={bulkResolve}>Resolver selecionadas</button>
+        <button type="button" disabled={busy} onClick={()=>{setSelectedIds(new Set());setBulkResolution('');}}>Cancelar</button>
+      </div>}
       <div className="pending-list">{shown.length===0?<EmptyState title={items.length?'Nenhuma pendência neste filtro':'Nenhuma pendência registrada'} description={items.length?'Altere a busca, a situação ou o tipo para consultar outros registros.':'Os registros que precisarem de conferência aparecerão aqui.'}/>:shown.map(item=><article className="pending-item" key={item.id}>
-        <div><span className={`badge${item.state==='aberta'?' alert':''}`}>{item.state==='resolvida'?(resolvedLabels[item.kind]??labels[item.kind]??'Pendência conferida'):(labels[item.kind]??'Conferência necessária')}</span><h3>{title(item)}</h3>
+        <div className="pending-item-content">{!readonly&&canBulkResolve(item)&&<label className="pending-select"><input type="checkbox" checked={selectedIds.has(item.id)} onChange={event=>toggleBulk(item.id,event.target.checked)} aria-label={`Selecionar ${title(item)}`}/></label>}<div><span className={`badge${item.state==='aberta'?' alert':''}`}>{item.state==='resolvida'?(resolvedLabels[item.kind]??labels[item.kind]??'Pendência conferida'):(labels[item.kind]??'Conferência necessária')}</span><h3>{title(item)}</h3>
           <p>{item.person_name??item.occupants?.map(person=>person.name).join(', ')??''}{item.registration?` · Matrícula ${item.registration}`:''}</p>
-          <p>Motivo: {originalReason(item)}</p>{item.state==='resolvida'&&<p>Resolução: {resolutionText(item)}</p>}</div>
+          <p>Motivo: {originalReason(item)}</p>{item.state==='resolvida'&&<p>Resolução: {resolutionText(item)}</p>}</div></div>
         <button type="button" onClick={()=>open(item)}>{item.state==='resolvida'?'Ver histórico':'Conferir dados'}</button></article>)}</div>
     </section>
     {selected&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelectedId(null);}}>

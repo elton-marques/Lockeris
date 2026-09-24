@@ -2,7 +2,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowRight,CircleAlert,Grid2X2,KeyRound,List,SlidersHorizontal,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
-import {conditionName,DataState,EmptyState} from '../ui';
+import {conditionName,DataState,EmptyState,Skeleton} from '../ui';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
 import {availablePositions,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,type LockerPreset} from '../locker-insights';
@@ -82,6 +82,12 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
     pendingKindFilter&&{label:`Motivo: ${pendingKindLabels[pendingKindFilter]??'Conferência necessária'}`,clear:()=>setPendingKindFilter('')},
     doubleOnly&&{label:'Somente duplos',clear:()=>setDoubleOnly(false)}
   ].filter((item):item is {label:string;clear:()=>void}=>!!item);
+  const quickFilters=[
+    {label:'Com vaga',active:statusFilter==='com_vaga',apply:()=>{setStatusFilter(statusFilter==='com_vaga'?'':'com_vaga');setPendingKindFilter('');}},
+    {label:'Livres',active:statusFilter==='livre',apply:()=>{setStatusFilter(statusFilter==='livre'?'':'livre');setPendingKindFilter('');}},
+    {label:'Pendentes',active:statusFilter==='pendente',apply:()=>setStatusFilter(statusFilter==='pendente'?'':'pendente')},
+    {label:'Sem cópia',active:keyFilter==='nao',apply:()=>setKeyFilter(keyFilter==='nao'?'':'nao')}
+  ];
   function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);}
   const locker=lockers.find(item=>item.id===selected);
   const editOccupant=locker?.occupants.find(item=>item.allocationId===editOccupantId);
@@ -161,8 +167,16 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
     else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}
   }
 
+  function DashboardSkeleton(){
+    return <section className="card locker-list-panel" aria-label="Carregando armários">
+      <div className="locker-list-heading"><div><Skeleton variant="title"/><Skeleton variant="text"/></div></div>
+      <div className="loading-grid">{Array.from({length:8},(_,index)=><Skeleton key={index} variant="card" label={`Carregando armário ${index+1}`}/>)}</div>
+    </section>;
+  }
+
   return <>
     <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
+    {loading&&!loadError&&<DashboardSkeleton/>}
     {!loading&&!loadError&&<>
     <div className="operational-intro"><div><h1>Armários</h1><p>Consulte os armários e seus ocupantes em {branchName}.</p></div><span>{lockers.length} armários físicos</span></div>
     <section className="card locker-list-panel" aria-label="Consulta de armários">
@@ -176,6 +190,10 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
         <label>Filtrar por cópia da chave<select value={keyFilter} onChange={event=>setKeyFilter(event.target.value)}><option value="">Todas</option>
           <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
         <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
+      </div>
+      <div className="quick-filters" aria-label="Filtros rápidos">
+        <span>Atalhos</span>
+        {quickFilters.map(filter=><button key={filter.label} type="button" className={filter.active?'quick-filter active':'quick-filter'} aria-pressed={filter.active} onClick={filter.apply}>{filter.label}</button>)}
       </div>
       <div className="filter-summary"><div className="filter-summary-left"><SlidersHorizontal size={16} aria-hidden="true"/><strong aria-live="polite">{filtered.length} {filtered.length===1?'resultado':'resultados'}</strong>{activeFilters.length?<div className="active-filter-list">{activeFilters.map(item=><button key={item.label} type="button" onClick={item.clear} aria-label={`Remover filtro ${item.label}`}>{item.label}<X size={13} aria-hidden="true"/></button>)}</div>:<span>Todos os registros da filial</span>}</div>{activeFilters.length>0&&<button type="button" className="clear-filters" onClick={clearFilters}>Limpar filtros</button>}</div>
       {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'} action={activeFilters.length>0?<button type="button" onClick={clearFilters}>Limpar filtros</button>:undefined}/>:view==='cards'?<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);

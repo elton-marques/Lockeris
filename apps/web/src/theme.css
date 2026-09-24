@@ -59,6 +59,10 @@
 
 :root[data-theme='dark']{
   color-scheme:dark;
+  --surface-base:#151726;--surface-raised:#222537;--surface-subtle:#292c40;--surface-inverse:#10121f;
+  --text-primary:#ececf8;--text-secondary:#bdc1d6;--text-muted:#a7adc6;--text-on-brand:#211b3a;
+  --border-divider:#3d4059;--border-strong:#51556f;--brand-accent:#b2a5ff;--brand-accent-hover:#c7bcff;
+  --brand-surface:#342f56;--focus-ring:#c0aaff;--status-success:#a5e4cc;--status-warning:#f1d5a3;--status-danger:#ffb0bb;
   --ink:#ececf8;--ink-soft:#bdc1d6;--muted:#a7adc6;
   --line:#3d4059;--surface:#23263a;--canvas:#151726;
   --brand:#a99bff;--brand-hover:#c0b5ff;--brand-soft:#342f56;--focus:#c0aaff;
@@ -229,6 +233,7 @@
 :root[data-theme='dark'] .center{background:radial-gradient(circle at 15% 10%,#42386d 0,transparent 35%),linear-gradient(145deg,#10121f,#20213a 75%,#2c2851)}
 :root[data-theme='dark'] .auth-card{background:#222537ed;border-color:#575a76}
 :root[data-theme='dark'] .auth-card>p{color:#c1c6d9}
+:root[data-theme='dark'] .skeleton{background:linear-gradient(105deg,#34384f 20%,#4b5068 38%,#34384f 56%);background-size:220% 100%}
 
 @media (max-width:700px){.auth-theme-control{top:15px;right:16px}}
 @media (prefers-reduced-motion:reduce){

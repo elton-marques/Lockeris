@@ -22,6 +22,7 @@ const events:Record<string,string>={
 };
 const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Consulta offline',allocation:'Ocupação',sharing:'Compartilhamento'};
 export const eventLabel=(kind:string)=>events[kind]??'Evento registrado';
+const eventTone=(kind:string)=>kind.includes('pendencia')?'warning':kind.includes('encerrada')||kind.includes('removidos')?'neutral':'success';
 function summary(details:unknown):string{
   if(!details||typeof details!=='object'||Array.isArray(details))return 'Alteração registrada.';
   const data=details as Record<string,unknown>;
@@ -38,8 +39,8 @@ export function History({branchId,copy}:PageProps){
   useEffect(()=>{if(copy){setLoading(false);return;}load();},[branchId,copy]);
   return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div>{!copy&&<a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a>}</div>
     {copy?<EmptyState title="Histórico indisponível sem conexão" description="A cópia local guarda armários, pessoas e pendências para consulta."/>:<><DataState loading={loading} error={error} onRetry={load}/>
-      {!loading&&!error&&(records.length?<div className="table-wrap history-table"><table><thead><tr><th>Data</th><th>Evento</th><th>Área</th><th>Resumo</th></tr></thead><tbody>{records.map(item=><tr key={item.id}>
-        <td data-label="Data">{new Date(item.happened_at).toLocaleString('pt-BR')}</td><td data-label="Evento"><strong>{eventLabel(item.kind)}</strong></td><td data-label="Área">{subjects[item.entity_type]??'Operação'}</td><td data-label="Resumo">{summary(item.details)}</td>
-      </tr>)}</tbody></table></div>:<EmptyState title="Nenhum evento registrado" description="As alterações desta filial aparecerão aqui depois da primeira operação."/>)}</>}
+      {!loading&&!error&&(records.length?<ol className="timeline" aria-label="Linha do tempo de eventos">{records.map(item=><li className={`timeline-item timeline-item--${eventTone(item.kind)}`} key={item.id}>
+        <span className="timeline-marker" aria-hidden="true"/><div className="timeline-event"><div className="timeline-event-head"><strong>{eventLabel(item.kind)}</strong><time dateTime={item.happened_at}>{new Date(item.happened_at).toLocaleString('pt-BR')}</time></div><div className="timeline-event-meta">{subjects[item.entity_type]??'Operação'}</div><p>{summary(item.details)}</p></div>
+      </li>)}</ol>:<EmptyState title="Nenhum evento registrado" description="As alterações desta filial aparecerão aqui depois da primeira operação."/>)}</>}
   </section>;
 }
