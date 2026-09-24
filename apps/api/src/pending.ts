@@ -47,6 +47,25 @@ async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<
   }
 }
 
+async function reconcileExternalPlaceholders(client:Client,branchId:string):Promise<void>{
+  const rows=await client.query<{pending_id:string;locker_id:string;function_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,coalesce(nullif(trim(m.function_name),''),src.raw->>'functionName') function_name
+    FROM pending_items p JOIN lockers l ON l.id=p.subject_id
+    JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
+    JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=l.branch_id
+    JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
+    JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
+    WHERE p.branch_id=$1 AND p.kind='migracao_inconclusiva' AND p.state='aberta'
+      AND l.migration_status='inconclusivo' AND m.origin='migracao' AND m.category='terceirizado'
+      AND coalesce(trim(src.raw->>'registration'),'')=''
+      AND upper(trim(src.raw->>'status'))='OCUPADO'
+    ORDER BY p.id,src.row_number`,[branchId]);
+  for(const row of rows.rows){
+    await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
+    await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Terceirizado sem matrícula; função ${row.function_name||'não informada'}.`]);
+    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'terceirizado_sem_matricula_reconhecido','locker',row.locker_id,JSON.stringify({functionName:row.function_name})]);
+  }
+}
+
 async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promise<void>{
   const rows=await client.query<{allocation_id:string;membership_id:string;locker_id:string;name:string}>(`SELECT a.id allocation_id,m.id membership_id,l.id locker_id,p.name
     FROM memberships m JOIN people p ON p.id=m.person_id
@@ -126,6 +145,7 @@ async function autoReconcile(client:Client,branchId:string):Promise<void>{
 export async function refreshPending(client: Client, branchId: string): Promise<void> {
   await retireRoteiristaPlaceholders(client,branchId);
   await reconcileRolePlaceholders(client,branchId);
+  await reconcileExternalPlaceholders(client,branchId);
   await reconcileNamePlaceholders(client,branchId);
   await autoReconcile(client,branchId);
   const desired = await client.query<{ kind: string; subject_type: string; subject_id: string }>(`
