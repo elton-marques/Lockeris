@@ -60,7 +60,7 @@ export function rowsFrom(sheet:Sheet):LockerRow[]{
     const doubleSpecified=doubleText?['TRUE','VERDADEIRO','SIM','1'].includes(doubleText):null;
     const item:LockerRow={row:index+1,number,name,registration,department,functionName:value(raw,functionColumn),
       sectorOccupant,status,isDouble:!!doubleSpecified,capacity:doubleSpecified?2:1,doubleSpecified,
-      uncertain:status==='OCUPADO'&&!registration&&!sectorOccupant,nameRepeated:false};
+      uncertain:status==='OCUPADO'&&!registration&&!sectorOccupant&&!value(raw,functionColumn),nameRepeated:false};
     result.push(item);
     numbers.set(number,[...(numbers.get(number)??[]),item]);
   }
@@ -125,13 +125,13 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
         }
         await client.query('INSERT INTO import_sources(import_id,sheet_name,row_number,entity_type,entity_id,raw) VALUES($1,$2,$3,$4,$5,$6)',
           [importId,batch.sheet_name,row.row,'locker',lockerId,JSON.stringify(row)]);
-        if(row.sectorOccupant||(!row.name&&!row.registration))continue;
+        if(row.sectorOccupant||(!row.name&&!row.registration&&!row.functionName))continue;
         const candidates=row.registration?roster.filter(member=>registrationKey(member.registration)===registrationKey(row.registration)):[];
         if(candidates.length>1)fail(409,'MATRICULA_AMBIGUA',`Matrícula ${row.registration} corresponde a mais de um colaborador`);
         const existing=candidates[0]??null;
         let personId=existing?.person_id,membershipId=existing?.id;
         if(!personId){
-          personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name||`Matrícula ${row.registration}`])).rows[0].id;
+          personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name||row.functionName||`Matrícula ${row.registration}`])).rows[0].id;
           const promoter=norm(row.functionName).includes('PROMOTOR');
           const category=promoter?(row.registration?'promotor_fixo':'roteirista'):(row.registration?'colaborador':'terceirizado');
           membershipId=(await client.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)

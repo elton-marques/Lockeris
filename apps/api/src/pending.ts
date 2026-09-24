@@ -20,6 +20,31 @@ function strongNameMatch(source:string,target:string):boolean{
   return sourceTokens.length>=2&&sourceTokens.every(token=>targetTokens.has(token));
 }
 
+async function reconcilePromoterPlaceholders(client:Client,branchId:string):Promise<void>{
+  const rows=await client.query<{pending_id:string;locker_id:string;function_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,src.raw->>'functionName' function_name
+    FROM pending_items p JOIN lockers l ON l.id=p.subject_id
+    JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
+    JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
+    WHERE p.branch_id=$1 AND p.kind='migracao_inconclusiva' AND p.state='aberta'
+      AND l.migration_status='inconclusivo'
+      AND coalesce(trim(src.raw->>'name'),'')=''
+      AND coalesce(trim(src.raw->>'registration'),'')=''
+      AND upper(trim(src.raw->>'status'))='OCUPADO'
+      AND upper(trim(src.raw->>'functionName')) LIKE '%PROMOTOR%'
+      AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)
+    ORDER BY p.id,src.row_number`,[branchId]);
+  for(const row of rows.rows){
+    const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.function_name])).rows[0];
+    await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,needs_fixed,ti_present,status)
+      VALUES($1,$2,'roteirista','migracao',false,NULL,'ativo')`,[person.id,branchId]);
+    await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason)
+      VALUES($1,$2,$3,'fixo',NULL,true,now(),'Carga inicial; função provisória')`,[branchId,row.locker_id,person.id]);
+    await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
+    await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Ocupação provisória reconhecida pela função ${row.function_name}.`]);
+    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupacao_provisoria_reconhecida','locker',row.locker_id,JSON.stringify({functionName:row.function_name})]);
+  }
+}
+
 async function autoReconcile(client:Client,branchId:string):Promise<void>{
   const pending=await client.query<ReconciliationRow>(`SELECT p.id pending_id,m.id membership_id,m.person_id,m.registration,pn.name,m.department,m.function_name,a.id allocation_id
     FROM pending_items p JOIN memberships m ON m.id=p.subject_id JOIN people pn ON pn.id=m.person_id
@@ -48,6 +73,7 @@ async function autoReconcile(client:Client,branchId:string):Promise<void>{
 }
 
 export async function refreshPending(client: Client, branchId: string): Promise<void> {
+  await reconcilePromoterPlaceholders(client,branchId);
   await autoReconcile(client,branchId);
   const desired = await client.query<{ kind: string; subject_type: string; subject_id: string }>(`
     SELECT 'ausente_ti' kind,'membership' subject_type,m.id subject_id FROM memberships m

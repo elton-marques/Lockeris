@@ -322,14 +322,15 @@ describe('regras transacionais',()=>{
     const file=binaryForm({operationId:uuid()},'armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
     const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
     expect(prepared.statusCode).toBe(200);
-    expect(prepared.json()).toMatchObject({sourceRows:7,physicalCount:6,occupiedCount:5,doubleCount:2,sectorCount:1,uncertainCount:3,repeatedNameCount:1});
+    expect(prepared.json()).toMatchObject({sourceRows:7,physicalCount:6,occupiedCount:5,doubleCount:2,sectorCount:1,uncertainCount:2,repeatedNameCount:1});
     const confirmed=await send(auth,'POST',`/api/branches/${branch.id}/imports/migration/${prepared.json().importId}/confirm`,{operationId:uuid(),acknowledgeReviewed:true});
     expect(confirmed.statusCode).toBe(200);
     expect((await pool.query("SELECT count(*) FROM lockers WHERE branch_id=$1",[branch.id])).rows[0].count).toBe('6');
     expect((await pool.query("SELECT is_double,capacity FROM lockers WHERE branch_id=$1 AND number='360'",[branch.id])).rows[0]).toMatchObject({is_double:true,capacity:2});
     expect((await pool.query("SELECT count(*) FROM allocations a JOIN lockers l ON l.id=a.locker_id WHERE l.branch_id=$1 AND l.number='360' AND a.ended_at IS NULL",[branch.id])).rows[0].count).toBe('2');
     expect((await pool.query("SELECT sector_occupant FROM lockers WHERE branch_id=$1 AND number='363'",[branch.id])).rows[0].sector_occupant).toBe('RESTAURANTE FC');
-    expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='migracao_inconclusiva' AND state='aberta'",[branch.id])).rows[0].count).toBe('3');
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='migracao_inconclusiva' AND state='aberta'",[branch.id])).rows[0].count).toBe('2');
+    expect((await pool.query("SELECT l.migration_status,count(a.id) FROM lockers l LEFT JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL WHERE l.branch_id=$1 AND l.number='364' GROUP BY l.id,l.migration_status",[branch.id])).rows[0]).toMatchObject({migration_status:'conferido',count:'1'});
     const emptyDouble=(await pool.query<{id:string}>("SELECT id FROM lockers WHERE branch_id=$1 AND number='365'",[branch.id])).rows[0];
     const first=await person(auth,branch.id,'Dora Exemplo','0103'),second=await person(auth,branch.id,'Eva Exemplo','0104');
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:first.person_id,lockerId:emptyDouble.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
