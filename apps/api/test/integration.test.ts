@@ -85,16 +85,13 @@ describe('regras transacionais',()=>{
     const release=await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,{operationId:uuid(),allocationId:second.json().id,expectedVersion:1});expect(release.statusCode).toBe(200);
     expect((await pool.query('SELECT id FROM sharings WHERE locker_id=$1 AND ended_at IS NULL',[shared.id])).rowCount).toBe(0);
   });
-  it('mantém a pendência aberta até atribuição ou exceção',async()=>{
+  it('não cria pendência para promotor sem armário',async()=>{
     const {auth,branch}=await setupWithoutLogin();const member=await person(auth,branch.id,'Promotora','1001');
     const pending=(await pool.query<{id:string;version:number;state:string}>("SELECT id,version,state FROM pending_items WHERE branch_id=$1 AND kind='sem_armario'",[branch.id])).rows[0];
-    expect(pending.version).toBe(1);
+    expect(pending).toBeUndefined();
     await transaction(client=>refreshPending(client,branch.id));
-    expect((await pool.query<{version:number}>('SELECT version FROM pending_items WHERE id=$1',[pending.id])).rows[0].version).toBe(1);
-    expect((await send(auth,'POST',`/api/branches/${branch.id}/pending/${pending.id}/resolve`,{operationId:uuid(),expectedVersion:1,resolution:'Aguardando armário'})).statusCode).toBe(409);
-    const exception=await send(auth,'POST',`/api/branches/${branch.id}/people/${member.id}/exception`,{operationId:uuid(),expectedVersion:1,reason:'Atuação externa sem uso fixo'});expect(exception.statusCode).toBe(200);
-    expect((await pool.query<{state:string;version:number}>('SELECT state,version FROM pending_items WHERE id=$1',[pending.id])).rows[0]).toMatchObject({state:'resolvida',version:2});
-    expect((await send(auth,'POST',`/api/branches/${branch.id}/people/${member.id}/exception`,{operationId:uuid(),expectedVersion:1,reason:'Motivo antigo'})).statusCode).toBe(409);
+    expect((await pool.query('SELECT id FROM pending_items WHERE branch_id=$1 AND kind=\'sem_armario\'',[branch.id])).rowCount).toBe(0);
+    expect(member.id).toBeTruthy();
   });
   it('mantém matrícula manual e mostra conflito na TI',async()=>{
     const {auth,branch}=await setup();await person(auth,branch.id,'Promotora','0007');

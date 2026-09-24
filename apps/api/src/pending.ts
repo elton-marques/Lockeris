@@ -62,7 +62,7 @@ export async function refreshPending(client: Client, branchId: string): Promise<
       )
     UNION ALL
     SELECT 'sem_armario','membership',m.id FROM memberships m
-      WHERE m.branch_id=$1 AND m.status='ativo' AND m.needs_fixed
+      WHERE m.branch_id=$1 AND m.status='ativo' AND m.needs_fixed AND m.category<>'promotor_fixo'
       AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)
       AND NOT EXISTS(SELECT 1 FROM need_exceptions e WHERE e.membership_id=m.id)
     UNION ALL
