@@ -74,7 +74,7 @@ async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<
       AND coalesce(trim(src.raw->>'name'),'')<>''
       AND coalesce(trim(src.raw->>'registration'),'')=''
       AND coalesce(trim(src.raw->>'sectorOccupant'),'')=''
-      AND coalesce(trim(src.raw->>'functionName'),'')=''
+      AND upper(trim(src.raw->>'functionName')) NOT LIKE '%PROMOTOR%'
       AND upper(trim(src.raw->>'status'))='OCUPADO'
     ORDER BY p.id,src.row_number`,[branchId]);
   if(!rows.rowCount)return;
