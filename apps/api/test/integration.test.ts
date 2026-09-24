@@ -317,7 +317,7 @@ describe('regras transacionais',()=>{
     sheet.addRow([361,'Caio Vinicius','\u200b','','','OCUPADO','falso']);
     sheet.addRow([362,'Caio Vinícius','\u200b','','','OCUPADO','false']);
     sheet.addRow([363,'','\u200b','RESTAURANTE FC','','OCUPADO','false']);
-    sheet.addRow([364,'','\u200b','','PROMOTOR(A)','OCUPADO','false']);
+    sheet.addRow([364,'','\u200b','','JOVEM APRENDIZ','OCUPADO','false']);
     sheet.addRow([365,'','\u200b','','','DISPONÍVEL','true']);
     const file=binaryForm({operationId:uuid()},'armarios.xlsx',Buffer.from(await workbook.xlsx.writeBuffer()));
     const prepared=await app.inject({method:'POST',url:`/api/branches/${branch.id}/imports/migration/prepare`,...file,headers:{...file.headers,cookie:auth.cookie,'x-csrf-token':auth.csrf}});
