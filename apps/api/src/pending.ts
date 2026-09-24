@@ -52,7 +52,7 @@ async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promi
     JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
     JOIN lockers l ON l.id=a.locker_id
     WHERE m.branch_id=$1 AND m.origin='migracao' AND m.category='roteirista'
-      AND upper(p.name) LIKE '%PROMOTOR%'`,[branchId]);
+      AND (upper(p.name) LIKE '%PROMOTOR%' OR upper(coalesce(m.function_name,'')) LIKE '%PROMOTOR%')`,[branchId]);
   for(const row of rows.rows){
     await client.query('UPDATE allocations SET ended_at=now(),version=version+1 WHERE id=$1',[row.allocation_id]);
     await client.query("UPDATE memberships SET status='encerrado',version=version+1,updated_at=now() WHERE id=$1",[row.membership_id]);
