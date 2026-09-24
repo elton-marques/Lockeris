@@ -92,7 +92,7 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,admin=f
     <section className="card"><div className="section-head"><div><span className="eyebrow">Base ativa</span><h2>Colaboradores e outras pessoas</h2><p>{filtered.length} {filtered.length===1?'cadastro ativo encontrado':'cadastros ativos encontrados'}</p></div></div>
       <div className="filters"><label>Buscar<input value={q} onChange={event=>setQ(event.target.value)} placeholder="Nome, matrícula ou armário"/></label>
         <label>Categoria<select value={category} onChange={event=>setCategory(event.target.value)}><option value="">Todas</option>
-          <option value="colaborador">Colaborador</option><option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Roteirista</option><option value="terceirizado">Terceirizado</option></select></label></div>
+          <option value="colaborador">Colaborador</option><option value="promotor_fixo">Promotor fixo</option><option value="terceirizado">Terceirizado</option></select></label></div>
       {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={visibleCollaborators.length>0&&visibleCollaborators.every(person=>selected.includes(person.id))}
         onChange={event=>setSelected(event.target.checked?[...new Set([...selected,...visibleCollaborators.map(person=>person.id)])]:selected.filter(id=>!visibleCollaborators.some(person=>person.id===id)))}/>
         Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Remover selecionados ({selected.length})</button>
@@ -110,7 +110,7 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,admin=f
       <p>Colaboradores da filial vêm da planilha de matrículas. Cadastre aqui promotores e terceirizados.</p></div>{editing&&<button onClick={()=>{setEditing(null);setForm(empty);}}>Cancelar edição</button>}</div>
       <form className="form-grid" onSubmit={save}><label>Nome<input required minLength={2} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label>
         <label>Categoria<select value={form.category} onChange={event=>setForm({...form,category:event.target.value,needsFixed:event.target.value==='promotor_fixo'})}>
-          <option value="promotor_fixo">Promotor fixo</option><option value="roteirista">Promotor roteirista</option><option value="terceirizado">Terceirizado</option></select></label>
+          <option value="promotor_fixo">Promotor fixo</option><option value="terceirizado">Terceirizado</option></select></label>
         <label>Matrícula<input required={form.category==='promotor_fixo'} value={form.registration} onChange={event=>setForm({...form,registration:event.target.value})}/></label>
         <label>Empresa / marca<input value={form.company} onChange={event=>setForm({...form,company:event.target.value})}/></label>
         <label>Setor<input value={form.department} onChange={event=>setForm({...form,department:event.target.value})}/></label>

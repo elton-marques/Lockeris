@@ -44,8 +44,9 @@ export function rowsFrom(sheet:Sheet):LockerRow[]{
     const status=statusText==='LIVRE'||statusText==='DISPONIVEL'?'DISPONÍVEL':statusText;
     if(!number)fail(422,'LINHA',`Número do armário obrigatório na linha ${index+1}`);
     if(status!=='OCUPADO'&&status!=='DISPONÍVEL')fail(422,'STATUS',`Linha ${index+1}: informe OCUPADO ou DISPONÍVEL`);
-    const department=value(raw,departmentColumn);
+    const department=value(raw,departmentColumn),functionName=value(raw,functionColumn);
     if(!sectorOccupant&&!registration&&!name&&department&&status==='OCUPADO')sectorOccupant=department;
+    if(!sectorOccupant&&!registration&&!name&&functionName&&norm(functionName).includes('PROMOTOR')&&status==='OCUPADO')sectorOccupant=functionName;
     if(!sectorOccupant&&!registration&&sectorNames.has(norm(name))){sectorOccupant=name;name='';}
     if(sectorOccupant&&(name||registration))fail(422,'OCUPANTE',`Linha ${index+1}: informe um setor ou uma pessoa, não ambos`);
     if(registration){
@@ -58,7 +59,7 @@ export function rowsFrom(sheet:Sheet):LockerRow[]{
     if(doubleText&&!['TRUE','FALSE','VERDADEIRO','FALSO','SIM','NAO','1','0'].includes(doubleText))
       fail(422,'DUPLO',`Linha ${index+1}: use verdadeiro ou falso na coluna DUPLO`);
     const doubleSpecified=doubleText?['TRUE','VERDADEIRO','SIM','1'].includes(doubleText):null;
-    const item:LockerRow={row:index+1,number,name,registration,department,functionName:value(raw,functionColumn),
+    const item:LockerRow={row:index+1,number,name,registration,department,functionName,
       sectorOccupant,status,isDouble:!!doubleSpecified,capacity:doubleSpecified?2:1,doubleSpecified,
       uncertain:status==='OCUPADO'&&!registration&&!sectorOccupant&&!value(raw,functionColumn),nameRepeated:false};
     result.push(item);
@@ -133,11 +134,12 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
         if(!personId){
           personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name||row.functionName||`Matrícula ${row.registration}`])).rows[0].id;
           const promoter=norm(row.functionName).includes('PROMOTOR');
-          const category=promoter?(row.registration?'promotor_fixo':'roteirista'):(row.registration?'colaborador':'terceirizado');
+          const category=promoter?'roteirista':'colaborador';
           membershipId=(await client.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)
             VALUES($1,$2,$3,'migracao',$4,$5,$6,$7,$8,$9) RETURNING id`,
-            [personId,branchId,category,row.registration||null,row.department||null,row.functionName||null,category!=='roteirista',
-              category==='colaborador'&&Number(branch.ti_revision)>0?false:null,category==='colaborador'&&Number(branch.ti_revision)>0?'encerrado':'ativo'])).rows[0].id;
+            [personId,branchId,category,row.registration||null,row.department||null,row.functionName||null,category==='colaborador',
+              category==='colaborador'&&row.registration&&Number(branch.ti_revision)>0?false:null,
+              category==='colaborador'&&row.registration&&Number(branch.ti_revision)>0?'encerrado':'ativo'])).rows[0].id;
         }
         await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason,started_by)
           VALUES($1,$2,$3,'fixo',NULL,true,now(),'Carga inicial; início original desconhecido',$4)`,[branchId,lockerId,personId,actor.id]);

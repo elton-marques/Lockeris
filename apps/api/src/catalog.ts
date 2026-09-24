@@ -76,6 +76,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/branches/:branchId/people', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId,true);
     const body = personInput.safeExtend({ operationId: id, personId: id.optional() }).parse(request.body);
+    if (body.category === 'roteirista') fail(422,'CATEGORIA','Promotor roteirista não é cadastrado como pessoa no sistema');
     if (body.origin !== 'manual') fail(403,'ORIGEM','Cadastro manual deve ter origem manual');
     if (body.personId && actor.role !== 'geral') fail(403,'VINCULO','Somente administrador geral pode vincular uma pessoa existente de outra filial');
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {

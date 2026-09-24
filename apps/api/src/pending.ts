@@ -31,18 +31,33 @@ async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<
       AND coalesce(trim(src.raw->>'registration'),'')=''
       AND upper(trim(src.raw->>'status'))='OCUPADO'
       AND coalesce(trim(src.raw->>'functionName'),'')<>''
+      AND upper(trim(src.raw->>'functionName')) NOT LIKE '%PROMOTOR%'
       AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)
     ORDER BY p.id,src.row_number`,[branchId]);
   for(const row of rows.rows){
     const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.function_name])).rows[0];
-    const category=textKey(row.function_name).includes('PROMOTOR')?'roteirista':'terceirizado';
     await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,needs_fixed,ti_present,status)
-      VALUES($1,$2,$3,'migracao',false,NULL,'ativo')`,[person.id,branchId,category]);
+      VALUES($1,$2,'colaborador','migracao',true,NULL,'ativo')`,[person.id,branchId]);
     await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason)
       VALUES($1,$2,$3,'fixo',NULL,true,now(),'Carga inicial; função provisória')`,[branchId,row.locker_id,person.id]);
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
     await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Ocupação provisória reconhecida pela função ${row.function_name}.`]);
     await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupacao_provisoria_reconhecida','locker',row.locker_id,JSON.stringify({functionName:row.function_name})]);
+  }
+}
+
+async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promise<void>{
+  const rows=await client.query<{allocation_id:string;membership_id:string;locker_id:string;name:string}>(`SELECT a.id allocation_id,m.id membership_id,l.id locker_id,p.name
+    FROM memberships m JOIN people p ON p.id=m.person_id
+    JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
+    JOIN lockers l ON l.id=a.locker_id
+    WHERE m.branch_id=$1 AND m.origin='migracao' AND m.category='roteirista'
+      AND upper(p.name) LIKE '%PROMOTOR%'`,[branchId]);
+  for(const row of rows.rows){
+    await client.query('UPDATE allocations SET ended_at=now(),version=version+1 WHERE id=$1',[row.allocation_id]);
+    await client.query("UPDATE memberships SET status='encerrado',version=version+1,updated_at=now() WHERE id=$1",[row.membership_id]);
+    await client.query("UPDATE lockers SET sector_occupant=COALESCE(NULLIF(trim(sector_occupant),''),$2),version=version+1 WHERE id=$1",[row.locker_id,row.name]);
+    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'promotor_roteirista_retirado','locker',row.locker_id,JSON.stringify({name:row.name})]);
   }
 }
 
@@ -74,6 +89,7 @@ async function autoReconcile(client:Client,branchId:string):Promise<void>{
 }
 
 export async function refreshPending(client: Client, branchId: string): Promise<void> {
+  await retireRoteiristaPlaceholders(client,branchId);
   await reconcileRolePlaceholders(client,branchId);
   await autoReconcile(client,branchId);
   const desired = await client.query<{ kind: string; subject_type: string; subject_id: string }>(`
