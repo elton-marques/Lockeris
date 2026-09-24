@@ -3,6 +3,7 @@ import {api,op,post,patch} from '../api';
 import type {PageProps} from '../App';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
+import {DataState,EmptyState} from '../ui';
 
 type Occupant={allocationId:string;allocationVersion:number;membershipId:string;membershipVersion:number;personId:string;
   name:string;registration:string|null;department:string|null;functionName:string|null;origin:string};
@@ -47,11 +48,13 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
   const [query,setQuery]=useState(''),[selectedId,setSelectedId]=useState<string|null>(null),[reviewed,setReviewed]=useState(false);
   const [note,setNote]=useState(''),[due,setDue]=useState(''),[busy,setBusy]=useState(false),closeRef=useRef<HTMLButtonElement>(null);
   const [edit,setEdit]=useState(emptyEdit),[occupantId,setOccupantId]=useState(''),[createPerson,setCreatePerson]=useState(false),[lockerId,setLockerId]=useState(''),[keyCopy,setKeyCopy]=useState('');
-  async function load(){if(copy){setItems(copy.pending as Item[]);setLockers(copy.lockers as Locker[]);setRegistrations([]);return;}
+  const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
+  async function load(){setLoading(true);setLoadError('');try{if(copy){setItems(copy.pending as Item[]);setLockers(copy.lockers as Locker[]);setRegistrations([]);return;}
     const [pending,cabinets,roster]=await Promise.all([api<Item[]>(`/branches/${branchId}/pending`),api<Locker[]>(`/branches/${branchId}/lockers`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
-    setItems(pending);setLockers(cabinets);setRegistrations(roster);}
-  useEffect(()=>{load().catch(error=>notice(error.message));},[branchId,copy]);
+    setItems(pending);setLockers(cabinets);setRegistrations(roster);
+    }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}finally{setLoading(false);}}
+  useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
   useEffect(()=>{if(!selectedId)return;const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
     document.body.style.overflow='hidden';closeRef.current?.focus();return()=>{document.body.style.overflow=overflow;previous?.focus();};},[selectedId]);
   const selected=items.find(item=>item.id===selectedId);
@@ -80,7 +83,8 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
   function toggleCreatePerson(item:Item,checked:boolean){setCreatePerson(checked);setOccupantId(checked?'':item.occupants?.[0]?.allocationId??'');
     if(checked)setEdit(current=>({...current,sectorOccupant:'',name:'',registration:'',department:'',functionName:''}));
     else fillEdit(item,item.occupants?.[0]);}
-  async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string)){setBusy(true);try{const result=await callback();await load();refresh();notice(typeof message==='string'?message:message(result));setSelectedId(null);}
+  async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string)){setBusy(true);try{const result=await callback();try{await load();refresh();notice(typeof message==='string'?message:message(result));setSelectedId(null);}
+      catch{notice('A ação foi concluída, mas a lista não foi atualizada. Recarregue antes de agir novamente.');}}
     catch(error){notice(error instanceof Error?error.message:'Falha na operação');}finally{setBusy(false);}}
   function saveReview(finalize=false){if(!selected||!selected.locker_number||!selected.locker_version||!reviewed)return;
     const occupant=selected.occupants?.find(person=>person.allocationId===occupantId);
@@ -131,7 +135,9 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
   const actionEnabled=!!selected&&reviewed&&!busy&&(!needsNote||note.trim().length>=3)&&(!needsDue||!!due)&&
     (selected?.kind!=='migracao_inconclusiva'||reviewReady);
   return <>
-    <section className="card"><div className="section-head"><div><h2>{stateFilter==='resolvida'?'Histórico de pendências resolvidas':'Pendências para conferência'}</h2>
+    <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
+    {!loading&&!loadError&&<>
+    <section className="card"><div className="section-head"><div><span className="eyebrow">Conferência</span><h2>{stateFilter==='resolvida'?'Histórico de pendências resolvidas':'Pendências para conferência'}</h2>
       <p>{stateFilter==='resolvida'?'Estes registros mostram situações anteriores e por que deixaram de estar pendentes.':'Abra um registro para comparar os dados do armário com o cadastro atual antes de agir.'}</p></div></div>
       <div className="pending-tabs" role="tablist" aria-label="Tipo de pendência">
         <button type="button" role="tab" aria-selected={tab==='lockers'} onClick={()=>setTab('lockers')}>Armários ({counts.lockers})</button>
@@ -140,15 +146,15 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
       <div className="filters"><label>Buscar<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome, matrícula ou setor"/></label>
         <label>Exibir<select value={stateFilter} onChange={event=>setStateFilter(event.target.value)}><option value="aberta">Abertas</option>
           <option value="resolvida">Resolvidas</option><option value="todas">Todas</option></select></label></div>
-      <div className="pending-list">{shown.length===0?<p className="empty">Nenhuma pendência neste filtro.</p>:shown.map(item=><article className="pending-item" key={item.id}>
-        <div><span className={`badge${item.state==='aberta'?' alert':''}`}>{item.state==='resolvida'?(resolvedLabels[item.kind]??labels[item.kind]??item.kind):(labels[item.kind]??item.kind)}</span><h3>{title(item)}</h3>
+      <div className="pending-list">{shown.length===0?<EmptyState title={items.length?'Nenhuma pendência neste filtro':'Nenhuma pendência registrada'} description={items.length?'Altere a busca, a situação ou o tipo para consultar outros registros.':'Os registros que precisarem de conferência aparecerão aqui.'}/>:shown.map(item=><article className="pending-item" key={item.id}>
+        <div><span className={`badge${item.state==='aberta'?' alert':''}`}>{item.state==='resolvida'?(resolvedLabels[item.kind]??labels[item.kind]??'Pendência conferida'):(labels[item.kind]??'Conferência necessária')}</span><h3>{title(item)}</h3>
           <p>{item.person_name??item.occupants?.map(person=>person.name).join(', ')??''}{item.registration?` · Matrícula ${item.registration}`:''}</p>
           <p>Motivo: {originalReason(item)}</p>{item.state==='resolvida'&&<p>Resolução: {resolutionText(item)}</p>}</div>
         <button type="button" onClick={()=>open(item)}>{item.state==='resolvida'?'Ver histórico':'Conferir dados'}</button></article>)}</div>
     </section>
     {selected&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelectedId(null);}}>
       <section className="locker-modal pending-modal" role="dialog" aria-modal="true" aria-labelledby="pending-dialog-title" onKeyDown={modalKeyDown}>
-        <div className="section-head"><div><span className={`badge${selected.state==='aberta'?' alert':''}`}>{selected.state==='resolvida'?(resolvedLabels[selected.kind]??labels[selected.kind]??selected.kind):(labels[selected.kind]??selected.kind)}</span>
+        <div className="section-head"><div><span className={`badge${selected.state==='aberta'?' alert':''}`}>{selected.state==='resolvida'?(resolvedLabels[selected.kind]??labels[selected.kind]??'Pendência conferida'):(labels[selected.kind]??'Conferência necessária')}</span>
           <h2 id="pending-dialog-title">{title(selected)}</h2><p>{selected.state==='aberta'?'Aguardando conferência':'Pendência resolvida'}</p></div>
           <button ref={closeRef} type="button" onClick={()=>setSelectedId(null)}>Fechar</button></div>
         <p><strong>Motivo da pendência:</strong> {originalReason(selected)}</p>
@@ -219,5 +225,6 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
             {selected.kind==='sazonal_vencida'&&<button type="button" disabled={!reviewed||note.trim().length<3||busy} onClick={()=>effective(selected)}>Manter ocupação sem prazo</button>}</div>
         </div>}
       </section></div>}
+    </>}
   </>;
 }

@@ -12,7 +12,7 @@ type LockerRow={row:number;number:string;name:string;registration:string;sectorO
 type LockerPreview={importId:string;sourceRows:number;physicalCount:number;occupiedCount:number;sectorCount:number;uncertainCount:number;doubleCount:number;repeatedNameCount:number;rows:LockerRow[]};
 const normalized=(value:string)=>value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
 function column(headers:string[],...names:string[]){return headers.find(header=>names.some(name=>normalized(header)===normalized(name)))??'';}
-export function Imports({branchId,readonly,refresh,notice}:PageProps){
+export function Imports({branchId,branchName,readonly,refresh,notice}:PageProps){
   const [employeeFile,setEmployeeFile]=useState<File|null>(null),[sheets,setSheets]=useState<Sheet[]>([]),[sheet,setSheet]=useState('');
   const [headerRow,setHeaderRow]=useState(1),[mapping,setMapping]=useState({registration:'',name:'',department:'',functionName:''});
   const [encoding,setEncoding]=useState('utf8'),[delimiter,setDelimiter]=useState(''),[extractedOn,setExtractedOn]=useState(new Date().toISOString().slice(0,10));
@@ -43,6 +43,7 @@ export function Imports({branchId,readonly,refresh,notice}:PageProps){
   }
   async function confirm(){
     if(!preview)return;setBusy(true);
+    if(!window.confirm(`Atualizar a base ativa da filial ${branchName} com ${preview.counts.current} colaboradores? ${preview.counts.absent} pessoas sairão da base ativa. Ocupações existentes permanecerão registradas para conferência.`)){setBusy(false);return;}
     try{
       const resolutions=Object.fromEntries(preview.conflicts.filter(item=>resolved[item.registration]).map(item=>[item.registration,'converter_para_ti']));
       await post(`/branches/${branchId}/imports/${preview.importId}/confirm`,{operationId:op(),acknowledgeComplete:complete,sameDateCorrection:sameDate,resolutions});
@@ -60,6 +61,7 @@ export function Imports({branchId,readonly,refresh,notice}:PageProps){
   }
   async function confirmLockers(){
     if(!lockers)return;setBusy(true);
+    if(!window.confirm(`Importar ${lockers.physicalCount} armários físicos na filial ${branchName}? Esta carga inicial só pode ser feita uma vez por filial.`)){setBusy(false);return;}
     try{
       await post(`/branches/${branchId}/imports/migration/${lockers.importId}/confirm`,{operationId:op(),acknowledgeReviewed:reviewed});
       notice('Armários importados. Confira as pendências apontadas na prévia.');
@@ -68,14 +70,15 @@ export function Imports({branchId,readonly,refresh,notice}:PageProps){
   }
   const selected=sheets.find(item=>item.name===sheet),headers=selected?.preview[headerRow-1]??[];
   return <>
-    <section className="card"><div className="section-head"><div><h2>Base de colaboradores</h2>
+    <section className="card"><div className="section-head"><div><span className="eyebrow">Importação com conferência</span><h2>Base de colaboradores</h2>
       <p>Envie a planilha com a lista atual de colaboradores. Cada envio substitui a lista ativa pela nova lista de matrículas.</p></div></div>
+      <ol className="workflow-steps" aria-label="Etapas da importação"><li className="current">1. Selecionar arquivo</li><li className={selected?'current':''}>2. Conferir colunas</li><li className={preview?'current':''}>3. Revisar consequências</li><li>4. Confirmar atualização</li></ol>
       {readonly?<p>Importação indisponível para este perfil ou em modo offline.</p>:<div className="form-grid">
         <label>Arquivo de colaboradores, XLSX ou CSV<input type="file" accept=".xlsx,.csv" onChange={event=>{setEmployeeFile(event.target.files?.[0]??null);setSheets([]);setPreview(null);}}/></label>
         <label>Data da extração<input type="date" value={extractedOn} onChange={event=>setExtractedOn(event.target.value)}/></label>
         <label>Codificação do CSV<select value={encoding} onChange={event=>setEncoding(event.target.value)}><option value="utf8">UTF-8</option><option value="win1252">Windows-1252</option><option value="latin1">Latin-1</option></select></label>
         <label>Delimitador do CSV<select value={delimiter} onChange={event=>setDelimiter(event.target.value)}><option value="">Detectar</option><option value=",">Vírgula</option><option value=";">Ponto e vírgula</option></select></label>
-        <button disabled={!employeeFile||busy} onClick={inspect}>Ler arquivo</button>
+        <button disabled={!employeeFile||busy} onClick={inspect}>{busy?'Lendo arquivo…':'Ler arquivo'}</button>
       </div>}
     </section>
     {selected&&<section className="card"><h2>Colunas da planilha</h2><p>Confira matrícula, nome, setor e cargo ou função antes de importar.</p>
@@ -83,7 +86,7 @@ export function Imports({branchId,readonly,refresh,notice}:PageProps){
         <label>Linha do cabeçalho<input type="number" min={1} value={headerRow} onChange={event=>setHeaderRow(Number(event.target.value))}/></label>
         {(['registration','name','department','functionName'] as const).map(key=><label key={key}>{({registration:'Matrícula',name:'Nome',department:'Setor',functionName:'Cargo ou função'})[key]}
           <select required value={mapping[key]} onChange={event=>setMapping({...mapping,[key]:event.target.value})}><option value="">Selecione</option>{headers.map((header,index)=><option key={index} value={header}>{header}</option>)}</select></label>)}
-        <button className="primary" disabled={busy||Object.values(mapping).some(value=>!value)} onClick={prepare}>Comparar com a base atual</button>
+        <button className="primary" disabled={busy||Object.values(mapping).some(value=>!value)} onClick={prepare}>{busy?'Comparando…':'Comparar com a base atual'}</button>
       </div><div className="table-wrap"><table><tbody>{selected.preview.map((row,index)=><tr key={index}><th>{index+1}</th>{row.map((cell,column)=><td key={column}>{cell}</td>)}</tr>)}</tbody></table></div>
     </section>}
     {preview&&<section className="card"><h2>Conferir atualização de colaboradores</h2><p>Arquivo de {new Date(`${preview.extractedOn}T12:00:00`).toLocaleDateString('pt-BR')}</p>
@@ -100,18 +103,18 @@ export function Imports({branchId,readonly,refresh,notice}:PageProps){
       <label className="check"><input type="checkbox" checked={complete} onChange={event=>setComplete(event.target.checked)}/>
         Confirmei que o arquivo traz todos os colaboradores ativos da filial. Pessoas ausentes sairão da base ativa; armários ainda ocupados ficarão pendentes.</label>
       <label className="check"><input type="checkbox" checked={sameDate} onChange={event=>setSameDate(event.target.checked)}/>Corrigir uma importação da mesma data, se necessário</label>
-      <button className="primary" disabled={busy||!complete||preview.conflicts.some(item=>!resolved[item.registration])} onClick={confirm}>Atualizar base de colaboradores</button>
+      <button className="primary" disabled={busy||!complete||preview.conflicts.some(item=>!resolved[item.registration])} onClick={confirm}>{busy?'Atualizando…':'Atualizar base de colaboradores'}</button>
     </section>}
     {!readonly&&<section className="card"><h2>Carga inicial de armários</h2><p>Envie um XLSX com uma única aba e cabeçalho na primeira linha: N°, NOME, MATRÍCULA, SETOR, FUNÇÃO e STATUS. A coluna DUPLO é opcional. Repita o número quando duas pessoas ocuparem os compartimentos do mesmo armário. Esta carga é feita uma vez por filial.</p>
       <div className="inline-form"><label>Planilha de armários<input type="file" accept=".xlsx" onChange={event=>{setLockerFile(event.target.files?.[0]??null);setLockers(null);}}/></label>
-        <button disabled={!lockerFile||busy} onClick={prepareLockers}>Conferir armários</button></div></section>}
+        <button disabled={!lockerFile||busy} onClick={prepareLockers}>{busy?'Conferindo…':'Conferir armários'}</button></div></section>}
     {lockers&&<section className="card"><h2>Conferir carga inicial</h2><p>{lockers.physicalCount} armários físicos · {lockers.occupiedCount} ocupados · {lockers.doubleCount} duplos · {lockers.sectorCount} por setores · {lockers.uncertainCount} a conferir</p>
       {lockers.repeatedNameCount>0&&<p className="warning">{lockers.repeatedNameCount} nome(s) sem matrícula aparecem em mais de um armário. Confira as identidades após a carga.</p>}
       <div className="table-wrap"><table><thead><tr><th>Linha</th><th>Armário</th><th>Ocupante</th><th>Matrícula</th><th>Status</th><th>Tipo</th><th>Conferência</th></tr></thead>
         <tbody>{lockers.rows.map(row=><tr key={row.row}><td>{row.row}</td><td>{row.number}</td><td>{row.sectorOccupant||row.name||'—'}</td><td>{row.registration||'—'}</td>
           <td>{row.status}</td><td>{row.isDouble?'Duplo':'—'}</td><td>{row.nameRepeated?'Nome repetido; conferir':row.uncertain?'Conferir ocupante':'Pronto'}</td></tr>)}</tbody></table></div>
       <label className="check"><input type="checkbox" checked={reviewed} onChange={event=>setReviewed(event.target.checked)}/>Revisei os números, ocupantes e armários duplos.</label>
-      <button className="primary" disabled={busy||!reviewed} onClick={confirmLockers}>Importar armários</button>
+      <button className="primary" disabled={busy||!reviewed} onClick={confirmLockers}>{busy?'Importando…':'Importar armários'}</button>
     </section>}
   </>;
 }

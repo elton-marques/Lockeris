@@ -16,7 +16,7 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await page.getByLabel('Nome de usuário').fill('e2e');
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
-  await expect(page.getByRole('heading',{name:'Armários'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   await expect(page.getByText('3 resultados')).toBeVisible();
   await page.screenshot({path:'test-results/visual/02-painel.png'});
   await page.getByRole('button',{name:/102/}).click();
@@ -25,14 +25,14 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await expect(page.getByRole('dialog').getByText('Bia Fictícia',{exact:true})).toBeVisible();
   await page.screenshot({path:'test-results/visual/03-compartilhado.png'});
   await page.getByRole('dialog').getByRole('button',{name:'Fechar'}).click();
-  await page.getByRole('button',{name:'Pessoas'}).click();
+  await page.getByRole('button',{name:'Colaboradores'}).click();
   await page.getByRole('heading',{name:'Cadastrar pessoa externa'}).scrollIntoViewIfNeeded();
   await page.getByLabel('Nome',{exact:true}).fill('Promotora Teste');
   await page.getByLabel('Matrícula',{exact:true}).last().fill('0003');
   await page.getByRole('button',{name:'Salvar cadastro'}).click();
   await expect(page.getByText('Promotora Teste').first()).toBeVisible();
   await page.screenshot({path:'test-results/visual/04-promotor.png'});
-  await page.getByRole('button',{name:'Importação'}).click();
+  await page.getByRole('button',{name:'Importações'}).click();
   await page.getByLabel('Arquivo de colaboradores, XLSX ou CSV').setInputFiles({name:'ti.csv',mimeType:'text/csv',buffer:Buffer.from('MATRÍCULA;NOME;SETOR;FUNÇÃO\r\n0001;Ana Exemplo;Loja;Operadora\r\n0002;Bia Fictícia;Loja;Operadora\r\n')});
   await page.getByLabel('Delimitador do CSV').selectOption(';');
   await page.getByRole('button',{name:'Ler arquivo'}).click();
@@ -66,17 +66,17 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await page.waitForFunction(async()=>{const request=indexedDB.open('armarios-offline',1);return new Promise(resolve=>{request.onsuccess=()=>{const tx=request.result.transaction('state','readonly'),get=tx.objectStore('state').get('copy');get.onsuccess=()=>resolve(!!get.result);};request.onerror=()=>resolve(false);});});
   await page.evaluate(()=>navigator.serviceWorker.ready);
   await page.reload();
-  await expect(page.getByRole('heading',{name:'Armários'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByText(/Offline · somente consulta/)).toBeVisible();
-  await expect(page.getByText(/Cópia de/)).toBeVisible();
+  await expect(page.getByText(/Sem conexão · apenas consulta/)).toBeVisible();
+  await expect(page.getByText(/Dados locais para consulta/)).toBeVisible();
   await page.screenshot({path:'test-results/visual/07-offline.png'});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'test-results/visual/08-offline-mobile.png',fullPage:true});
   await page.getByRole('button',{name:'Sair'}).click();
-  await expect(page.getByRole('heading',{name:'Consulta indisponível'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Conecte-se para consultar os armários'})).toBeVisible();
   expect(await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open('armarios-offline',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});return new Promise(resolve=>{const tx=db.transaction('state','readonly'),request=tx.objectStore('state').get('copy');request.onsuccess=()=>resolve(request.result);});})).toBeUndefined();
   await context.setOffline(false);
   await expect(page.getByRole('heading',{name:'Entrar'})).toBeVisible();
@@ -95,10 +95,10 @@ test('operador vê histórico de trocas sem funções administrativas',async({pa
   await page.getByLabel('Nome de usuário').fill('operador-e2e');
   await page.getByLabel('Senha').fill('Operator-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
-  await expect(page.getByRole('button',{name:'Importação'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Importações'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Histórico'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Administração'})).toHaveCount(0);
-  await page.getByRole('button',{name:'Movimentações'}).click();
+  await page.getByRole('button',{name:'Transferências'}).click();
   await expect(page.getByRole('heading',{name:'Histórico de trocas de armário'})).toBeVisible();
 });
 
@@ -118,7 +118,7 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile').filter({hasText:'101'})).toHaveClass(/has-pending/);
   await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveClass(/occupied/);
-  await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveCSS('background-color','rgb(255, 240, 239)');
+  await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveCSS('background-color','rgb(255, 241, 239)');
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).toHaveClass(/free/);
   await expect(page.locator('.locker-tile').filter({hasText:'104'})).toContainText('Duplo');
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).not.toContainText(/Padrão|Grande|Simples/);
@@ -130,9 +130,10 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByLabel('Pesquisar pessoa por nome ou matrícula').fill('0001');
   await page.getByLabel('Pessoas cadastradas').selectOption({label:'Ana Exemplo · 0001 · armário 102'});
-  await expect(page.getByText('ocupa o armário 102')).toBeVisible();
+  await expect(page.getByText(/Ana Exemplo, armário 102 → 103/)).toBeVisible();
   await page.getByRole('dialog').getByLabel('Cópia da chave ao atribuir').selectOption('nao');
   await page.getByLabel('Motivo da transferência').fill('Melhor altura');
+  page.once('dialog',dialog=>dialog.accept());
   await page.getByRole('button',{name:'Transferir para este armário'}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.notice')).toContainText('transferido');
@@ -141,6 +142,63 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await page.getByLabel('Filtrar por cópia da chave').selectOption('nao');
   await expect(page.locator('.locker-tile')).toHaveCount(1);
   await page.screenshot({path:'test-results/visual/09-status-armarios.png'});
+});
+
+test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
+  await mkdir('test-results/visual',{recursive:true});
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{const user=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='e2e'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),user.id,digest(csrf)]);
+    await pool.query("INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) SELECT id,$1,'ocupacao_transferida','allocation',NULL,$2 FROM branches WHERE name='Caruaru Demonstração'",[user.id,JSON.stringify({reason:'Conferência de teste'})]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.getByLabel('Buscar armário, nome ou matrícula').fill('sem resultado 999');
+  await expect(page.getByText('Nenhum armário encontrado')).toBeVisible();
+  await page.getByLabel('Buscar armário, nome ou matrícula').fill('');
+  await page.locator('.locker-tile').first().click();
+  await expect(page.getByRole('dialog').getByRole('button',{name:'Fechar'})).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.locker-tile').first()).toBeFocused();
+  await page.getByRole('button',{name:'Armários',exact:true}).focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button',{name:'Colaboradores'})).toBeFocused();
+  await page.getByRole('button',{name:'Transferências'}).click();
+  await page.screenshot({path:'test-results/visual/14-transferencias.png'});
+  await page.getByRole('button',{name:'Histórico'}).click();
+  await expect(page.getByRole('columnheader',{name:'Evento'})).toBeVisible();
+  await expect(page.getByRole('columnheader',{name:'Registro'})).toHaveCount(0);
+  await page.screenshot({path:'test-results/visual/15-historico.png'});
+  await page.getByRole('button',{name:'Administração'}).click();
+  await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+  await page.screenshot({path:'test-results/visual/16-administracao.png'});
+  await page.getByRole('button',{name:'Setor ocupante'}).first().click();
+  await expect(page.getByLabel('Setor que ocupa o armário 12')).toBeVisible();
+  await page.getByRole('button',{name:'Cancelar'}).click();
+  await page.getByRole('button',{name:'Redefinir senha'}).first().click();
+  await expect(page.getByLabel(/Nova senha temporária para/)).toBeVisible();
+  await page.getByRole('button',{name:'Cancelar'}).click();
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Armários',exact:true}).click();
+  await page.screenshot({path:'test-results/visual/17-armarios-mobile.png',fullPage:true});
+  for(const [label,file] of [['Colaboradores','18-colaboradores-mobile'],['Pendências','19-pendencias-mobile'],
+    ['Transferências','20-transferencias-mobile'],['Importações','21-importacoes-mobile'],
+    ['Histórico','22-historico-mobile'],['Administração','23-administracao-mobile']] as const){
+    await page.getByRole('button',{name:label,exact:true}).click();
+    await expect(page.getByRole('heading',{name:label,level:1})).toBeVisible();
+    if(label==='Administração')await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+    await page.screenshot({path:`test-results/visual/${file}.png`,fullPage:true});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  }
+  expect(await page.evaluate(()=>matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+  await page.getByRole('button',{name:'Armários',exact:true}).click();
+  expect(await page.locator('.locker-tile').first().evaluate(el=>parseFloat(getComputedStyle(el).transitionDuration))).toBeLessThan(.01);
 });
 
 test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
@@ -236,7 +294,7 @@ test('card troca matrícula e permite segundo ocupante depois de marcar duplo',a
   await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
     {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
   await page.goto('/');
-  await expect(page.getByRole('heading',{name:'Armários'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   await page.getByLabel('Buscar armário, nome ou matrícula').fill('500');
   await page.locator('.locker-tile').filter({hasText:'500'}).click();
   const dialog=page.getByRole('dialog');

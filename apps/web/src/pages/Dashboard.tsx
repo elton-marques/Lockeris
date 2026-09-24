@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
+import {conditionName,DataState,EmptyState} from '../ui';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
 
@@ -16,7 +17,7 @@ const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=(locker:Locker)=>[locker.sector_occupant,...locker.occupants.map(item=>item.department)].filter((value):value is string=>!!value);
 
-export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
+export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admin=false}:PageProps){
   const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[stats,setStats]=useState<Stats|null>(null),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(''),[sectorFilter,setSectorFilter]=useState(''),[keyFilter,setKeyFilter]=useState(''),[doubleOnly,setDoubleOnly]=useState(false);
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
@@ -24,15 +25,20 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
   const [edit,setEdit]=useState({isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim',name:'',registration:'',department:'',functionName:''});
   const [editOccupantId,setEditOccupantId]=useState(''),[createOccupant,setCreateOccupant]=useState(false);
+  const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
 
   async function load(){
+    setLoading(true);setLoadError('');
+    try{
     if(copy){setLockers(copy.lockers as Locker[]);setPeople(copy.people as Person[]);setPending(copy.pending as Pending[]);setRegistrations([]);setStats(null);return;}
     const [l,p,s,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<Person[]>(`/branches/${branchId}/people`),
       api<Stats>(`/branches/${branchId}/dashboard`),api<Pending[]>(`/branches/${branchId}/pending`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
     setLockers(l);setPeople(p);setStats(s);setPending(items);setRegistrations(roster);
+    }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}
+    finally{setLoading(false);}
   }
-  useEffect(()=>{load().catch(error=>notice(error.message));},[branchId,copy]);
+  useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
   useEffect(()=>{
     if(!selected)return;
     const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
@@ -87,7 +93,8 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
     else fillEdit(item,item.occupants[0]);}
   async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string),close=false){
     setBusy(true);
-    try{const result=await callback();await load();refresh();notice(typeof message==='string'?message:message(result));if(close)setSelected(null);}
+    try{const result=await callback();try{await load();refresh();}catch{notice('A ação foi concluída, mas a lista não foi atualizada. Tente recarregar antes de agir novamente.');return;}
+      notice(typeof message==='string'?message:message(result));if(close)setSelected(null);}
     catch(error){notice(error instanceof Error?error.message:'Falha na operação');}
     finally{setBusy(false);}
   }
@@ -103,6 +110,7 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
     result=>`Dados do armário atualizados.${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`,true);}
   function assign(event:React.FormEvent){
     event.preventDefault();if(!locker||!chosen||!keyCopy||!canEnter||source?.id===locker.id)return;
+    if(!window.confirm(`${source?`Transferir ${chosen.name} do armário ${source.number} para o ${locker.number}`:`Atribuir o armário ${locker.number} a ${chosen.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`))return;
     const keyCopyAvailable=keyCopy==='sim';
     if(source&&sourceAllocation){
       if(transferReason.trim().length<3)return;
@@ -132,11 +140,13 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
   }
 
   return <>
+    <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
+    {!loading&&!loadError&&<>
     <section className="stats" aria-label="Indicadores"><div className="stat"><small>Armários físicos</small><strong>{stats?.lockers.total??lockers.length}</strong></div>
       <div className="stat"><small>Ocupados</small><strong>{stats?.lockers.occupied??lockers.filter(item=>item.occupants.length||item.sector_occupant).length}</strong></div>
       <div className="stat"><small>Bloqueados / revisão</small><strong>{stats?.lockers.blocked??lockers.filter(item=>item.condition!=='disponivel'||item.migration_status==='inconclusivo').length}</strong></div>
       <div className="stat"><small>Pendências</small><strong>{stats?.pending.total??copy?.pending.length??'—'}</strong></div></section>
-    <section className="card"><div className="section-head"><div><h2>Armários</h2><p>{filtered.length} resultados · ordem numérica</p></div></div>
+    <section className="card"><div className="section-head"><div><span className="eyebrow">Consulta operacional</span><h2>Lista de armários</h2><p>{filtered.length} {filtered.length===1?'resultado':'resultados'} · ordem numérica</p></div><span className="section-meta">{branchName}</span></div>
       <div className="filters locker-filters">
         <label>Buscar armário, nome ou matrícula<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome ou matrícula"/></label>
         <label>Situação<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todos</option><option value="livre">Livres</option>
@@ -147,18 +157,18 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
           <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
         <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
       </div>
-      <div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
+      {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'}/>:<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
         return <button key={item.id} className={`locker-tile ${itemState==='pendente'?'has-pending':itemState==='ocupado'?'occupied':itemState==='livre'?'free':'unavailable'}`}
           onClick={()=>openLocker(item)} aria-haspopup="dialog">
           <span className="tile-top"><strong>{item.number}</strong><span className="badge">{stateLabels[itemState]}</span></span>
-          {item.is_double&&<small>Duplo</small>}<span>{item.sector_occupant||item.occupants.map(occupant=>occupant.name).join(', ')||item.destination||(itemState==='pendente'?'Conferir ocupação':'Sem ocupante')}</span>
+          <span className="tile-meta">{item.is_double?'Duplo · ':''}{item.capacity} {item.capacity===1?'vaga':'vagas'}{item.sector_occupant?' · Setor ocupante':''}</span><span>{item.sector_occupant||item.occupants.map(occupant=>occupant.name).join(', ')||item.destination||(itemState==='pendente'?'Conferir ocupação':'Sem ocupante')}</span>
           {item.key_copy_available===false&&<small>Sem cópia da chave</small>}
-        </button>;})}</div>
+        </button>;})}</div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
       <section className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
         <div className="section-head"><div><h2 id="locker-dialog-title">Armário {locker.number}{locker.is_double?' · Duplo':''}</h2>
-          <p>{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {locker.condition}</p></div>
+          <p>{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {conditionName[locker.condition]??'Situação não informada'} · {branchName}</p></div>
             <div className="row-actions"><button ref={closeRef} type="button" onClick={()=>setSelected(null)}>Fechar</button></div></div>
         {locker.migration_status==='inconclusivo'&&<p className="warning">Ocupação pendente de conferência. Novas entradas estão bloqueadas.</p>}
         {locker.sector_occupant&&<p><strong>Setor ocupante:</strong> {locker.sector_occupant}</p>}
@@ -201,7 +211,8 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
             <option value="">Selecione uma pessoa</option>{matches.map(person=><option key={person.person_id} value={person.person_id}>
               {person.name}{person.registration?` · ${person.registration}`:''}{person.number?` · armário ${person.number}`:''}</option>)}</select></label>
           {chosen&&source?.id===locker.id&&<p className="warning">{chosen.name} já ocupa este armário.</p>}
-          {chosen&&source&&source.id!==locker.id&&<p className="warning">{chosen.name} ocupa o armário {source.number}. A confirmação fará a transferência para o {locker.number}.</p>}
+          {chosen&&source&&source.id!==locker.id&&<p className="action-summary"><strong>Transferência</strong> · {chosen.name}, armário {source.number} → {locker.number}, filial {branchName}. A ocupação anterior será encerrada.</p>}
+          {chosen&&!source&&<p className="action-summary"><strong>Atribuição</strong> · {chosen.name} receberá o armário {locker.number}, filial {branchName}.</p>}
           {chosen&&source&&source.id!==locker.id&&<label>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
           <label>Observação (opcional)<input value={note} onChange={event=>setNote(event.target.value)}/></label>
           {needsSharing&&<><label>Motivo do compartilhamento<input required value={sharingReason} onChange={event=>setSharingReason(event.target.value)}/></label>
@@ -211,5 +222,6 @@ export function Dashboard({branchId,readonly,copy,refresh,notice,admin=false}:Pa
         </form>}
       </section>
     </div>}
+    </>}
   </>;
 }

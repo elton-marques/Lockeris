@@ -1,6 +1,8 @@
 import {useEffect,useState} from 'react';
+import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LogOut, ShieldCheck, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
 import {api,post,type User} from './api';
 import {clearOffline,clearAuthorization,loadCopy,loadDevice,saveCopy,type OfflineCopy} from './offline';
+import {roleName} from './ui';
 import {Dashboard} from './pages/Dashboard';
 import {People} from './pages/People';
 import {Movements} from './pages/Movements';
@@ -9,9 +11,17 @@ import {Pending} from './pages/Pending';
 import {History} from './pages/History';
 import {Admin} from './pages/Admin';
 
-export type PageProps={branchId:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
+export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
 type Branch={id:string;name:string;timezone:string};
-const tabs=[['painel','Painel'],['pessoas','Pessoas'],['movimentacoes','Movimentações'],['importacao','Importação'],['pendencias','Pendências'],['historico','Histórico'],['administracao','Administração']] as const;
+const tabs=[
+  {key:'painel',label:'Armários',icon:Boxes,group:'Operação'},
+  {key:'pessoas',label:'Colaboradores',icon:UsersRound,group:'Operação'},
+  {key:'pendencias',label:'Pendências',icon:ClipboardCheck,group:'Operação'},
+  {key:'movimentacoes',label:'Transferências',icon:ArrowLeftRight,group:'Operação'},
+  {key:'importacao',label:'Importações',icon:Upload,group:'Gestão'},
+  {key:'historico',label:'Histórico',icon:FileClock,group:'Gestão'},
+  {key:'administracao',label:'Administração',icon:ShieldCheck,group:'Gestão'}
+] as const;
 const pendingLogoutKey='armarios-pending-logout';
 async function finishQueuedLogout(){if(localStorage.getItem(pendingLogoutKey)!=='1')return;try{await post('/auth/logout',{});localStorage.removeItem(pendingLogoutKey);}catch(error){if(error instanceof Error&&'status' in error){localStorage.removeItem(pendingLogoutKey);}else throw error;}}
 
@@ -50,26 +60,29 @@ export default function App(){
   useEffect(()=>{const fn=async()=>{if(!navigator.onLine)return;try{await finishQueuedLogout();const me=await api<{user:User}>('/auth/me');setUser(me.user);setOffline(false);setOfflineUnavailable(false);const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(me.user.branchId??list[0]?.id??'');refresh();}catch(error){if(error instanceof Error&&'status' in error){await clearOffline();setCopy(null);setUser(null);setOffline(false);setOfflineUnavailable(false);}}};window.addEventListener('online',fn);return()=>window.removeEventListener('online',fn);},[]);
   useEffect(()=>{const fn=async()=>{const local=await loadCopy();if(local&&new Date(local.expiresAt).getTime()>Date.now()){setCopy(local);setBranchId(local.branchId);setBranches([{id:local.branchId,name:local.branchName,timezone:''}]);setUser({id:local.userId,role:'consulta',branchId:local.branchId,mustChangePassword:false});setOffline(true);setPage('painel');}else{setCopy(null);setUser(null);setOffline(true);setOfflineUnavailable(true);}};window.addEventListener('offline',fn);return()=>window.removeEventListener('offline',fn);},[]);
   async function logout(){try{if(offline)localStorage.setItem(pendingLogoutKey,'1');else await post('/auth/logout',{});}finally{await clearOffline();setUser(null);setCopy(null);setOffline(false);setOfflineUnavailable(offline);setBranchId('');}}
-  if(!ready)return <main className="center"><p>Carregando…</p></main>;
-  if(offlineUnavailable&&!user)return <main className="center"><section className="auth-card"><h1>Consulta indisponível</h1><p>Não há cópia offline válida neste navegador. Conecte-se para entrar e atualizar os dados.</p></section></main>;
+  if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
+  if(offlineUnavailable&&!user)return <main className="center"><section className="auth-card"><WifiOff size={28} aria-hidden="true"/><h1>Conecte-se para consultar os armários</h1><p>Este navegador não tem uma cópia local válida. Quando a conexão voltar, entre para atualizar os dados.</p></section></main>;
   if(!user)return <Login onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
   if(user.mustChangePassword)return <Password onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
-  const props:PageProps={branchId,readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
+  const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
+  const visibleTabs=tabs.filter(({key})=>offline?['painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
+  const current=tabs.find(({key})=>key===page);
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><span className="brand-icon">▥</span><div><strong>Armários</strong><small>Gestão operacional</small></div></div>
-      <nav aria-label="Navegação principal">{tabs.filter(([key])=>offline?['painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin).map(([key,label])=><button key={key} className={page===key?'nav-item active':'nav-item'} onClick={()=>setPage(key)}>{label}</button>)}</nav>
-      <div className="sidebar-footer"><span>{user.role.replace('_',' ')}</span><button onClick={logout}>Sair</button></div>
+      <div className="brand"><span className="brand-icon"><Boxes size={22} strokeWidth={1.8} aria-hidden="true"/></span><div><strong>Armários</strong><small>Gestão operacional</small></div></div>
+      <nav aria-label="Navegação principal">{(['Operação','Gestão'] as const).map(group=>visibleTabs.some(item=>item.group===group)&&<div className="nav-group-wrap" key={group}><span className="nav-group">{group}</span>{visibleTabs.filter(item=>item.group===group).map(item=>{const Icon=item.icon;return <button key={item.key} className={page===item.key?'nav-item active':'nav-item'} aria-current={page===item.key?'page':undefined} onClick={()=>{setPage(item.key);setMessage('');}}><Icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span></button>;})}</div>)}</nav>
+      <span className="nav-hint">Deslize para ver mais opções</span>
+      <div className="sidebar-footer"><span>{roleName[user.role]}</span><button onClick={logout}><LogOut size={17} aria-hidden="true"/> Sair</button></div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><div><h1>{tabs.find(([key])=>key===page)?.[1]}</h1><p>Controle de ocupação e conferência</p></div><div className="top-actions">
-        {branches.length>1?<label>Filial <select value={branchId} onChange={e=>{setBranchId(e.target.value);setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip">{branches[0]?.name??'Filial autorizada'}</span>}
-        <span className={offline?'status offline':'status online'}>{offline?'Offline · somente consulta':'Online'}</span>
+      <header className="topbar"><div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='painel'?'Localize vagas e confira a ocupação da filial.':page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div><div className="top-actions">
+        {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
+        <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
       </div></header>
-      {offline&&<div className="offline-banner" role="status">Cópia de {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Consulta válida até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}
+      {offline&&<div className="offline-banner" role="status"><strong>Dados locais para consulta.</strong> Atualizados em {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Válidos até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}
       {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')} aria-label="Fechar aviso">×</button></div>}
-      <main className="content" key={`${branchId}:${page}`}>
+      <main className="content" id="main-content" key={`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
           page==='painel'?<Dashboard {...props}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
@@ -80,10 +93,10 @@ export default function App(){
 function Login({onLogin}:{onLogin:(result:{user:User})=>void}){
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
-  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><div className="brand"><span className="brand-icon">▥</span><div><strong>Gestão de Armários</strong><small>Acesso interno</small></div></div><h1>Entrar</h1><p>Use seu nome de usuário e senha para acessar a filial.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
+  return <main className="auth-page"><div className="auth-intro"><span className="brand-icon"><Boxes size={28} aria-hidden="true"/></span><span className="eyebrow">Gestão de Armários</span><h2>Uma operação clara começa por aqui.</h2><p>Consulte ocupações, confira pendências e acompanhe cada movimentação na filial autorizada.</p></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
 }
 function Password({onDone}:{onDone:()=>void}){
-  const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState('');
-  async function submit(event:React.FormEvent){event.preventDefault();try{await post('/auth/password',{oldPassword,newPassword});onDone();}catch(e){setError(e instanceof Error?e.message:'Falha');}}
-  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p><label>Senha temporária<input type="password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/></label><label>Nova senha (12 caracteres ou mais)<input type="password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/></label>{error&&<p className="field-error">{error}</p>}<button className="primary">Salvar senha</button></form></main>;
+  const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await post('/auth/password',{oldPassword,newPassword});onDone();}catch(e){setError(e instanceof Error?e.message:'Não foi possível atualizar a senha.');}finally{setBusy(false);}}
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><span className="eyebrow">Segurança de acesso</span><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p><label>Senha temporária<input type="password" autoComplete="current-password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/></label><label>Nova senha (12 caracteres ou mais)<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar nova senha'}</button></form></main>;
 }
