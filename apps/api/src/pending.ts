@@ -18,7 +18,7 @@ function strongNameMatch(source:string,target:string):boolean{
   const sourceTokens=textKey(source).split(/[^A-Z0-9]+/).filter(Boolean);
   const targetTokens=textKey(target).split(/[^A-Z0-9]+/).filter(Boolean);
   return sourceTokens.length>=2&&sourceTokens.every(token=>targetTokens.some(candidate=>candidate===token||
-    candidate.length===token.length&&editDistance(token,candidate)<=1));
+    Math.abs(candidate.length-token.length)<=1&&editDistance(token,candidate)<=1));
 }
 
 async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<void>{
