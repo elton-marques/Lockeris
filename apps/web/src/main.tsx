@@ -5,5 +5,6 @@ import './style.css';
 import './locker-status.css';
 import './design-system.css';
 import './operational-design.css';
+import './theme.css';
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

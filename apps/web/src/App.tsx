@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LayoutDashboard, LogOut, Menu, ShieldCheck, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
+import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
 import {api,post,type User} from './api';
 import {clearOffline,clearAuthorization,loadCopy,loadDevice,saveCopy,type OfflineCopy} from './offline';
 import {roleName} from './ui';
@@ -26,15 +26,20 @@ const tabs=[
   {key:'administracao',label:'Administração',icon:ShieldCheck,group:'Gestão'}
 ] as const;
 const pendingLogoutKey='armarios-pending-logout';
+type Theme='light'|'dark';
+const themePreferenceKey='armarios-theme';
 async function finishQueuedLogout(){if(localStorage.getItem(pendingLogoutKey)!=='1')return;try{await post('/auth/logout',{});localStorage.removeItem(pendingLogoutKey);}catch(error){if(error instanceof Error&&'status' in error){localStorage.removeItem(pendingLogoutKey);}else throw error;}}
 
 export default function App(){
+  const [theme,setTheme]=useState<Theme>(()=>document.documentElement.dataset.theme==='dark'?'dark':'light');
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
   const [page,setPage]=useState<string>('painel'),[copy,setCopy]=useState<OfflineCopy|null>(null),[offline,setOffline]=useState(false);
   const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[tick,setTick]=useState(0);
   const [offlineUnavailable,setOfflineUnavailable]=useState(false);
   const refresh=()=>setTick(x=>x+1);
+  useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#151625':'#f6f7fa');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
+  const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
   useEffect(()=>{let active=true;(async()=>{
     try{
       await finishQueuedLogout();
@@ -66,9 +71,9 @@ export default function App(){
   useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
   async function logout(){try{if(offline)localStorage.setItem(pendingLogoutKey,'1');else await post('/auth/logout',{});}finally{await clearOffline();setUser(null);setCopy(null);setOffline(false);setOfflineUnavailable(offline);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
-  if(offlineUnavailable&&!user)return <main className="center"><section className="auth-card"><WifiOff size={28} aria-hidden="true"/><h1>Conecte-se para consultar os armários</h1><p>Este navegador não tem uma cópia local válida. Quando a conexão voltar, entre para atualizar os dados.</p></section></main>;
-  if(!user)return <Login onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
-  if(user.mustChangePassword)return <Password onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
+  if(offlineUnavailable&&!user)return <main className="center"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={toggleTheme}/></div><section className="auth-card"><WifiOff size={28} aria-hidden="true"/><h1>Conecte-se para consultar os armários</h1><p>Este navegador não tem uma cópia local válida. Quando a conexão voltar, entre para atualizar os dados.</p></section></main>;
+  if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
+  if(user.mustChangePassword)return <Password theme={theme} onToggleTheme={toggleTheme} onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
   const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
   const visibleTabs=tabs.filter(({key})=>offline?['resumo','painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
@@ -85,7 +90,7 @@ export default function App(){
       <div className="sidebar-footer"><span>{roleName[user.role]}</span><button onClick={logout}><LogOut size={17} aria-hidden="true"/> Sair</button></div>
     </aside>
     <div className="main-area">
-      <header className={`topbar ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions">
+      <header className={`topbar ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
         {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
       </div></header>
@@ -99,13 +104,16 @@ export default function App(){
   </div>;
 }
 
-function Login({onLogin}:{onLogin:(result:{user:User})=>void}){
+function ThemeSwitch({theme,onToggle}:{theme:Theme;onToggle:()=>void}){
+  return <button type="button" className="theme-switch" role="switch" aria-label="Modo escuro" aria-checked={theme==='dark'} title={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'} onClick={onToggle}><Sun size={15} aria-hidden="true"/><span className="theme-switch-thumb" aria-hidden="true"/><Moon size={15} aria-hidden="true"/></button>;
+}
+function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void;theme:Theme;onToggleTheme:()=>void}){
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
-  return <main className="auth-page"><div className="auth-intro"><span className="brand-icon"><Boxes size={28} aria-hidden="true"/></span><span className="eyebrow">Gestão de Armários</span><h2>Uma operação clara começa por aqui.</h2><p>Consulte ocupações, confira pendências e acompanhe cada movimentação na filial autorizada.</p></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
+  return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div><div className="auth-intro"><span className="brand-icon"><Boxes size={28} aria-hidden="true"/></span><span className="eyebrow">Gestão de Armários</span><h2>Uma operação clara começa por aqui.</h2><p>Consulte ocupações, confira pendências e acompanhe cada movimentação na filial autorizada.</p></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
 }
-function Password({onDone}:{onDone:()=>void}){
+function Password({onDone,theme,onToggleTheme}:{onDone:()=>void;theme:Theme;onToggleTheme:()=>void}){
   const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await post('/auth/password',{oldPassword,newPassword});onDone();}catch(e){setError(e instanceof Error?e.message:'Não foi possível atualizar a senha.');}finally{setBusy(false);}}
-  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><span className="eyebrow">Segurança de acesso</span><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p><label>Senha temporária<input type="password" autoComplete="current-password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/></label><label>Nova senha (12 caracteres ou mais)<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar nova senha'}</button></form></main>;
+  return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Segurança de acesso</span><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p><label>Senha temporária<input type="password" autoComplete="current-password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/></label><label>Nova senha (12 caracteres ou mais)<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar nova senha'}</button></form></main>;
 }

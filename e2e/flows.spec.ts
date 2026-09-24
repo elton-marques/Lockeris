@@ -168,6 +168,14 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
     {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
   await page.goto('/');
   await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  const themeSwitch=page.getByRole('switch',{name:'Modo escuro'});
+  await expect(themeSwitch).toHaveAttribute('aria-checked','false');
+  await themeSwitch.click();
+  await expect(themeSwitch).toHaveAttribute('aria-checked','true');
+  await page.reload();
+  await expect(page.getByRole('switch',{name:'Modo escuro'})).toHaveAttribute('aria-checked','true');
+  await page.getByRole('switch',{name:'Modo escuro'}).click();
+  await expect(page.getByRole('switch',{name:'Modo escuro'})).toHaveAttribute('aria-checked','false');
   await page.getByLabel('Buscar armário, nome ou matrícula').fill('sem resultado 999');
   await expect(page.getByText('Nenhum armário encontrado')).toBeVisible();
   await page.getByLabel('Buscar armário, nome ou matrícula').fill('');
