@@ -1,25 +1,27 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {ArrowRight,CircleAlert,Grid2X2,KeyRound,List,SlidersHorizontal,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {conditionName,DataState,EmptyState} from '../ui';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
+import {availablePositions,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,type LockerPreset} from '../locker-insights';
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
 type Person={person_id:string;name:string;registration:string|null;department:string|null;status:string;locker_id:string|null;number:string|null};
-type Pending={pending_locker_id:string|null;state:string};
-type Stats={lockers:{total:string;occupied:string;blocked:string};people:{total:string};pending:{total:string}};
+type Pending={pending_locker_id:string|null;state:string;kind:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
 const stateLabels:Record<LockerState,string>={livre:'Livre',ocupado:'Ocupado',pendente:'Pendente',indisponivel:'Indisponível'};
 const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
-const sectors=(locker:Locker)=>[locker.sector_occupant,...locker.occupants.map(item=>item.department)].filter((value):value is string=>!!value);
+const sectors=lockerSectors;
 
-export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admin=false}:PageProps){
-  const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[stats,setStats]=useState<Stats|null>(null),[pending,setPending]=useState<Pending[]>([]);
-  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(''),[sectorFilter,setSectorFilter]=useState(''),[keyFilter,setKeyFilter]=useState(''),[doubleOnly,setDoubleOnly]=useState(false);
+export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admin=false,preset}:PageProps&{preset?:LockerPreset}){
+  const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
+  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(false);
+  const [view,setView]=useState<'cards'|'table'>('cards');
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
   const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
@@ -30,15 +32,16 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
   async function load(){
     setLoading(true);setLoadError('');
     try{
-    if(copy){setLockers(copy.lockers as Locker[]);setPeople(copy.people as Person[]);setPending(copy.pending as Pending[]);setRegistrations([]);setStats(null);return;}
-    const [l,p,s,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<Person[]>(`/branches/${branchId}/people`),
-      api<Stats>(`/branches/${branchId}/dashboard`),api<Pending[]>(`/branches/${branchId}/pending`),
+    if(copy){setLockers(copy.lockers as Locker[]);setPeople(copy.people as Person[]);setPending(copy.pending as Pending[]);setRegistrations([]);return;}
+    const [l,p,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<Person[]>(`/branches/${branchId}/people`),
+      api<Pending[]>(`/branches/${branchId}/pending`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
-    setLockers(l);setPeople(p);setStats(s);setPending(items);setRegistrations(roster);
+    setLockers(l);setPeople(p);setPending(items);setRegistrations(roster);
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}
     finally{setLoading(false);}
   }
   useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
+  useEffect(()=>{setSelected(null);},[branchId]);
   useEffect(()=>{
     if(!selected)return;
     const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
@@ -46,21 +49,40 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
     return()=>{document.body.style.overflow=overflow;previous?.focus();};
   },[selected]);
 
-  const pendingIds=new Set(pending.filter(item=>item.state==='aberta').map(item=>item.pending_locker_id).filter(Boolean));
+  const pendingIds=pendingLockerIds(pending);
   function state(locker:Locker):LockerState{
     if(pendingIds.has(locker.id)||locker.migration_status==='inconclusivo')return 'pendente';
     if(locker.condition!=='disponivel')return 'indisponivel';
     return locker.sector_occupant||locker.occupants.length?'ocupado':'livre';
   }
-  const sectorOptions=useMemo(()=>[...new Set(lockers.flatMap(sectors))].sort((a,b)=>a.localeCompare(b,'pt-BR')),[lockers]);
+  const sectorOptions=useMemo(()=>{
+    const names=[...new Set(lockers.flatMap(sectors))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+    if(lockers.some(item=>sectors(item).length===0))names.push('__none__');
+    return names;
+  },[lockers]);
   const filtered=useMemo(()=>lockers.filter(locker=>{
-    if(statusFilter&&state(locker)!==statusFilter)return false;
+    if(statusFilter==='com_vaga'&&availablePositions(locker)===0)return false;
+    if(statusFilter==='ocupado'&&occupiedPositions(locker)===0)return false;
+    if(statusFilter==='livre'&&(occupiedPositions(locker)>0||availablePositions(locker)===0))return false;
+    if(statusFilter==='pendente'&&!pendingIds.has(locker.id)&&locker.migration_status!=='inconclusivo')return false;
+    if(statusFilter==='indisponivel'&&!requiresReview(locker))return false;
     if(doubleOnly&&!locker.is_double)return false;
-    if(sectorFilter&&!sectors(locker).includes(sectorFilter))return false;
+    if(sectorFilter==='__none__'&&sectors(locker).length>0)return false;
+    if(sectorFilter&&sectorFilter!=='__none__'&&!sectors(locker).includes(sectorFilter))return false;
     if(keyFilter==='sim'&&locker.key_copy_available!==true)return false;
     if(keyFilter==='nao'&&locker.key_copy_available!==false)return false;
+    if(pendingKindFilter&&!pending.some(item=>item.state==='aberta'&&item.pending_locker_id===locker.id&&item.kind===pendingKindFilter))return false;
     return !query||[locker.number,...sectors(locker),...locker.occupants.flatMap(item=>[item.name,item.registration??''])].some(value=>lower(value).includes(lower(query)));
-  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,doubleOnly]);
+  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,pendingKindFilter,doubleOnly]);
+  const activeFilters=[
+    query&&{label:`Busca: ${query}`,clear:()=>setQuery('')},
+    statusFilter&&{label:`Situação: ${statusFilter==='com_vaga'?'Com vaga':statusFilter==='ocupado'?'Ocupados':statusFilter==='livre'?'Livres':statusFilter==='pendente'?'Com pendência':'Bloqueados / revisão'}`,clear:()=>{setStatusFilter('');setPendingKindFilter('');}},
+    sectorFilter&&{label:`Setor: ${sectorFilter==='__none__'?'Sem setor':sectorFilter}`,clear:()=>setSectorFilter('')},
+    keyFilter&&{label:`Cópia da chave: ${keyFilter==='sim'?'Sim':'Não'}`,clear:()=>setKeyFilter('')},
+    pendingKindFilter&&{label:`Motivo: ${pendingKindLabels[pendingKindFilter]??'Conferência necessária'}`,clear:()=>setPendingKindFilter('')},
+    doubleOnly&&{label:'Somente duplos',clear:()=>setDoubleOnly(false)}
+  ].filter((item):item is {label:string;clear:()=>void}=>!!item);
+  function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);}
   const locker=lockers.find(item=>item.id===selected);
   const editOccupant=locker?.occupants.find(item=>item.allocationId===editOccupantId);
   const officialEdit=findRegistration(registrations,edit.registration);
@@ -142,34 +164,37 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
   return <>
     <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
     {!loading&&!loadError&&<>
-    <section className="stats" aria-label="Indicadores"><div className="stat"><small>Armários físicos</small><strong>{stats?.lockers.total??lockers.length}</strong></div>
-      <div className="stat"><small>Ocupados</small><strong>{stats?.lockers.occupied??lockers.filter(item=>item.occupants.length||item.sector_occupant).length}</strong></div>
-      <div className="stat"><small>Bloqueados / revisão</small><strong>{stats?.lockers.blocked??lockers.filter(item=>item.condition!=='disponivel'||item.migration_status==='inconclusivo').length}</strong></div>
-      <div className="stat"><small>Pendências</small><strong>{stats?.pending.total??copy?.pending.length??'—'}</strong></div></section>
-    <section className="card"><div className="section-head"><div><span className="eyebrow">Consulta operacional</span><h2>Lista de armários</h2><p>{filtered.length} {filtered.length===1?'resultado':'resultados'} · ordem numérica</p></div><span className="section-meta">{branchName}</span></div>
+    <div className="operational-intro"><div><h1>Armários</h1><p>Consulte os armários e seus ocupantes em {branchName}.</p></div><span>{lockers.length} armários físicos</span></div>
+    <section className="card locker-list-panel" aria-label="Consulta de armários">
+      <div className="locker-list-heading"><div><h2>Registros</h2><p>Busque por número, nome ou matrícula e combine os filtros.</p></div><div className="view-switch" role="group" aria-label="Modo de visualização"><button type="button" aria-pressed={view==='cards'} className={view==='cards'?'selected':''} onClick={()=>setView('cards')}><Grid2X2 size={17} aria-hidden="true"/> Cards</button><button type="button" aria-pressed={view==='table'} className={view==='table'?'selected':''} onClick={()=>setView('table')}><List size={17} aria-hidden="true"/> Tabela</button></div></div>
       <div className="filters locker-filters">
         <label>Buscar armário, nome ou matrícula<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome ou matrícula"/></label>
-        <label>Situação<select value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Todos</option><option value="livre">Livres</option>
-          <option value="ocupado">Ocupados</option><option value="pendente">Pendentes</option><option value="indisponivel">Indisponíveis</option></select></label>
+        <label>Situação<select value={statusFilter} onChange={event=>{setStatusFilter(event.target.value);if(event.target.value!=='pendente')setPendingKindFilter('');}}><option value="">Todas</option><option value="com_vaga">Com vaga</option><option value="livre">Livres</option>
+          <option value="ocupado">Ocupados</option><option value="pendente">Com pendência</option><option value="indisponivel">Bloqueados / revisão</option></select></label>
         <label>Setor<select value={sectorFilter} onChange={event=>setSectorFilter(event.target.value)}><option value="">Todos</option>
-          {sectorOptions.map(sector=><option key={sector} value={sector}>{sector}</option>)}</select></label>
+          {sectorOptions.map(sector=><option key={sector} value={sector}>{sector==='__none__'?'Sem setor':sector}</option>)}</select></label>
         <label>Filtrar por cópia da chave<select value={keyFilter} onChange={event=>setKeyFilter(event.target.value)}><option value="">Todas</option>
           <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
         <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
       </div>
-      {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'}/>:<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
+      <div className="filter-summary"><div className="filter-summary-left"><SlidersHorizontal size={16} aria-hidden="true"/><strong aria-live="polite">{filtered.length} {filtered.length===1?'resultado':'resultados'}</strong>{activeFilters.length?<div className="active-filter-list">{activeFilters.map(item=><button key={item.label} type="button" onClick={item.clear} aria-label={`Remover filtro ${item.label}`}>{item.label}<X size={13} aria-hidden="true"/></button>)}</div>:<span>Todos os registros da filial</span>}</div>{activeFilters.length>0&&<button type="button" className="clear-filters" onClick={clearFilters}>Limpar filtros</button>}</div>
+      {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'} action={activeFilters.length>0?<button type="button" onClick={clearFilters}>Limpar filtros</button>:undefined}/>:view==='cards'?<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
         return <button key={item.id} className={`locker-tile ${itemState==='pendente'?'has-pending':itemState==='ocupado'?'occupied':itemState==='livre'?'free':'unavailable'}`}
-          onClick={()=>openLocker(item)} aria-haspopup="dialog">
-          <span className="tile-top"><strong>{item.number}</strong><span className="badge">{stateLabels[itemState]}</span></span>
-          <span className="tile-meta">{item.is_double?'Duplo · ':''}{item.capacity} {item.capacity===1?'vaga':'vagas'}{item.sector_occupant?' · Setor ocupante':''}</span><span>{item.sector_occupant||item.occupants.map(occupant=>occupant.name).join(', ')||item.destination||(itemState==='pendente'?'Conferir ocupação':'Sem ocupante')}</span>
-          {item.key_copy_available===false&&<small>Sem cópia da chave</small>}
-        </button>;})}</div>}
+          onClick={()=>openLocker(item)} aria-haspopup="dialog" aria-label={`Abrir detalhes do armário ${item.number}`}>
+          <span className="tile-top"><strong>№ {item.number}</strong><span className="badge">{stateLabels[itemState]}</span></span>
+          <span className="tile-meta">{item.is_double?'Duplo · ':''}{sectors(item).join(', ')||'Sem setor'}</span>
+          <span className="tile-people">{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):item.destination||'Sem ocupante'}</span>
+          <span className="tile-footer">{occupiedPositions(item)}/{item.capacity} {item.capacity===1?'posição ocupada':'posições ocupadas'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
+          {item.key_copy_available===false&&<span className="tile-key"><KeyRound size={13} aria-hidden="true"/> Sem cópia da chave</span>}
+          {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}
+        </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong></td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{occupiedPositions(item)} de {item.capacity}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
       <section className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
         <div className="section-head"><div><h2 id="locker-dialog-title">Armário {locker.number}{locker.is_double?' · Duplo':''}</h2>
           <p>{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {conditionName[locker.condition]??'Situação não informada'} · {branchName}</p></div>
             <div className="row-actions"><button ref={closeRef} type="button" onClick={()=>setSelected(null)}>Fechar</button></div></div>
+        <div className="locker-detail-summary"><div className="detail-availability"><small>Vagas disponíveis</small><strong>{availablePositions(locker)}</strong><span>{availablePositions(locker)===0?'Nenhuma posição liberada para nova ocupação.':'Em armário disponível e conferido.'}</span></div><div><small>Capacidade física</small><strong>{locker.capacity} {locker.capacity===1?'posição':'posições'}</strong></div><div><small>Posições ocupadas</small><strong>{occupiedPositions(locker)}</strong></div><div><small>Cópia da chave</small><strong>{locker.key_copy_available===null?'Não informada':locker.key_copy_available?'Sim':'Não'}</strong></div></div>
         {locker.migration_status==='inconclusivo'&&<p className="warning">Ocupação pendente de conferência. Novas entradas estão bloqueadas.</p>}
         {locker.sector_occupant&&<p><strong>Setor ocupante:</strong> {locker.sector_occupant}</p>}
         {locker.occupants.length>0&&<div className="list"><h3>Ocupantes</h3>{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>

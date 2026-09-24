@@ -118,11 +118,21 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile').filter({hasText:'101'})).toHaveClass(/has-pending/);
   await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveClass(/occupied/);
-  await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveCSS('background-color','rgb(255, 241, 239)');
+  await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveCSS('background-color','rgb(255, 255, 255)');
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).toHaveClass(/free/);
   await expect(page.locator('.locker-tile').filter({hasText:'104'})).toContainText('Duplo');
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).not.toContainText(/Padrão|Grande|Simples/);
-  await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['12','101','102','103','104']);
+  await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 12','№ 101','№ 102','№ 103','№ 104']);
+  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Painel da filial'})).toBeVisible();
+  await expect(page.getByRole('button',{name:/3 vagas disponíveis/})).toBeVisible();
+  await page.getByRole('button',{name:/3 vagas disponíveis/}).click();
+  await expect(page.locator('.locker-tile')).toHaveCount(2);
+  await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 103','№ 104']);
+  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
+  await page.getByRole('button',{name:'Com pendência',exact:false}).click();
+  await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 101']);
+  await page.getByRole('button',{name:'Armários',exact:true}).click();
   await page.getByLabel('Situação').selectOption('livre');
   await expect(page.locator('.locker-tile')).toHaveCount(2);
   await page.getByLabel('Situação').selectOption('');
@@ -185,18 +195,23 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
   await expect(page.getByLabel(/Nova senha temporária para/)).toBeVisible();
   await page.getByRole('button',{name:'Cancelar'}).click();
   await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Abrir menu'}).click();
   await page.getByRole('button',{name:'Armários',exact:true}).click();
+  await page.waitForTimeout(250);
   await page.screenshot({path:'test-results/visual/17-armarios-mobile.png',fullPage:true});
   for(const [label,file] of [['Colaboradores','18-colaboradores-mobile'],['Pendências','19-pendencias-mobile'],
     ['Transferências','20-transferencias-mobile'],['Importações','21-importacoes-mobile'],
     ['Histórico','22-historico-mobile'],['Administração','23-administracao-mobile']] as const){
+    await page.getByRole('button',{name:'Abrir menu'}).click();
     await page.getByRole('button',{name:label,exact:true}).click();
     await expect(page.getByRole('heading',{name:label,level:1})).toBeVisible();
     if(label==='Administração')await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+    await page.waitForTimeout(250);
     await page.screenshot({path:`test-results/visual/${file}.png`,fullPage:true});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   }
   expect(await page.evaluate(()=>matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+  await page.getByRole('button',{name:'Abrir menu'}).click();
   await page.getByRole('button',{name:'Armários',exact:true}).click();
   expect(await page.locator('.locker-tile').first().evaluate(el=>parseFloat(getComputedStyle(el).transitionDuration))).toBeLessThan(.01);
 });
@@ -211,8 +226,8 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile')).toHaveCount(477);
-  await expect(page.locator('.locker-tile .tile-top strong').first()).toHaveText('1');
-  await expect(page.locator('.locker-tile .tile-top strong').last()).toHaveText('477');
+  await expect(page.locator('.locker-tile .tile-top strong').first()).toHaveText('№ 1');
+  await expect(page.locator('.locker-tile .tile-top strong').last()).toHaveText('№ 477');
   await page.locator('.locker-tile').last().click();
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('heading',{name:'Armário 477'})).toBeVisible();

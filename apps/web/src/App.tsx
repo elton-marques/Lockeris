@@ -1,9 +1,11 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LogOut, ShieldCheck, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
+import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LayoutDashboard, LogOut, Menu, ShieldCheck, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
 import {api,post,type User} from './api';
 import {clearOffline,clearAuthorization,loadCopy,loadDevice,saveCopy,type OfflineCopy} from './offline';
 import {roleName} from './ui';
 import {Dashboard} from './pages/Dashboard';
+import {Overview} from './pages/Overview';
+import type {LockerPreset} from './locker-insights';
 import {People} from './pages/People';
 import {Movements} from './pages/Movements';
 import {Imports} from './pages/Imports';
@@ -14,6 +16,7 @@ import {Admin} from './pages/Admin';
 export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
 type Branch={id:string;name:string;timezone:string};
 const tabs=[
+  {key:'resumo',label:'Dashboard',icon:LayoutDashboard,group:'Operação'},
   {key:'painel',label:'Armários',icon:Boxes,group:'Operação'},
   {key:'pessoas',label:'Colaboradores',icon:UsersRound,group:'Operação'},
   {key:'pendencias',label:'Pendências',icon:ClipboardCheck,group:'Operação'},
@@ -28,6 +31,7 @@ async function finishQueuedLogout(){if(localStorage.getItem(pendingLogoutKey)!==
 export default function App(){
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
   const [page,setPage]=useState<string>('painel'),[copy,setCopy]=useState<OfflineCopy|null>(null),[offline,setOffline]=useState(false);
+  const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[tick,setTick]=useState(0);
   const [offlineUnavailable,setOfflineUnavailable]=useState(false);
   const refresh=()=>setTick(x=>x+1);
@@ -59,6 +63,7 @@ export default function App(){
     })();return()=>{active=false;};},[user,branchId,tick,offline]);
   useEffect(()=>{const fn=async()=>{if(!navigator.onLine)return;try{await finishQueuedLogout();const me=await api<{user:User}>('/auth/me');setUser(me.user);setOffline(false);setOfflineUnavailable(false);const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(me.user.branchId??list[0]?.id??'');refresh();}catch(error){if(error instanceof Error&&'status' in error){await clearOffline();setCopy(null);setUser(null);setOffline(false);setOfflineUnavailable(false);}}};window.addEventListener('online',fn);return()=>window.removeEventListener('online',fn);},[]);
   useEffect(()=>{const fn=async()=>{const local=await loadCopy();if(local&&new Date(local.expiresAt).getTime()>Date.now()){setCopy(local);setBranchId(local.branchId);setBranches([{id:local.branchId,name:local.branchName,timezone:''}]);setUser({id:local.userId,role:'consulta',branchId:local.branchId,mustChangePassword:false});setOffline(true);setPage('painel');}else{setCopy(null);setUser(null);setOffline(true);setOfflineUnavailable(true);}};window.addEventListener('offline',fn);return()=>window.removeEventListener('offline',fn);},[]);
+  useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
   async function logout(){try{if(offline)localStorage.setItem(pendingLogoutKey,'1');else await post('/auth/logout',{});}finally{await clearOffline();setUser(null);setCopy(null);setOffline(false);setOfflineUnavailable(offline);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
   if(offlineUnavailable&&!user)return <main className="center"><section className="auth-card"><WifiOff size={28} aria-hidden="true"/><h1>Conecte-se para consultar os armários</h1><p>Este navegador não tem uma cópia local válida. Quando a conexão voltar, entre para atualizar os dados.</p></section></main>;
@@ -66,25 +71,29 @@ export default function App(){
   if(user.mustChangePassword)return <Password onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
   const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
-  const visibleTabs=tabs.filter(({key})=>offline?['painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
+  const visibleTabs=tabs.filter(({key})=>offline?['resumo','painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
   const current=tabs.find(({key})=>key===page);
+  function navigate(next:string){setPage(next);setMessage('');setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}}
+  function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
   return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><span className="brand-icon"><Boxes size={22} strokeWidth={1.8} aria-hidden="true"/></span><div><strong>Armários</strong><small>Gestão operacional</small></div></div>
-      <nav aria-label="Navegação principal">{(['Operação','Gestão'] as const).map(group=>visibleTabs.some(item=>item.group===group)&&<div className="nav-group-wrap" key={group}><span className="nav-group">{group}</span>{visibleTabs.filter(item=>item.group===group).map(item=>{const Icon=item.icon;return <button key={item.key} className={page===item.key?'nav-item active':'nav-item'} aria-current={page===item.key?'page':undefined} onClick={()=>{setPage(item.key);setMessage('');}}><Icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span></button>;})}</div>)}</nav>
+    <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
+    {mobileMenu&&<button type="button" className="mobile-scrim" aria-label="Fechar menu" onClick={()=>setMobileMenu(false)}/>}
+    <aside className={`sidebar ${mobileMenu?'mobile-open':''}`}>
+      <div className="brand"><span className="brand-icon"><Boxes size={22} strokeWidth={1.8} aria-hidden="true"/></span><div><strong>armários<span className="brand-dot">.</span></strong><small>Gestão operacional</small></div></div>
+      <nav aria-label="Navegação principal">{(['Operação','Gestão'] as const).map(group=>visibleTabs.some(item=>item.group===group)&&<div className="nav-group-wrap" key={group}><span className="nav-group">{group}</span>{visibleTabs.filter(item=>item.group===group).map(item=>{const Icon=item.icon;return <button key={item.key} className={page===item.key?'nav-item active':'nav-item'} aria-current={page===item.key?'page':undefined} onClick={()=>navigate(item.key)}><Icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span></button>;})}</div>)}</nav>
       <span className="nav-hint">Deslize para ver mais opções</span>
       <div className="sidebar-footer"><span>{roleName[user.role]}</span><button onClick={logout}><LogOut size={17} aria-hidden="true"/> Sair</button></div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='painel'?'Localize vagas e confira a ocupação da filial.':page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div><div className="top-actions">
-        {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
+      <header className={`topbar ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions">
+        {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
       </div></header>
       {offline&&<div className="offline-banner" role="status"><strong>Dados locais para consulta.</strong> Atualizados em {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Válidos até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}
       {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')} aria-label="Fechar aviso">×</button></div>}
-      <main className="content" id="main-content" key={`${branchId}:${page}`}>
+      <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
-          page==='painel'?<Dashboard {...props}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
+          page==='resumo'?<Overview {...props} onOpenLockers={openLockers}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
   </div>;
