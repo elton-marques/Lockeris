@@ -82,10 +82,12 @@ async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<
     FROM memberships m JOIN people p ON p.id=m.person_id
     WHERE m.branch_id=$1 AND m.origin='ti' AND m.category='colaborador' AND m.status='ativo' AND m.ti_present=true
       AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)`,[branchId]);
+  const claimed=new Set<string>();
   for(const row of rows.rows){
-    const candidates=officials.rows.filter(candidate=>strongNameMatch(row.source_name,candidate.name));
+    const candidates=officials.rows.filter(candidate=>!claimed.has(candidate.person_id)&&strongNameMatch(row.source_name,candidate.name));
     if(candidates.length!==1)continue;
     const official=candidates[0];
+    claimed.add(official.person_id);
     await client.query('UPDATE allocations SET person_id=$2,version=version+1 WHERE id=$1',[row.allocation_id,official.person_id]);
     await client.query("UPDATE memberships SET status='encerrado',version=version+1,updated_at=now() WHERE id=$1",[row.membership_id]);
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
