@@ -18,7 +18,8 @@ function strongNameMatch(source:string,target:string):boolean{
   const sourceTokens=textKey(source).split(/[^A-Z0-9]+/).filter(Boolean);
   const targetTokens=textKey(target).split(/[^A-Z0-9]+/).filter(Boolean);
   return sourceTokens.length>=2&&sourceTokens.every(token=>targetTokens.some(candidate=>candidate===token||
-    Math.abs(candidate.length-token.length)<=1&&editDistance(token,candidate)<=1));
+    Math.abs(candidate.length-token.length)<=2&&editDistance(token,candidate)<=
+      (Math.max(token.length,candidate.length)>=7?2:1)));
 }
 
 async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<void>{
@@ -82,20 +83,20 @@ async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promi
 }
 
 async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<void>{
-  const rows=await client.query<{pending_id:string;locker_id:string;membership_id:string;allocation_id:string;source_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,m.id membership_id,a.id allocation_id,src.raw->>'name' source_name
-    FROM pending_items p JOIN lockers l ON l.id=p.subject_id
+  const rows=await client.query<{pending_id:string|null;locker_id:string;membership_id:string;allocation_id:string;source_name:string}>(`SELECT DISTINCT ON (l.id) p.id pending_id,l.id locker_id,m.id membership_id,a.id allocation_id,src.raw->>'name' source_name
+    FROM lockers l
+    LEFT JOIN pending_items p ON p.subject_type='locker' AND p.subject_id=l.id AND p.kind='migracao_inconclusiva' AND p.state='aberta'
     JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
     JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
     JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
     JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=l.branch_id
-    WHERE p.branch_id=$1 AND p.kind='migracao_inconclusiva' AND p.state='aberta'
-      AND l.migration_status='inconclusivo' AND m.origin='migracao' AND m.registration IS NULL
+    WHERE l.branch_id=$1 AND m.origin='migracao' AND m.registration IS NULL
       AND coalesce(trim(src.raw->>'name'),'')<>''
       AND coalesce(trim(src.raw->>'registration'),'')=''
       AND coalesce(trim(src.raw->>'sectorOccupant'),'')=''
       AND upper(trim(src.raw->>'functionName')) NOT LIKE '%PROMOTOR%'
       AND upper(trim(src.raw->>'status'))='OCUPADO'
-    ORDER BY p.id,src.row_number`,[branchId]);
+    ORDER BY l.id,src.row_number`,[branchId]);
   if(!rows.rowCount)return;
   const officials=await client.query<OfficialRow>(`SELECT m.id membership_id,m.person_id,m.registration,p.name,m.department,m.function_name
     FROM memberships m JOIN people p ON p.id=m.person_id
@@ -110,8 +111,10 @@ async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<
     await client.query('UPDATE allocations SET person_id=$2,version=version+1 WHERE id=$1',[row.allocation_id,official.person_id]);
     await client.query("UPDATE memberships SET status='encerrado',version=version+1,updated_at=now() WHERE id=$1",[row.membership_id]);
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
-    await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Nome associado automaticamente à matrícula ${official.registration} (${official.name}).`]);
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupante_associado_por_nome','pending',row.pending_id,JSON.stringify({sourceName:row.source_name,registration:official.registration,name:official.name})]);
+    if(row.pending_id){
+      await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Nome associado automaticamente à matrícula ${official.registration} (${official.name}).`]);
+    }
+    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupante_associado_por_nome','locker',row.locker_id,JSON.stringify({sourceName:row.source_name,registration:official.registration,name:official.name})]);
   }
 }
 
