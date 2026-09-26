@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowLeftRight,ArrowRight,Briefcase,Building2,CircleAlert,Check,Grid2X2,Gauge,Hash,KeyRound,List,Lock,MapPin,MessageSquare,PencilLine,Search,SlidersHorizontal,User,UserPlus,Users,Wrench,X} from 'lucide-react';
+import {ArrowLeftRight,ArrowRight,Briefcase,Building2,CircleAlert,Check,Grid2X2,Gauge,Hash,KeyRound,List,Lock,MapPin,MessageSquare,PencilLine,Plus,Search,SlidersHorizontal,User,UserPlus,Users,Wrench,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {conditionName,DataState,EmptyState,Skeleton} from '../ui';
@@ -16,6 +16,9 @@ type Person={person_id:string;name:string;registration:string|null;department:st
 type Pending={pending_locker_id:string|null;state:string;kind:string};
 type PrintData={nome:string;matricula:string;setor:string;numeroArmario:string;tipoUsuario:'colaborador';possuiCopia:boolean;filial:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
+type OccupantDraft={name:string;registration:string;department:string;functionName:string};
+type OccupantEdit={slot:number;allocationId:string|null};
+const emptyDraft:OccupantDraft={name:'',registration:'',department:'',functionName:''};
 const stateLabels:Record<LockerState,string>={livre:'Livre',ocupado:'Ocupado',pendente:'Pendente',indisponivel:'Indisponível'};
 const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
@@ -29,8 +32,8 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
   const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
   const [printData,setPrintData]=useState<PrintData|null>(null);
-  const [edit,setEdit]=useState({isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim',name:'',registration:'',department:'',functionName:''});
-  const [editOccupantId,setEditOccupantId]=useState(''),[createOccupant,setCreateOccupant]=useState(false);
+  const [edit,setEdit]=useState({isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim'});
+  const [occupantEdit,setOccupantEdit]=useState<OccupantEdit|null>(null),[draft,setDraft]=useState<OccupantDraft>(emptyDraft);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
 
   async function load(){
@@ -94,10 +97,13 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
   ];
   function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);}
   const locker=lockers.find(item=>item.id===selected);
-  const editOccupant=locker?.occupants.find(item=>item.allocationId===editOccupantId);
-  const officialEdit=findRegistration(registrations,edit.registration);
-  const officialFieldsLocked=!!officialEdit||!!editOccupant&&editOccupant.origin==='ti'&&
-    registrationKey(edit.registration)===registrationKey(editOccupant.registration??'');
+  const editingOccupant=occupantEdit&&occupantEdit.allocationId&&locker?locker.occupants.find(item=>item.allocationId===occupantEdit.allocationId):undefined;
+  const creatingOccupant=!!occupantEdit&&!editingOccupant;
+  const showSecondSlot=!!locker&&(edit.isDouble||locker.occupants.length>1);
+  const canEditOccupants=admin&&!readonly;
+  const officialEdit=findRegistration(registrations,draft.registration);
+  const officialFieldsLocked=!!officialEdit||!!editingOccupant&&editingOccupant.origin==='ti'&&
+    registrationKey(draft.registration)===registrationKey(editingOccupant.registration??'');
   const matches=people.filter(person=>person.status==='ativo'&&(!personQuery||[person.name,person.registration??''].some(value=>lower(value).includes(lower(personQuery)))))
     .sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   const chosen=people.find(person=>person.person_id===personId);
@@ -108,21 +114,22 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
 
   function openLocker(item:Locker){
     setPersonQuery('');setPersonId('');setNote('');setTransferReason('');setSharingReason('');setSharingDue('');
-    setKeyCopy(item.key_copy_available===false?'nao':'sim');setCreateOccupant(false);
-    setEditOccupantId(item.occupants[0]?.allocationId??'');fillEdit(item,item.occupants[0]);setSelected(item.id);
+    setKeyCopy(item.key_copy_available===false?'nao':'sim');
+    setOccupantEdit(null);setDraft(emptyDraft);fillEdit(item);setSelected(item.id);
   }
-  function fillEdit(item:Locker,occupant?:Occupant){setEdit({isDouble:item.is_double,condition:item.condition,
-    sectorOccupant:item.sector_occupant??'',keyCopy:item.key_copy_available===false?'nao':'sim',
-    name:occupant?.name??'',registration:occupant?.registration??'',department:occupant?.department??'',functionName:occupant?.functionName??''});}
-  function chooseEditOccupant(item:Locker,id:string){setEditOccupantId(id);fillEdit(item,item.occupants.find(person=>person.allocationId===id));}
+  function fillEdit(item:Locker){setEdit({isDouble:item.is_double,condition:item.condition,
+    sectorOccupant:item.sector_occupant??'',keyCopy:item.key_copy_available===false?'nao':'sim'});}
+  function startOccupantEdit(item:Locker,slot:number){
+    const occupant=item.occupants[slot];
+    setOccupantEdit({slot,allocationId:occupant?.allocationId??null});
+    setDraft({name:occupant?.name??'',registration:occupant?.registration??'',department:occupant?.department??'',functionName:occupant?.functionName??''});
+  }
+  function cancelOccupantEdit(){setOccupantEdit(null);setDraft(emptyDraft);}
   function changeRegistration(value:string,match:RegistrationOption|undefined){
-    const replacingOfficial=editOccupant?.origin==='ti'&&registrationKey(value)!==registrationKey(editOccupant.registration??'');
-    setEdit(current=>({...current,registration:value,name:match?.name??(replacingOfficial?'':current.name),
+    const replacingOfficial=editingOccupant?.origin==='ti'&&registrationKey(value)!==registrationKey(editingOccupant.registration??'');
+    setDraft(current=>({...current,registration:value,name:match?.name??(replacingOfficial?'':current.name),
       department:match?.department??(replacingOfficial?'':current.department),functionName:match?.functionName??(replacingOfficial?'':current.functionName)}));
   }
-  function toggleCreateOccupant(item:Locker,checked:boolean){setCreateOccupant(checked);setEditOccupantId(checked?'':item.occupants[0]?.allocationId??'');
-    if(checked)setEdit(current=>({...current,sectorOccupant:'',name:'',registration:'',department:'',functionName:''}));
-    else fillEdit(item,item.occupants[0]);}
   async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string),close=false,onSuccess?:()=>void){
     setBusy(true);
     try{const result=await callback();try{await load();refresh();}catch{notice('A ação foi concluída, mas a lista não foi atualizada. Tente recarregar antes de agir novamente.');return;}
@@ -152,14 +159,16 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
       tipoUsuario:'colaborador',possuiCopia:item.key_copy_available===true,filial:branchName});
     handlePrint();
   }
-  function saveLocker(event:React.FormEvent){event.preventDefault();if(!locker||!admin)return;
+  function saveLocker(event:React.FormEvent|undefined,scope:'attributes'|'occupant'='attributes'){
+    event?.preventDefault();if(!locker||!admin)return;
+    const withOccupant=scope==='occupant'&&!!occupantEdit&&!!(editingOccupant||creatingOccupant);
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/lockers/${locker.id}/revise`,{operationId:op(),expectedLockerVersion:locker.version,
       isDouble:edit.isDouble,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
-      sectorOccupant:createOccupant?null:edit.sectorOccupant.trim()||null,
-      occupant:editOccupant||createOccupant?{allocationId:editOccupant?.allocationId,membershipId:editOccupant?.membershipId,
-        expectedMembershipVersion:editOccupant?.membershipVersion,name:edit.name.trim(),registration:edit.registration.trim()||null,
-        department:edit.department.trim()||null,functionName:edit.functionName.trim()||null}:null}),
-    result=>`Dados do armário atualizados.${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`,true);}
+      sectorOccupant:withOccupant&&creatingOccupant?null:edit.sectorOccupant.trim()||null,
+      occupant:withOccupant?{allocationId:editingOccupant?.allocationId,membershipId:editingOccupant?.membershipId,
+        expectedMembershipVersion:editingOccupant?.membershipVersion,name:draft.name.trim(),registration:draft.registration.trim()||null,
+        department:draft.department.trim()||null,functionName:draft.functionName.trim()||null}:null}),
+    result=>`Dados do armário atualizados.${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`,scope==='attributes',cancelOccupantEdit);}
   async function assign(event:React.FormEvent){
     event.preventDefault();if(!locker||!chosen||!keyCopy||!canEnter||source?.id===locker.id)return;
     if(!await askConfirm(`${source?`Transferir ${chosen.name} do armário ${source.number} para o ${locker.number}`:`Atribuir o armário ${locker.number} a ${chosen.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`))return;
@@ -259,7 +268,19 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
         <section className="locker-card" aria-labelledby="locker-occupants-title">
           <div className="locker-card-head"><h3 id="locker-occupants-title"><span className="card-icon"><Users size={16} aria-hidden="true"/></span>Ocupantes</h3>
             {locker.occupants.length>0&&<span className="badge">{locker.occupants.length} {locker.occupants.length===1?'pessoa':'pessoas'}</span>}</div>
-          {locker.occupants.length>0?<div className="list">{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>
+          {canEditOccupants?<div className="occupant-slots">
+            <OccupantSlot slot={0} occupant={locker.occupants[0]} draft={draft} editing={occupantEdit?.slot===0}
+              creating={occupantEdit?.slot===0&&creatingOccupant} busy={busy} officialLocked={officialFieldsLocked}
+              registrations={registrations} onDraft={setDraft} onRegistration={changeRegistration}
+              onEdit={()=>startOccupantEdit(locker,0)} onCancel={cancelOccupantEdit} onSave={()=>saveLocker(undefined,'occupant')}
+              onAdd={()=>startOccupantEdit(locker,0)} onPrint={occupant=>printOccupantTerm(locker,occupant)} onRelease={release}/>
+            {showSecondSlot&&<OccupantSlot slot={1} occupant={locker.occupants[1]} draft={draft} editing={occupantEdit?.slot===1}
+              creating={occupantEdit?.slot===1&&creatingOccupant} busy={busy} officialLocked={officialFieldsLocked} blocked={locker.occupants.length===0}
+              registrations={registrations} onDraft={setDraft} onRegistration={changeRegistration}
+              onEdit={()=>startOccupantEdit(locker,1)} onCancel={cancelOccupantEdit} onSave={()=>saveLocker(undefined,'occupant')}
+              onAdd={()=>startOccupantEdit(locker,1)} onPrint={occupant=>printOccupantTerm(locker,occupant)} onRelease={release}/>}
+          </div>
+          :locker.occupants.length>0?<div className="list">{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>
             <div className="occupant-copy"><strong>{occupant.name}</strong>
               <small><span><Hash size={12} aria-hidden="true"/>{occupant.registration?`Matrícula ${occupant.registration}`:'Sem matrícula'}</span>
                 <span><Building2 size={12} aria-hidden="true"/>{occupant.department||'Setor não informado'}</span>
@@ -276,13 +297,13 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
             {!readonly&&<button type="button" disabled={busy||!keyCopy||keyCopy===(locker.key_copy_available===false?'nao':'sim')} onClick={saveKey}>Salvar situação da chave</button>}
           </div>
         </section>}
-        {admin&&!readonly&&<form className="locker-card locker-editor" onSubmit={saveLocker} aria-labelledby="locker-editor-title">
+        {admin&&!readonly&&<form className="locker-card locker-editor" onSubmit={event=>saveLocker(event,'attributes')} aria-labelledby="locker-editor-title">
           <div className="locker-card-head"><h3 id="locker-editor-title"><span className="card-icon"><PencilLine size={16} aria-hidden="true"/></span>Edição e configurações</h3></div>
-          <p className="locker-card-note">O número do armário é fixo. Se a matrícula constar na base atual, o cadastro oficial será usado para o ocupante.</p>
+          <p className="locker-card-note">Somente atributos físicos e operacionais do armário. O número é fixo; matrícula e cadastro dos ocupantes são editados no cartão Ocupantes.</p>
           <div className="form-grid"><div className="control-cell">
               <ToggleSwitch label="Armário duplo" hint="Dois compartimentos com duas posições." checked={edit.isDouble} disabled={busy}
-                onChange={checked=>{if(!checked&&createOccupant&&locker.occupants.length)toggleCreateOccupant(locker,false);
-                  setEdit(current=>({...current,isDouble:checked}));}}/></div>
+                onChange={checked=>{setEdit(current=>({...current,isDouble:checked}));
+                  if(!checked&&occupantEdit?.slot===1&&!locker.occupants[1])cancelOccupantEdit();}}/></div>
             <div className="control-cell">
               <ToggleSwitch label="Existe cópia da chave?" hint="Indique se há cópia disponível para este armário." checked={edit.keyCopy==='sim'} disabled={busy}
                 onChange={checked=>setEdit(current=>({...current,keyCopy:checked?'sim':'nao'}))}/></div>
@@ -290,19 +311,9 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
               <SegmentedControl label="Situação" value={edit.condition} disabled={busy}
                 options={[{value:'disponivel',label:'Disponível',icon:Check},{value:'manutencao',label:'Manutenção',icon:Wrench},{value:'bloqueado',label:'Bloqueado',icon:Lock}]}
                 onChange={value=>setEdit(current=>({...current,condition:value}))}/></div>
-            {locker.occupants.length>1&&<label>Ocupante a corrigir<select value={editOccupantId} onChange={event=>chooseEditOccupant(locker,event.target.value)}>
-              {locker.occupants.map(item=><option key={item.allocationId} value={item.allocationId}>{item.name} · {item.registration??'Sem matrícula'}</option>)}</select></label>}
-            {(locker.occupants.length===0||edit.isDouble&&locker.occupants.length<2)&&<label className="check control-span"><input type="checkbox" checked={createOccupant} onChange={event=>toggleCreateOccupant(locker,event.target.checked)}/>
-              {locker.occupants.length?'Adicionar segundo ocupante':'Cadastrar ocupante'}</label>}
-            {editOccupant||createOccupant?<>
-              <RegistrationInput id="dashboard-occupant-registration" value={edit.registration} options={registrations} onChange={changeRegistration}/>
-              <label className="field-icon"><FieldIcon icon={User}/>Nome<input value={edit.name} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,name:event.target.value})}/></label>
-              <label className="field-icon"><FieldIcon icon={Building2}/>Setor<input value={edit.department} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,department:event.target.value})}/></label>
-              <label className="field-icon"><FieldIcon icon={Briefcase}/>Função<input value={edit.functionName} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,functionName:event.target.value})}/></label>
-            </>:<label className="field-icon control-span"><FieldIcon icon={Building2}/>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>}
+            <label className="field-icon control-span"><FieldIcon icon={Building2}/>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>
           </div>
-          {officialFieldsLocked&&<p className="muted">Nome, setor e função vêm da base atual de colaboradores.</p>}
-          <button className="primary" disabled={busy||(createOccupant&&!edit.name.trim()&&!edit.registration.trim())}>Salvar dados do armário</button>
+          <button className="primary" disabled={busy}>Salvar dados do armário</button>
         </form>}
         {canEnter&&<form className="locker-card locker-entry" onSubmit={assign} aria-labelledby="locker-entry-title">
           <div className="locker-card-head"><h3 id="locker-entry-title"><span className="card-icon"><UserPlus size={16} aria-hidden="true"/></span>Cadastrar pessoa neste armário</h3></div>
@@ -327,4 +338,72 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     </>}
     </div>
   {printData&&<TermoResponsabilidade dados={printData}/>}</>;
+}
+
+type OccupantSlotProps={
+  slot:number;
+  occupant?:Occupant;
+  draft:OccupantDraft;
+  editing:boolean;
+  creating:boolean;
+  busy:boolean;
+  officialLocked:boolean;
+  blocked?:boolean;
+  registrations:RegistrationOption[];
+  onDraft:React.Dispatch<React.SetStateAction<OccupantDraft>>;
+  onRegistration:(value:string,match:RegistrationOption|undefined)=>void;
+  onEdit:()=>void;
+  onCancel:()=>void;
+  onSave:()=>void;
+  onAdd:()=>void;
+  onPrint:(occupant:Occupant)=>void;
+  onRelease:(occupant:Occupant)=>void;
+};
+
+function OccupantSlot({slot,occupant,draft,editing,creating,busy,officialLocked,blocked=false,registrations,
+  onDraft,onRegistration,onEdit,onCancel,onSave,onAdd,onPrint,onRelease}:OccupantSlotProps){
+  const number=slot+1;
+  const head=(occupied:boolean)=><div className="occupant-slot-head">
+    <span className="slot-index" aria-hidden="true">{number}</span>
+    <strong>Ocupante {number}</strong>
+    <span className={occupied?'badge slot-state':'badge slot-state slot-state--free'}>{occupied?'Ocupado':'Vago'}</span>
+  </div>;
+
+  if(editing)return <article className="list-row occupant-slot occupant-slot--editing" aria-label={`Ocupante ${number}`}>
+    {head(!!occupant)}
+    <form className="occupant-form" onSubmit={event=>{event.preventDefault();onSave();}}>
+      <RegistrationInput id={`occupant-slot-${slot}`} value={draft.registration} options={registrations} onChange={onRegistration}/>
+      <label className="field-icon"><FieldIcon icon={User}/>Nome<input value={draft.name} disabled={officialLocked}
+        onChange={event=>onDraft(current=>({...current,name:event.target.value}))}/></label>
+      <label className="field-icon"><FieldIcon icon={Building2}/>Setor<input value={draft.department} disabled={officialLocked}
+        onChange={event=>onDraft(current=>({...current,department:event.target.value}))}/></label>
+      <label className="field-icon"><FieldIcon icon={Briefcase}/>Função<input value={draft.functionName} disabled={officialLocked}
+        onChange={event=>onDraft(current=>({...current,functionName:event.target.value}))}/></label>
+      {officialLocked&&<p className="muted">Nome, setor e função vêm da base atual de colaboradores.</p>}
+      <div className="row-actions occupant-actions">
+        <button className="primary" type="submit" disabled={busy||(creating&&!draft.name.trim()&&!draft.registration.trim())}>Salvar ocupante</button>
+        <button type="button" disabled={busy} onClick={onCancel}>Cancelar</button>
+      </div>
+    </form>
+  </article>;
+
+  if(!occupant)return <article className="list-row occupant-slot" aria-label={`Ocupante ${number}`}>
+    {head(false)}
+    {blocked?<p className="locker-empty"><Users size={16} aria-hidden="true"/>Aguardando cadastro do 1º ocupante.</p>
+      :<button type="button" className="add-occupant" disabled={busy} onClick={onAdd}>
+        <Plus size={15} aria-hidden="true"/>{number===1?'Cadastrar ocupante':'Adicionar 2º ocupante'}</button>}
+  </article>;
+
+  return <article className="list-row occupant-slot" aria-label={`Ocupante ${number}`}>
+    {head(true)}
+    <div className="occupant-copy"><strong>{occupant.name}</strong>
+      <small><span><Hash size={12} aria-hidden="true"/>{occupant.registration?`Matrícula ${occupant.registration}`:'Sem matrícula'}</span>
+        <span><Building2 size={12} aria-hidden="true"/>{occupant.department||'Setor não informado'}</span>
+        {occupant.functionName&&<span><Briefcase size={12} aria-hidden="true"/>{occupant.functionName}</span>}</small></div>
+    <div className="row-actions occupant-actions">
+      <button type="button" className="btn-action" disabled={busy} onClick={()=>onPrint(occupant)}>Imprimir Termo</button>
+      <button type="button" disabled={busy} aria-label={`Editar ${occupant.name}`} onClick={onEdit}><PencilLine size={14} aria-hidden="true"/>Editar</button>
+      <button type="button" disabled={busy} onClick={()=>onRelease(occupant)}>Registrar saída</button>
+    </div>
+  </article>;
 }

@@ -80,7 +80,7 @@
 .occupant-copy small span { display: inline-flex; align-items: center; gap: 5px; }
 .occupant-copy small svg { color: var(--brand-accent); opacity: .85; }
 .locker-card .row-actions { display: flex; flex-wrap: wrap; gap: 7px; }
-.occupant-actions button { min-height: 38px; padding: 7px 12px; font-size: .78rem; }
+.occupant-actions button:not(.primary) { min-height: 38px; padding: 7px 12px; font-size: .78rem; }
 .locker-empty {
   display: flex;
   align-items: center;
@@ -94,6 +94,56 @@
   font-size: .84rem;
 }
 .locker-empty svg { flex: none; color: var(--brand-accent); }
+
+/* ---------- Vagas de ocupante (1º e 2º ocupante) ---------- */
+.occupant-slots { display: grid; gap: 10px; }
+.locker-card .occupant-slot {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 11px;
+  width: 100%;
+  margin-bottom: 0;
+}
+.locker-card .occupant-slot-head { display: flex; align-items: center; gap: 9px; width: 100%; }
+.occupant-slot-head strong { font-size: .92rem; color: var(--text-primary); }
+.slot-index {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--brand-surface);
+  color: var(--brand-accent);
+  font-size: .76rem;
+  font-weight: 800;
+}
+.slot-state { margin-left: auto; font-weight: 750; }
+.slot-state--free { background: var(--surface-subtle); border: 1px solid var(--line); color: var(--muted); }
+.occupant-slot--editing { border-color: color-mix(in srgb, var(--brand) 42%, var(--line)); }
+.add-occupant {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 38%, var(--line));
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--brand);
+  font-size: .84rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease;
+}
+.add-occupant:hover:not(:disabled) { background: var(--brand-soft); border-color: var(--brand); }
+.add-occupant:disabled { opacity: .6; cursor: not-allowed; }
+.occupant-form { display: grid; gap: 11px; min-width: 0; }
+.occupant-form > .muted { margin: 0; font-size: .79rem; }
+.occupant-form .occupant-actions { align-items: center; }
 
 /* ---------- Toggle switch ---------- */
 .toggle-field { display: grid; gap: 6px; min-width: 0; }
@@ -166,6 +216,7 @@
   .locker-card { padding: 15px; }
   .locker-modal .locker-title h2 { font-size: 23px; }
   .locker-card .list-row { flex-direction: column; align-items: flex-start; }
+  .locker-card .occupant-slot { align-items: stretch; }
   .occupant-actions { width: 100%; }
   .occupant-actions button { flex: 1 1 auto; }
   .segmented-option { flex: 1 1 100%; }
