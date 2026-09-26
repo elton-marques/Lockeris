@@ -8,6 +8,8 @@ import { refreshPending } from './pending.js';
 
 type Locker = { id: string; version: number; capacity: number; is_double: boolean; condition: string; migration_status: string; modality: string; sector_occupant: string | null };
 type Allocation = { id: string; person_id: string; locker_id: string; version: number; ended_at: string | null };
+const restrictedSharingDepartments=new Set(['limpeza','manutencao','manutencao infraestrutura']);
+const normalizedDepartment=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLocaleLowerCase('pt-BR');
 const route = z.object({ branchId: id });
 const routeItem = z.object({ branchId: id, itemId: id });
 
@@ -22,7 +24,16 @@ async function checkDestination(client: Client, branchId: string, locker: Locker
   if (locker.condition !== 'disponivel' || locker.migration_status !== 'conferido') fail(409,'INDISPONIVEL','Armário indisponível para novas entradas');
   const active = await client.query<{ id: string }>('SELECT id FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[locker.id]);
   if (active.rows.length >= locker.capacity) fail(409,'CAPACIDADE','Limite de ocupantes atingido');
-  if (active.rows.length === 0 || locker.is_double) return;
+  if (active.rows.length === 0) return;
+  if (locker.is_double) {
+    const departments=await client.query<{department:string|null}>(`SELECT m.department FROM allocations a
+      JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=$2
+      WHERE a.locker_id=$1 AND a.ended_at IS NULL`,[locker.id,branchId]);
+    if (departments.rows.some(item=>item.department&&restrictedSharingDepartments.has(normalizedDepartment(item.department)))) {
+      fail(409,'OCUPACAO','Armário reservado para uso individual de Limpeza ou Manutenção');
+    }
+    return;
+  }
   const sharing = await client.query<{ id: string; expired: boolean }>(`SELECT s.id,(s.due_at AT TIME ZONE b.timezone)::date < (now() AT TIME ZONE b.timezone)::date expired
     FROM sharings s JOIN lockers l ON l.id=s.locker_id JOIN branches b ON b.id=l.branch_id
     WHERE s.locker_id=$1 AND s.ended_at IS NULL FOR UPDATE OF s`,[locker.id]);

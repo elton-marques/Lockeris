@@ -13,7 +13,8 @@ import {Pending} from './pages/Pending';
 import {History} from './pages/History';
 import {Admin} from './pages/Admin';
 
-export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string)=>void};
+export type NoticeAction={label:string;onClick:()=>void};
+export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
 type Branch={id:string;name:string;timezone:string};
 const tabs=[
   {key:'resumo',label:'Dashboard',icon:LayoutDashboard,group:'Operação'},
@@ -27,6 +28,7 @@ const tabs=[
 ] as const;
 const pendingLogoutKey='armarios-pending-logout';
 type Theme='light'|'dark';
+type AppDialog={kind:'confirm';message:string;value:string;resolve:(value:boolean)=>void}|{kind:'prompt';message:string;value:string;resolve:(value:string|null)=>void};
 const themePreferenceKey='armarios-theme';
 async function finishQueuedLogout(){if(localStorage.getItem(pendingLogoutKey)!=='1')return;try{await post('/auth/logout',{});localStorage.removeItem(pendingLogoutKey);}catch(error){if(error instanceof Error&&'status' in error){localStorage.removeItem(pendingLogoutKey);}else throw error;}}
 
@@ -35,7 +37,8 @@ export default function App(){
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
   const [page,setPage]=useState<string>('painel'),[copy,setCopy]=useState<OfflineCopy|null>(null),[offline,setOffline]=useState(false);
   const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
-  const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[tick,setTick]=useState(0);
+  const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>(),[tick,setTick]=useState(0);
+  const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [offlineUnavailable,setOfflineUnavailable]=useState(false);
   const refresh=()=>setTick(x=>x+1);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#151625':'#f6f7fa');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
@@ -75,27 +78,42 @@ export default function App(){
   if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
   if(user.mustChangePassword)return <Password theme={theme} onToggleTheme={toggleTheme} onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
-  const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:setMessage};
+  const showNotice=(nextMessage:string,action?:NoticeAction)=>{setMessage(nextMessage);setNoticeAction(action);};
+  const askConfirm=(dialogMessage:string)=>new Promise<boolean>(resolve=>setDialog({kind:'confirm',message:dialogMessage,value:'',resolve}));
+  const askPrompt=(dialogMessage:string)=>new Promise<string|null>(resolve=>setDialog({kind:'prompt',message:dialogMessage,value:'',resolve}));
+  const finishDialog=(value:boolean|string|null)=>{if(!dialog)return;if(dialog.kind==='confirm')dialog.resolve(value===true);else dialog.resolve(typeof value==='string'?value:null);setDialog(null);};
+  const updateDialogValue=(value:string)=>setDialog(current=>current?{...current,value}:current);
+  const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:showNotice,askConfirm,askPrompt};
   const visibleTabs=tabs.filter(({key})=>offline?['resumo','painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
   const current=tabs.find(({key})=>key===page);
-  function navigate(next:string){setPage(next);setMessage('');setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}}
+  function navigate(next:string){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}}
   function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
     {mobileMenu&&<button type="button" className="mobile-scrim" aria-label="Fechar menu" onClick={()=>setMobileMenu(false)}/>}
-    <aside className={`sidebar ${mobileMenu?'mobile-open':''}`}>
+    <aside className={`sidebar hide-on-print ${mobileMenu?'mobile-open':''}`}>
       <div className="brand"><span className="brand-icon"><Boxes size={22} strokeWidth={1.8} aria-hidden="true"/></span><div><strong>armários<span className="brand-dot">.</span></strong><small>Gestão operacional</small></div></div>
       <nav aria-label="Navegação principal">{(['Operação','Gestão'] as const).map(group=>visibleTabs.some(item=>item.group===group)&&<div className="nav-group-wrap" key={group}><span className="nav-group">{group}</span>{visibleTabs.filter(item=>item.group===group).map(item=>{const Icon=item.icon;return <button key={item.key} className={page===item.key?'nav-item active':'nav-item'} aria-current={page===item.key?'page':undefined} onClick={()=>navigate(item.key)}><Icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span></button>;})}</div>)}</nav>
       <span className="nav-hint">Deslize para ver mais opções</span>
       <div className="sidebar-footer"><span>{roleName[user.role]}</span><button onClick={logout}><LogOut size={17} aria-hidden="true"/> Sair</button></div>
     </aside>
     <div className="main-area">
-      <header className={`topbar ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
+      <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
         {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
       </div></header>
       {offline&&<div className="offline-banner" role="status"><strong>Dados locais para consulta.</strong> Atualizados em {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Válidos até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}
-      {message&&<div className="notice" role="status">{message}<button onClick={()=>setMessage('')} aria-label="Fechar aviso">×</button></div>}
+      {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
+        {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
+          <div className="app-dialog-heading"><span className="eyebrow">Atualização</span><button type="button" className="app-dialog-close" onClick={()=>{setMessage('');setNoticeAction(undefined);}} aria-label="Fechar aviso">×</button></div>
+          <h2 id="app-dialog-title">{message}</h2><div className="app-dialog-actions">{noticeAction&&<button type="button" className="primary btn-action" onClick={noticeAction.onClick}>{noticeAction.label}</button>}<button type="button" onClick={()=>{setMessage('');setNoticeAction(undefined);}}>Fechar</button></div>
+        </section>}
+        {dialog&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="question-dialog-title">
+          <div className="app-dialog-heading"><span className="eyebrow">Confirmação</span><button type="button" className="app-dialog-close" onClick={()=>finishDialog(dialog.kind==='confirm'?false:null)} aria-label="Fechar">×</button></div>
+          <h2 id="question-dialog-title">{dialog.message}</h2>{dialog.kind==='prompt'&&<input autoFocus value={dialog.value} onChange={event=>updateDialogValue(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')finishDialog(dialog.value);}}/>}
+          <div className="app-dialog-actions"><button type="button" className="primary" onClick={()=>finishDialog(dialog.kind==='confirm'?true:dialog.value)}>Confirmar</button><button type="button" onClick={()=>finishDialog(dialog.kind==='confirm'?false:null)}>Cancelar</button></div>
+        </section>}
+      </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
           page==='resumo'?<Overview {...props} onOpenLockers={openLockers}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}

@@ -12,7 +12,7 @@ type LockerRow={row:number;number:string;name:string;registration:string;sectorO
 type LockerPreview={importId:string;sourceRows:number;physicalCount:number;occupiedCount:number;sectorCount:number;uncertainCount:number;doubleCount:number;repeatedNameCount:number;rows:LockerRow[]};
 const normalized=(value:string)=>value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
 function column(headers:string[],...names:string[]){return headers.find(header=>names.some(name=>normalized(header)===normalized(name)))??'';}
-export function Imports({branchId,branchName,readonly,refresh,notice}:PageProps){
+export function Imports({branchId,branchName,readonly,refresh,notice,askConfirm}:PageProps){
   const [employeeFile,setEmployeeFile]=useState<File|null>(null),[sheets,setSheets]=useState<Sheet[]>([]),[sheet,setSheet]=useState('');
   const [headerRow,setHeaderRow]=useState(1),[mapping,setMapping]=useState({registration:'',name:'',department:'',functionName:''});
   const [encoding,setEncoding]=useState('utf8'),[delimiter,setDelimiter]=useState(''),[extractedOn,setExtractedOn]=useState(new Date().toISOString().slice(0,10));
@@ -43,7 +43,7 @@ export function Imports({branchId,branchName,readonly,refresh,notice}:PageProps)
   }
   async function confirm(){
     if(!preview)return;setBusy(true);
-    if(!window.confirm(`Atualizar a base ativa da filial ${branchName} com ${preview.counts.current} colaboradores? ${preview.counts.absent} pessoas sairão da base ativa. Ocupações existentes permanecerão registradas para conferência.`)){setBusy(false);return;}
+    if(!await askConfirm(`Atualizar a base ativa da filial ${branchName} com ${preview.counts.current} colaboradores? ${preview.counts.absent} pessoas sairão da base ativa. Ocupações existentes permanecerão registradas para conferência.`)){setBusy(false);return;}
     try{
       const resolutions=Object.fromEntries(preview.conflicts.filter(item=>resolved[item.registration]).map(item=>[item.registration,'converter_para_ti']));
       await post(`/branches/${branchId}/imports/${preview.importId}/confirm`,{operationId:op(),acknowledgeComplete:complete,sameDateCorrection:sameDate,resolutions});
@@ -61,7 +61,7 @@ export function Imports({branchId,branchName,readonly,refresh,notice}:PageProps)
   }
   async function confirmLockers(){
     if(!lockers)return;setBusy(true);
-    if(!window.confirm(`Importar ${lockers.physicalCount} armários físicos na filial ${branchName}? Esta carga inicial só pode ser feita uma vez por filial.`)){setBusy(false);return;}
+    if(!await askConfirm(`Importar ${lockers.physicalCount} armários físicos na filial ${branchName}? Esta carga inicial só pode ser feita uma vez por filial.`)){setBusy(false);return;}
     try{
       await post(`/branches/${branchId}/imports/migration/${lockers.importId}/confirm`,{operationId:op(),acknowledgeReviewed:reviewed});
       notice('Armários importados. Confira as pendências apontadas na prévia.');

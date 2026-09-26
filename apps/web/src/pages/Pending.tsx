@@ -184,7 +184,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
           <div><small>Matrícula</small><strong>{text(selected.registration??selected.occupants?.[0]?.registration)}</strong></div>
           <div><small>Setor</small><strong>{text(selected.department??selected.occupants?.[0]?.department??selected.sector_occupant)}</strong></div>
           <div><small>Função</small><strong>{text(selected.function_name??selected.occupants?.[0]?.functionName)}</strong></div>
-          {selected.is_double&&<div><small>Tipo de armário</small><strong>Duplo</strong></div>}
+          {selected.is_double&&<div><small>Tipo de armário</small><strong><span className="double-badge">Duplo</span></strong></div>}
           {selected.locker_number&&<><div><small>Situação</small><strong>{selected.condition==='disponivel'?'Disponível':selected.condition==='manutencao'?'Manutenção':selected.condition==='bloqueado'?'Bloqueado':'Não informada'}</strong></div>
             <div><small>Cópia da chave</small><strong>{selected.key_copy_available===null?'Não informada':selected.key_copy_available?'Sim':'Não'}</strong></div></>}
         </div>

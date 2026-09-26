@@ -10,7 +10,7 @@ type Locker={id:string;number:string;version:number;modality:'fixo'|'rotativo';c
 type Lookup={id:string;person_id:string;registration:string;name:string;department:string|null;function_name:string|null;locker_id:string|null};
 const empty={name:'',registration:'',category:'promotor_fixo',company:'',department:'',functionName:'',needsFixed:true};
 const labels:Record<string,string>={colaborador:'Colaborador',promotor_fixo:'Promotor fixo',roteirista:'Roteirista',terceirizado:'Terceirizado'};
-export function People({branchId,branchName,readonly,copy,refresh,notice,admin=false}:PageProps){
+export function People({branchId,branchName,readonly,copy,refresh,notice,askConfirm,askPrompt,admin=false}:PageProps){
   const [people,setPeople]=useState<Person[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[q,setQ]=useState(''),[category,setCategory]=useState('');
   const [form,setForm]=useState(empty),[editing,setEditing]=useState<Person|null>(null),[busy,setBusy]=useState(false);
   const [selected,setSelected]=useState<string[]>([]),[registration,setRegistration]=useState(''),[found,setFound]=useState<Lookup|null>(null),[lockerId,setLockerId]=useState('');
@@ -35,10 +35,10 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,admin=f
     setForm(empty);setEditing(null);await afterMutation('Cadastro salvo.');
   }catch(error){notice(error instanceof Error?error.message:'Falha ao salvar');}finally{setBusy(false);}}
   async function status(person:Person){const next=person.status==='ativo'?'encerrado':'ativo';
-    if(!window.confirm(`${next==='encerrado'?'Encerrar atuação':'Reativar'} de ${person.name}? Ocupação atual permanece até liberação explícita.`))return;
+    if(!await askConfirm(`${next==='encerrado'?'Encerrar atuação':'Reativar'} de ${person.name}? Ocupação atual permanece até liberação explícita.`))return;
     try{await post(`/branches/${branchId}/people/${person.id}/status`,{operationId:op(),expectedVersion:person.version,status:next});
       await afterMutation('Situação atualizada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
-  async function exception(person:Person){const reason=window.prompt(`Por que ${person.name} não precisa de armário?`);if(!reason)return;
+  async function exception(person:Person){const reason=await askPrompt(`Por que ${person.name} não precisa de armário?`);if(!reason)return;
     try{await post(`/branches/${branchId}/people/${person.id}/exception`,{operationId:op(),expectedVersion:person.version,reason});
       await afterMutation('Dispensa de armário registrada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
   async function lookup(){
@@ -49,7 +49,7 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,admin=f
   async function assign(){
     const cabinet=available.find(item=>item.id===lockerId),source=lockers.find(item=>item.id===found?.locker_id);
     if(!found||!cabinet||!keyCopy||source?.id===cabinet.id||source&&!transferReason.trim())return;setBusy(true);
-    if(!window.confirm(`${source?`Transferir ${found.name} do armário ${source.number} para o ${cabinet.number}`:`Atribuir o armário ${cabinet.number} a ${found.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`)){setBusy(false);return;}
+    if(!await askConfirm(`${source?`Transferir ${found.name} do armário ${source.number} para o ${cabinet.number}`:`Atribuir o armário ${cabinet.number} a ${found.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`)){setBusy(false);return;}
     try{
       if(source){const allocation=source.occupants.find(item=>item.personId===found.person_id);if(!allocation)throw new Error('Ocupação atual não encontrada; recarregue a página');
         await post(`/branches/${branchId}/allocations/transfer`,{operationId:op(),allocationId:allocation.allocationId,expectedAllocationVersion:allocation.allocationVersion,
@@ -66,7 +66,7 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,admin=f
   async function archive(all=false){
     if(!all&&!selected.length)return;
     const count=all?'todos os colaboradores ativos':`${selected.length} colaborador(es)`;
-    if(!window.confirm(`Remover ${count} da base ativa? Armários ainda ocupados ficarão pendentes de conferência.`))return;
+    if(!await askConfirm(`Remover ${count} da base ativa? Armários ainda ocupados ficarão pendentes de conferência.`))return;
     setBusy(true);
     try{const result=await post<{removed:number}>(`/branches/${branchId}/people/archive`,{operationId:op(),all,membershipIds:all?[]:selected});
       setSelected([]);setFound(null);await afterMutation(`${result.removed} colaborador(es) removido(s) da base ativa.`);

@@ -1,3 +1,6 @@
+import {Hash} from 'lucide-react';
+import {FieldIcon} from './components/LockerControls';
+
 export type RegistrationOption={registration:string;name:string;department:string|null;functionName:string|null;lockerNumber:string|null};
 
 export const registrationKey=(value:string)=>/^[\d\s.\-/]+$/.test(value.trim())?value.trim().replace(/[\s.\-/]/g,''):value.trim().toLocaleUpperCase('pt-BR');
@@ -8,7 +11,7 @@ export function RegistrationInput({id,value,options,onChange}:{id:string;value:s
   onChange:(value:string,match:RegistrationOption|undefined)=>void}){
   const match=findRegistration(options,value);
   return <>
-    <label>Matrícula<input list={`${id}-options`} value={value} onChange={event=>{
+    <label className="field-icon"><FieldIcon icon={Hash}/>Matrícula<input list={`${id}-options`} value={value} onChange={event=>{
       const next=event.target.value;onChange(next,findRegistration(options,next));
     }} placeholder="Digite ou escolha uma matrícula" autoComplete="off"/></label>
     <datalist id={`${id}-options`}>{options.map(item=><option key={item.registration} value={item.registration}

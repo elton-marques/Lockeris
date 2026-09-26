@@ -2,6 +2,18 @@
 
 Aplicação interna para acompanhar os armários e seus ocupantes por filial. A interface e a API estão em português brasileiro. A instalação usa PostgreSQL, Fastify e React.
 
+## Arquitetura do monorepo
+
+O projeto é um monorepo com workspaces npm (`apps/*` e `packages/*`):
+
+| Pasta | Pacote | Descrição |
+| --- | --- | --- |
+| `apps/api` | `@armarios/api` | API Fastify: autenticação por cookie, operações com idempotência (`operationId`), importação de planilhas, pendências, OpenAPI em `/api/docs` e as migrations SQL em `apps/api/migrations`. |
+| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
+| `packages/contracts` | `@armarios/contracts` | Contratos e utilitários compartilhados entre API e web (esquemas, identificadores e formas de dados). |
+
+A build de produção compila os três pacotes na ordem contracts → api → web (`npm run build`). A checagem de tipos roda com `tsc -b` na raiz e cobre todos os pacotes.
+
 ## Como os dados entram
 
 1. **Colaboradores:** o administrador envia uma planilha XLSX com **matrícula, nome, setor e cargo ou função**. Cada matrícula identifica uma única pessoa. A prévia mostra inclusões, alterações e ausências antes da confirmação. A nova planilha passa a ser a lista de colaboradores ativos. Matrículas repetidas ou linhas incompletas são recusadas.
@@ -13,6 +25,53 @@ A carga de armários acontece uma vez por filial; depois, armários individuais 
 Quando uma matrícula sai da nova planilha, seu cadastro deixa de aparecer na base ativa. Se ainda houver uma ocupação, o armário continua ocupado e surge uma pendência para conferir a devolução. O histórico não é apagado. Na tela Pessoas, o administrador também pode selecionar colaboradores específicos ou limpar toda a base ativa. Armários de setores contam como ocupados e não aceitam atribuição a pessoas enquanto o setor estiver registrado.
 
 Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, preservando zeros à esquerda. Se a matrícula da planilha de armários existir na base de colaboradores, o sistema usa automaticamente o nome, setor e função oficiais, mesmo que o nome na carga inicial esteja vazio ou diferente. A tela Pendências separa armários e pessoas em abas; armários ficam em ordem numérica e pessoas em ordem alfabética. Cada registro abre uma conferência com os dados atuais e as linhas originais da planilha, quando houver. Em **Resolvidas**, cada registro mostra o motivo original e o que encerrou a pendência; uma pessoa que recebeu armário continua na aba Pessoas do histórico.
+
+## Tela de armários e drawer de detalhes
+
+A tela **Armários** mostra os registros em cards ou tabela, com busca por número, nome ou matrícula, filtros de situação, setor, cópia da chave e "somente duplos", além dos atalhos rápidos:
+
+- **Com vaga** — apenas armários com pelo menos uma vaga livre;
+- **Livres** — sem ocupação e com vaga disponível;
+- **Pendentes** — com pendência aberta ou conferência de migração inconclusiva;
+- **Sem cópia** — sem cópia da chave registrada.
+
+Os filtros ativos aparecem como etiquetas removíveis e podem ser limpos de uma vez com **Limpar filtros**.
+
+Clicar em um armário abre o **drawer de detalhes e edição** (`apps/web/src/pages/Dashboard.tsx`), organizado assim:
+
+1. **Cabeçalho fixo** — o número do armário é permanente e não é editável: aparece como título `Armário Nº X` com o *badge* da filial, o indicador de duplo e a linha `Ocupado / Sem ocupante · situação`. O cabeçalho fica fixo no topo do drawer durante a rolagem.
+2. **Cartão Status do armário** — estado atual (Livre, Ocupado, Pendente, Indisponível), destaque das vagas disponíveis (`0 vagas` / `1 vaga disponível`), situação (Disponível, Manutenção, Bloqueado), capacidade operacional, posições ocupadas, cópia da chave e avisos de conferência ou de setor ocupante.
+3. **Cartão Ocupantes** — cada pessoa com nome, matrícula, setor e função, mais os botões secundários **Imprimir Termo** e **Registrar saída**.
+4. **Cartão Edição e configurações** (administração) — controles refinados:
+   - **Toggle switch** para *Armário duplo* e para *Existe cópia da chave?*;
+   - **Botões segmentados** para a situação: `Disponível | Manutenção | Bloqueado`;
+   - micro-ícones nos campos de matrícula, nome, setor e função;
+   - cadastro ou correção de ocupantes com matrícula oficial da base ativa.
+5. **Cartão Cadastrar pessoa neste armário** — pesquisa por nome ou matrícula, atribuição, transferência com motivo e compartilhamento com previsão de encerramento.
+
+O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura total no celular), mantém foco preso no diálogo (Esc fecha) e bloqueia a rolagem da página enquanto está aberto.
+
+## Recursos do front-end
+
+- **PWA e modo offline:** o `service worker` (`apps/web/public/sw.js`) faz o cache do *shell* e dos assets; a cópia de consulta fica no **IndexedDB** (`armarios-offline`) por até 24 horas e autoriza um navegador na tela Administração. Sem conexão, o sistema entra em modo somente consulta.
+- **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
+- **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão.
+
+## Migrations do banco
+
+As migrations ficam em `apps/api/migrations/*.sql` e são aplicadas por `npm run db:migrate`. O executor:
+
+- trava a execução com `pg_advisory_lock` para não rodar em paralelo;
+- cria a tabela `schema_migrations` e grava cada arquivo aplicado;
+- executa cada SQL em uma transação e é **idempotente** — já aplicados são ignorados;
+- roda automaticamente quando o container `api` sobe (`docker compose up -d --build`).
+
+Para aplicar manualmente em um banco específico:
+
+```powershell
+$env:DATABASE_URL = 'postgres://armarios:<senha-configurada>@localhost:5432/armarios'
+npm run db:migrate
+```
 
 ## Iniciar com Docker Compose
 

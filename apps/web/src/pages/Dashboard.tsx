@@ -1,30 +1,34 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowRight,CircleAlert,Grid2X2,KeyRound,List,SlidersHorizontal,X} from 'lucide-react';
+import {ArrowLeftRight,ArrowRight,Briefcase,Building2,CircleAlert,Check,Grid2X2,Gauge,Hash,KeyRound,List,Lock,MapPin,MessageSquare,PencilLine,Search,SlidersHorizontal,User,UserPlus,Users,Wrench,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {conditionName,DataState,EmptyState,Skeleton} from '../ui';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
-import {availablePositions,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,type LockerPreset} from '../locker-insights';
+import {TermoResponsabilidade} from '../components/TermoResponsabilidade';
+import {FieldIcon,SegmentedControl,ToggleSwitch} from '../components/LockerControls';
+import {availablePositions,effectiveCapacity,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,showsLockerPositions,type LockerPreset} from '../locker-insights';
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
 type Person={person_id:string;name:string;registration:string|null;department:string|null;status:string;locker_id:string|null;number:string|null};
 type Pending={pending_locker_id:string|null;state:string;kind:string};
+type PrintData={nome:string;matricula:string;setor:string;numeroArmario:string;tipoUsuario:'colaborador';possuiCopia:boolean;filial:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
 const stateLabels:Record<LockerState,string>={livre:'Livre',ocupado:'Ocupado',pendente:'Pendente',indisponivel:'Indisponível'};
 const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=lockerSectors;
 
-export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admin=false,preset}:PageProps&{preset?:LockerPreset}){
+export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
   const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(false);
   const [view,setView]=useState<'cards'|'table'>('cards');
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
   const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
+  const [printData,setPrintData]=useState<PrintData|null>(null);
   const [edit,setEdit]=useState({isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim',name:'',registration:'',department:'',functionName:''});
   const [editOccupantId,setEditOccupantId]=useState(''),[createOccupant,setCreateOccupant]=useState(false);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
@@ -100,7 +104,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
   const source=lockers.find(item=>item.occupants.some(occupant=>occupant.personId===personId));
   const sourceAllocation=source?.occupants.find(occupant=>occupant.personId===personId);
   const needsSharing=!!locker&&locker.occupants.length>0&&!locker.is_double;
-  const canEnter=!!locker&&!readonly&&!locker.sector_occupant&&locker.condition==='disponivel'&&locker.migration_status==='conferido'&&locker.occupants.length<locker.capacity;
+  const canEnter=!!locker&&!readonly&&availablePositions(locker)>0;
 
   function openLocker(item:Locker){
     setPersonQuery('');setPersonId('');setNote('');setTransferReason('');setSharingReason('');setSharingDue('');
@@ -119,15 +123,35 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
   function toggleCreateOccupant(item:Locker,checked:boolean){setCreateOccupant(checked);setEditOccupantId(checked?'':item.occupants[0]?.allocationId??'');
     if(checked)setEdit(current=>({...current,sectorOccupant:'',name:'',registration:'',department:'',functionName:''}));
     else fillEdit(item,item.occupants[0]);}
-  async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string),close=false){
+  async function act<T>(callback:()=>Promise<T>,message:string|((result:T)=>string),close=false,onSuccess?:()=>void){
     setBusy(true);
     try{const result=await callback();try{await load();refresh();}catch{notice('A ação foi concluída, mas a lista não foi atualizada. Tente recarregar antes de agir novamente.');return;}
-      notice(typeof message==='string'?message:message(result));if(close)setSelected(null);}
+      notice(typeof message==='string'?message:message(result));onSuccess?.();if(close)setSelected(null);}
     catch(error){notice(error instanceof Error?error.message:'Falha na operação');}
     finally{setBusy(false);}
   }
   function saveKey(){if(!locker||!keyCopy)return;act(()=>post(`/branches/${branchId}/lockers/${locker.id}/key-copy`,
     {operationId:op(),expectedVersion:locker.version,available:keyCopy==='sim'}),'Situação da cópia da chave atualizada.');}
+  function handlePrint(){
+    const root=document.documentElement,body=document.body;
+    const hadRootDark=root.classList.contains('dark');
+    const hadBodyDark=body.classList.contains('dark');
+    const themeWasDark=root.getAttribute('data-theme')==='dark';
+    if(hadRootDark)root.classList.remove('dark');
+    if(hadBodyDark)body.classList.remove('dark');
+    if(themeWasDark)root.removeAttribute('data-theme');
+    window.setTimeout(()=>{
+      window.print();
+      if(hadRootDark)root.classList.add('dark');
+      if(hadBodyDark)body.classList.add('dark');
+      if(themeWasDark)root.setAttribute('data-theme','dark');
+    },150);
+  }
+  function printOccupantTerm(item:Locker,occupant:Occupant){
+    setPrintData({nome:occupant.name,matricula:occupant.registration??'',setor:occupant.department??'',numeroArmario:item.number,
+      tipoUsuario:'colaborador',possuiCopia:item.key_copy_available===true,filial:branchName});
+    handlePrint();
+  }
   function saveLocker(event:React.FormEvent){event.preventDefault();if(!locker||!admin)return;
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/lockers/${locker.id}/revise`,{operationId:op(),expectedLockerVersion:locker.version,
       isDouble:edit.isDouble,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
@@ -136,25 +160,27 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
         expectedMembershipVersion:editOccupant?.membershipVersion,name:edit.name.trim(),registration:edit.registration.trim()||null,
         department:edit.department.trim()||null,functionName:edit.functionName.trim()||null}:null}),
     result=>`Dados do armário atualizados.${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`,true);}
-  function assign(event:React.FormEvent){
+  async function assign(event:React.FormEvent){
     event.preventDefault();if(!locker||!chosen||!keyCopy||!canEnter||source?.id===locker.id)return;
-    if(!window.confirm(`${source?`Transferir ${chosen.name} do armário ${source.number} para o ${locker.number}`:`Atribuir o armário ${locker.number} a ${chosen.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`))return;
+    if(!await askConfirm(`${source?`Transferir ${chosen.name} do armário ${source.number} para o ${locker.number}`:`Atribuir o armário ${locker.number} a ${chosen.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`))return;
     const keyCopyAvailable=keyCopy==='sim';
+    const assignmentPrintData:PrintData={nome:chosen.name,matricula:chosen.registration??'',setor:chosen.department??'',numeroArmario:locker.number,tipoUsuario:'colaborador',possuiCopia:keyCopyAvailable,filial:branchName};
+    const offerPrint=()=>{setPrintData(assignmentPrintData);notice(`${source?`${chosen.name} transferido para o armário ${locker.number}`:`${chosen.name} cadastrado no armário ${locker.number}`}.`,{label:'Imprimir Termo',onClick:handlePrint});};
     if(source&&sourceAllocation){
       if(transferReason.trim().length<3)return;
       act(()=>post(`/branches/${branchId}/allocations/transfer`,{operationId:op(),allocationId:sourceAllocation.allocationId,
         expectedAllocationVersion:sourceAllocation.allocationVersion,destinationLockerId:locker.id,sourceVersion:source.version,destinationVersion:locker.version,
         reason:transferReason.trim(),note:note.trim()||null,keyCopyAvailable,sharingReason:sharingReason.trim()||null,
-        sharingDueAt:sharingDue?new Date(`${sharingDue}T12:00:00`).toISOString():null}),`${chosen.name} transferido para o armário ${locker.number}.`,true);
+        sharingDueAt:sharingDue?new Date(`${sharingDue}T12:00:00`).toISOString():null}),`${chosen.name} transferido para o armário ${locker.number}.`,true,offerPrint);
       return;
     }
     act(()=>post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:chosen.person_id,lockerId:locker.id,
       expectedVersion:locker.version,modality:locker.modality,seasonal:false,note:note.trim()||null,keyCopyAvailable,
       sharingReason:sharingReason.trim()||null,sharingDueAt:sharingDue?new Date(`${sharingDue}T12:00:00`).toISOString():null}),
-    `${chosen.name} cadastrado no armário ${locker.number}.`,true);
+    `${chosen.name} cadastrado no armário ${locker.number}.`,true,offerPrint);
   }
-  function release(occupant:Occupant){
-    if(!locker||!window.confirm(`Confirmar saída de ${occupant.name} do armário ${locker.number}?`))return;
+  async function release(occupant:Occupant){
+    if(!locker||!await askConfirm(`Confirmar saída de ${occupant.name} do armário ${locker.number}?`))return;
     act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:occupant.allocationId,
       expectedVersion:occupant.allocationVersion}),'Saída registrada.');
   }
@@ -175,6 +201,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
   }
 
   return <>
+    <div className="hide-on-print">
     <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
     {loading&&!loadError&&<DashboardSkeleton/>}
     {!loading&&!loadError&&<>
@@ -199,65 +226,97 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
       {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'} action={activeFilters.length>0?<button type="button" onClick={clearFilters}>Limpar filtros</button>:undefined}/>:view==='cards'?<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
         return <button key={item.id} className={`locker-tile ${itemState==='pendente'?'has-pending':itemState==='ocupado'?'occupied':itemState==='livre'?'free':'unavailable'}`}
           onClick={()=>openLocker(item)} aria-haspopup="dialog" aria-label={`Abrir detalhes do armário ${item.number}`}>
-          <span className="tile-top"><strong>№ {item.number}</strong><span className="badge">{stateLabels[itemState]}</span></span>
+          <span className="tile-top"><strong>№ {item.number}</strong><span className="tile-badges">{item.is_double&&<span className="double-badge">Duplo</span>}<span className="badge">{stateLabels[itemState]}</span></span></span>
           <span className="tile-meta">{item.is_double?'Duplo · ':''}{sectors(item).join(', ')||'Sem setor'}</span>
           <span className="tile-people">{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):item.destination||'Sem ocupante'}</span>
-          <span className="tile-footer">{occupiedPositions(item)}/{item.capacity} {item.capacity===1?'posição ocupada':'posições ocupadas'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
+          <span className="tile-footer">{showsLockerPositions(item)?`${occupiedPositions(item)}/${effectiveCapacity(item)} ${effectiveCapacity(item)===1?'posição ocupada':'posições ocupadas'}`:occupiedPositions(item)>0?'Ocupado':'Livre'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
           {item.key_copy_available===false&&<span className="tile-key"><KeyRound size={13} aria-hidden="true"/> Sem cópia da chave</span>}
           {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}
-        </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong></td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{occupiedPositions(item)} de {item.capacity}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
+        </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong>{item.is_double&&<span className="double-badge table-badge">Duplo</span>}</td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{showsLockerPositions(item)?`${occupiedPositions(item)} de ${effectiveCapacity(item)}`:occupiedPositions(item)>0?'Ocupado':'Livre'}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
       <section className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
-        <div className="section-head"><div><h2 id="locker-dialog-title">Armário {locker.number}{locker.is_double?' · Duplo':''}</h2>
-          <p>{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {conditionName[locker.condition]??'Situação não informada'} · {branchName}</p></div>
+        <div className="section-head"><div className="locker-title"><span className="eyebrow">Detalhes do armário</span>
+          <h2 id="locker-dialog-title">Armário Nº {locker.number}</h2>
+          <div className="locker-title-badges"><span className="badge locker-branch-badge"><MapPin size={13} aria-hidden="true"/>{branchName}</span>
+            {locker.is_double&&<span className="double-badge">Duplo</span>}</div>
+          <p className="locker-title-sub">{locker.occupants.length||locker.sector_occupant?'Ocupado':'Sem ocupante'} · {conditionName[locker.condition]??'Situação não informada'}</p></div>
             <div className="row-actions"><button ref={closeRef} type="button" onClick={()=>setSelected(null)}>Fechar</button></div></div>
-        <div className="locker-detail-summary"><div className="detail-availability"><small>Vagas disponíveis</small><strong>{availablePositions(locker)}</strong><span>{availablePositions(locker)===0?'Nenhuma posição liberada para nova ocupação.':'Em armário disponível e conferido.'}</span></div><div><small>Capacidade física</small><strong>{locker.capacity} {locker.capacity===1?'posição':'posições'}</strong></div><div><small>Posições ocupadas</small><strong>{occupiedPositions(locker)}</strong></div><div><small>Cópia da chave</small><strong>{locker.key_copy_available===null?'Não informada':locker.key_copy_available?'Sim':'Não'}</strong></div></div>
-        {locker.migration_status==='inconclusivo'&&<p className="warning">Ocupação pendente de conferência. Novas entradas estão bloqueadas.</p>}
-        {locker.sector_occupant&&<p><strong>Setor ocupante:</strong> {locker.sector_occupant}</p>}
-        {locker.occupants.length>0&&<div className="list"><h3>Ocupantes</h3>{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>
-          <div><strong>{occupant.name}</strong><small>{occupant.registration?`Matrícula ${occupant.registration}`:'Sem matrícula'}{occupant.department?` · ${occupant.department}`:''}</small></div>
-          {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Registrar saída</button>}</div>)}</div>}
-        {!admin&&<div className="locker-key"><label>Cópia da chave<select value={keyCopy} onChange={event=>setKeyCopy(event.target.value)} disabled={readonly} aria-required="true">
-          <option value="sim">Sim</option><option value="nao">Não</option></select></label>
-          {!readonly&&<button type="button" disabled={busy||!keyCopy||keyCopy===(locker.key_copy_available===false?'nao':'sim')} onClick={saveKey}>Salvar situação da chave</button>}</div>}
-        {admin&&!readonly&&<form className="pending-editor" onSubmit={saveLocker}><h3>Editar dados do armário</h3>
-          <p>Se a matrícula constar na base atual, o cadastro oficial será usado para o ocupante.</p>
-          <div className="form-grid"><div><small>Número do armário (fixo)</small><strong className="fixed-locker-number">{locker.number}</strong></div>
-            <label className="check"><input type="checkbox" checked={edit.isDouble} onChange={event=>{
-              if(!event.target.checked&&createOccupant&&locker.occupants.length)toggleCreateOccupant(locker,false);
-              setEdit(current=>({...current,isDouble:event.target.checked}));
-            }}/>Armário duplo</label>
-            <label>Situação<select value={edit.condition} onChange={event=>setEdit({...edit,condition:event.target.value})}>
-              <option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="bloqueado">Bloqueado</option></select></label>
-            <label>Existe cópia da chave?<select value={edit.keyCopy} onChange={event=>setEdit({...edit,keyCopy:event.target.value})}>
-              <option value="sim">Sim</option><option value="nao">Não</option></select></label>
+        <section className="locker-card locker-card--status" aria-labelledby="locker-status-title">
+          <div className="locker-card-head"><h3 id="locker-status-title"><span className="card-icon"><Gauge size={16} aria-hidden="true"/></span>Status do armário</h3>
+            <span className={`badge state-${state(locker)}`}>{stateLabels[state(locker)]}</span></div>
+          <div className="locker-detail-summary">
+            <div className="detail-availability"><small>Vagas disponíveis</small><strong>{availablePositions(locker)===0?'0 vagas':`${availablePositions(locker)} ${availablePositions(locker)===1?'vaga':'vagas'}`}</strong>
+              <span>{availablePositions(locker)===0?'Nenhuma vaga liberada para nova ocupação.':`${availablePositions(locker)} ${availablePositions(locker)===1?'vaga disponível':'vagas disponíveis'} para nova ocupação.`}</span></div>
+            <div><small>Situação</small><strong>{conditionName[locker.condition]??'Não informada'}</strong></div>
+            {showsLockerPositions(locker)&&<><div><small>Capacidade operacional</small><strong>{effectiveCapacity(locker)} {effectiveCapacity(locker)===1?'posição':'posições'}</strong></div>
+              <div><small>Posições ocupadas</small><strong>{occupiedPositions(locker)}</strong></div></>}
+            <div><small>Cópia da chave</small><strong>{locker.key_copy_available===null?'Não informada':locker.key_copy_available?'Sim':'Não'}</strong></div>
+          </div>
+          {locker.migration_status==='inconclusivo'&&<p className="warning locker-warning"><CircleAlert size={15} aria-hidden="true"/><span>Ocupação pendente de conferência. Novas entradas estão bloqueadas.</span></p>}
+          {locker.sector_occupant&&<p className="locker-sector-note"><Building2 size={15} aria-hidden="true"/><span><strong>Setor ocupante:</strong> {locker.sector_occupant}</span></p>}
+        </section>
+        <section className="locker-card" aria-labelledby="locker-occupants-title">
+          <div className="locker-card-head"><h3 id="locker-occupants-title"><span className="card-icon"><Users size={16} aria-hidden="true"/></span>Ocupantes</h3>
+            {locker.occupants.length>0&&<span className="badge">{locker.occupants.length} {locker.occupants.length===1?'pessoa':'pessoas'}</span>}</div>
+          {locker.occupants.length>0?<div className="list">{locker.occupants.map(occupant=><div className="list-row" key={occupant.allocationId}>
+            <div className="occupant-copy"><strong>{occupant.name}</strong>
+              <small><span><Hash size={12} aria-hidden="true"/>{occupant.registration?`Matrícula ${occupant.registration}`:'Sem matrícula'}</span>
+                <span><Building2 size={12} aria-hidden="true"/>{occupant.department||'Setor não informado'}</span>
+                {occupant.functionName&&<span><Briefcase size={12} aria-hidden="true"/>{occupant.functionName}</span>}</small></div>
+            <div className="row-actions occupant-actions"><button type="button" className="btn-action" onClick={()=>printOccupantTerm(locker,occupant)}>Imprimir Termo</button>
+              {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Registrar saída</button>}</div></div>)}</div>
+            :<p className="locker-empty"><Users size={16} aria-hidden="true"/>{locker.sector_occupant?'Ocupação por setor, sem pessoa identificada.':'Nenhuma pessoa ocupando este armário no momento.'}</p>}
+        </section>
+        {!admin&&<section className="locker-card" aria-labelledby="locker-key-title">
+          <div className="locker-card-head"><h3 id="locker-key-title"><span className="card-icon"><KeyRound size={16} aria-hidden="true"/></span>Configurações da chave</h3></div>
+          <div className="toggle-row">
+            <ToggleSwitch label="Existe cópia da chave?" hint="Informe se existe uma cópia física disponível para este armário."
+              checked={keyCopy==='sim'} disabled={readonly} onChange={checked=>setKeyCopy(checked?'sim':'nao')}/>
+            {!readonly&&<button type="button" disabled={busy||!keyCopy||keyCopy===(locker.key_copy_available===false?'nao':'sim')} onClick={saveKey}>Salvar situação da chave</button>}
+          </div>
+        </section>}
+        {admin&&!readonly&&<form className="locker-card locker-editor" onSubmit={saveLocker} aria-labelledby="locker-editor-title">
+          <div className="locker-card-head"><h3 id="locker-editor-title"><span className="card-icon"><PencilLine size={16} aria-hidden="true"/></span>Edição e configurações</h3></div>
+          <p className="locker-card-note">O número do armário é fixo. Se a matrícula constar na base atual, o cadastro oficial será usado para o ocupante.</p>
+          <div className="form-grid"><div className="control-cell">
+              <ToggleSwitch label="Armário duplo" hint="Dois compartimentos com duas posições." checked={edit.isDouble} disabled={busy}
+                onChange={checked=>{if(!checked&&createOccupant&&locker.occupants.length)toggleCreateOccupant(locker,false);
+                  setEdit(current=>({...current,isDouble:checked}));}}/></div>
+            <div className="control-cell">
+              <ToggleSwitch label="Existe cópia da chave?" hint="Indique se há cópia disponível para este armário." checked={edit.keyCopy==='sim'} disabled={busy}
+                onChange={checked=>setEdit(current=>({...current,keyCopy:checked?'sim':'nao'}))}/></div>
+            <div className="control-cell control-span">
+              <SegmentedControl label="Situação" value={edit.condition} disabled={busy}
+                options={[{value:'disponivel',label:'Disponível',icon:Check},{value:'manutencao',label:'Manutenção',icon:Wrench},{value:'bloqueado',label:'Bloqueado',icon:Lock}]}
+                onChange={value=>setEdit(current=>({...current,condition:value}))}/></div>
             {locker.occupants.length>1&&<label>Ocupante a corrigir<select value={editOccupantId} onChange={event=>chooseEditOccupant(locker,event.target.value)}>
               {locker.occupants.map(item=><option key={item.allocationId} value={item.allocationId}>{item.name} · {item.registration??'Sem matrícula'}</option>)}</select></label>}
-            {(locker.occupants.length===0||edit.isDouble&&locker.occupants.length<2)&&<label className="check"><input type="checkbox" checked={createOccupant} onChange={event=>toggleCreateOccupant(locker,event.target.checked)}/>
+            {(locker.occupants.length===0||edit.isDouble&&locker.occupants.length<2)&&<label className="check control-span"><input type="checkbox" checked={createOccupant} onChange={event=>toggleCreateOccupant(locker,event.target.checked)}/>
               {locker.occupants.length?'Adicionar segundo ocupante':'Cadastrar ocupante'}</label>}
             {editOccupant||createOccupant?<>
               <RegistrationInput id="dashboard-occupant-registration" value={edit.registration} options={registrations} onChange={changeRegistration}/>
-              <label>Nome<input value={edit.name} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,name:event.target.value})}/></label>
-              <label>Setor<input value={edit.department} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,department:event.target.value})}/></label>
-              <label>Função<input value={edit.functionName} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,functionName:event.target.value})}/></label>
-            </>:<label>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>}
+              <label className="field-icon"><FieldIcon icon={User}/>Nome<input value={edit.name} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,name:event.target.value})}/></label>
+              <label className="field-icon"><FieldIcon icon={Building2}/>Setor<input value={edit.department} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,department:event.target.value})}/></label>
+              <label className="field-icon"><FieldIcon icon={Briefcase}/>Função<input value={edit.functionName} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,functionName:event.target.value})}/></label>
+            </>:<label className="field-icon control-span"><FieldIcon icon={Building2}/>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>}
           </div>
           {officialFieldsLocked&&<p className="muted">Nome, setor e função vêm da base atual de colaboradores.</p>}
           <button className="primary" disabled={busy||(createOccupant&&!edit.name.trim()&&!edit.registration.trim())}>Salvar dados do armário</button>
         </form>}
-        {canEnter&&<form className="locker-entry" onSubmit={assign}><h3>Cadastrar pessoa neste armário</h3>
-          {admin&&<label>Cópia da chave ao atribuir<select value={keyCopy} onChange={event=>setKeyCopy(event.target.value)}>
-            <option value="sim">Sim</option><option value="nao">Não</option></select></label>}
-          <label>Pesquisar pessoa por nome ou matrícula<input value={personQuery} onChange={event=>{setPersonQuery(event.target.value);setPersonId('');}} placeholder="Digite nome ou matrícula"/></label>
+        {canEnter&&<form className="locker-card locker-entry" onSubmit={assign} aria-labelledby="locker-entry-title">
+          <div className="locker-card-head"><h3 id="locker-entry-title"><span className="card-icon"><UserPlus size={16} aria-hidden="true"/></span>Cadastrar pessoa neste armário</h3></div>
+          {admin&&<div className="control-cell"><ToggleSwitch label="Cópia da chave ao atribuir" hint="Situação da cópia registrada junto com a ocupação."
+            checked={keyCopy==='sim'} onChange={checked=>setKeyCopy(checked?'sim':'nao')}/></div>}
+          <label className="field-icon"><FieldIcon icon={Search}/>Pesquisar pessoa por nome ou matrícula<input value={personQuery} onChange={event=>{setPersonQuery(event.target.value);setPersonId('');}} placeholder="Digite nome ou matrícula"/></label>
           <label>Pessoas cadastradas<select required size={Math.min(7,Math.max(3,matches.length+1))} value={personId} onChange={event=>setPersonId(event.target.value)}>
             <option value="">Selecione uma pessoa</option>{matches.map(person=><option key={person.person_id} value={person.person_id}>
               {person.name}{person.registration?` · ${person.registration}`:''}{person.number?` · armário ${person.number}`:''}</option>)}</select></label>
           {chosen&&source?.id===locker.id&&<p className="warning">{chosen.name} já ocupa este armário.</p>}
           {chosen&&source&&source.id!==locker.id&&<p className="action-summary"><strong>Transferência</strong> · {chosen.name}, armário {source.number} → {locker.number}, filial {branchName}. A ocupação anterior será encerrada.</p>}
           {chosen&&!source&&<p className="action-summary"><strong>Atribuição</strong> · {chosen.name} receberá o armário {locker.number}, filial {branchName}.</p>}
-          {chosen&&source&&source.id!==locker.id&&<label>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
-          <label>Observação (opcional)<input value={note} onChange={event=>setNote(event.target.value)}/></label>
+          {chosen&&source&&source.id!==locker.id&&<label className="field-icon"><FieldIcon icon={ArrowLeftRight}/>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
+          <label className="field-icon"><FieldIcon icon={MessageSquare}/>Observação (opcional)<input value={note} onChange={event=>setNote(event.target.value)}/></label>
           {needsSharing&&<><label>Motivo do compartilhamento<input required value={sharingReason} onChange={event=>setSharingReason(event.target.value)}/></label>
             <label>Previsão de encerramento do compartilhamento<input type="date" required value={sharingDue} onChange={event=>setSharingDue(event.target.value)}/></label></>}
           <button className="primary" disabled={busy||!personId||!keyCopy||source?.id===locker.id||!!source&&transferReason.trim().length<3}>
@@ -266,5 +325,6 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,admi
       </section>
     </div>}
     </>}
-  </>;
+    </div>
+  {printData&&<TermoResponsabilidade dados={printData}/>}</>;
 }

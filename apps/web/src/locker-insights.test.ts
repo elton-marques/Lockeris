@@ -1,8 +1,8 @@
 import {describe,expect,it} from 'vitest';
-import {availablePositions,occupiedPositions,pendingLockerIds,requiresReview,type InsightLocker} from './locker-insights';
+import {availablePositions,effectiveCapacity,occupiedPositions,pendingLockerIds,requiresReview,showsLockerPositions,type InsightLocker} from './locker-insights';
 
 const locker=(overrides:Partial<InsightLocker>={}):InsightLocker=>({
-  id:'101',number:'101',capacity:2,sector_occupant:null,condition:'disponivel',migration_status:'conferido',
+  id:'101',number:'101',capacity:2,is_double:true,sector_occupant:null,condition:'disponivel',migration_status:'conferido',
   key_copy_available:true,occupants:[],...overrides
 });
 
@@ -21,6 +21,19 @@ describe('indicadores de armários da filial',()=>{
     expect(occupiedPositions(sector)).toBe(2);
     expect(availablePositions(sector)).toBe(0);
     expect(requiresReview(locker({migration_status:'inconclusivo'}))).toBe(true);
+  });
+
+  it('não mostra posição para armário simples e não oferece compartilhamento restrito',()=>{
+    const simple=locker({capacity:1,is_double:false});
+    expect(showsLockerPositions(simple)).toBe(false);
+    expect(availablePositions(simple)).toBe(1);
+
+    const restricted=locker({occupants:[{name:'Ana',registration:'0001',department:'LIMPEZA'}]});
+    expect(effectiveCapacity(restricted)).toBe(1);
+    expect(occupiedPositions(restricted)).toBe(1);
+    expect(availablePositions(restricted)).toBe(0);
+    expect(availablePositions(locker({occupants:[{name:'Bia',registration:'0002',department:'Manutenção'}]}))).toBe(0);
+    expect(availablePositions(locker({occupants:[{name:'Caio',registration:'0003',department:'MANUTENCAO INFRAESTRUTURA'}]}))).toBe(0);
   });
 
   it('conta cada armário com pendência aberta apenas uma vez',()=>{

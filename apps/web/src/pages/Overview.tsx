@@ -3,7 +3,7 @@ import {Activity,ArrowRight,CircleAlert,Grid2X2,KeyRound,LockKeyhole} from 'luci
 import {api} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState} from '../ui';
-import {availablePositions,occupiedPositions,openLockerPending,pendingKindLabels,pendingLockerIds,requiresReview,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
+import {availablePositions,effectiveCapacity,occupiedPositions,openLockerPending,pendingKindLabels,pendingLockerIds,requiresReview,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
 type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void};
 
@@ -26,7 +26,7 @@ export function Overview({branchId,branchName,copy,onOpenLockers}:Props){
   },[branchId,copy,retry]);
 
   const summary=useMemo(()=>{
-    const capacity=lockers.reduce((sum,item)=>sum+item.capacity,0);
+    const capacity=lockers.reduce((sum,item)=>sum+effectiveCapacity(item),0);
     const occupied=lockers.reduce((sum,item)=>sum+occupiedPositions(item),0);
     const pendingIds=pendingLockerIds(pending);
     return {capacity,occupied,available:lockers.reduce((sum,item)=>sum+availablePositions(item),0),
@@ -37,7 +37,7 @@ export function Overview({branchId,branchName,copy,onOpenLockers}:Props){
   const sectors=useMemo(()=>{
     const counts=new Map<string,number>();
     for(const locker of lockers){
-      if(locker.sector_occupant){counts.set(locker.sector_occupant,(counts.get(locker.sector_occupant)??0)+locker.capacity);continue;}
+      if(locker.sector_occupant){counts.set(locker.sector_occupant,(counts.get(locker.sector_occupant)??0)+effectiveCapacity(locker));continue;}
       for(const person of locker.occupants){const sector=person.department?.trim()||'Sem setor';counts.set(sector,(counts.get(sector)??0)+1);}
     }
     return [...counts].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'pt-BR'));
