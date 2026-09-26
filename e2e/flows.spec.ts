@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import ExcelJS from 'exceljs';
 import {Pool} from 'pg';
@@ -7,6 +7,13 @@ import {createHash,randomBytes} from 'node:crypto';
 
 async function createAdminAlias(pool:Pool,username:string){await pool.query(`INSERT INTO users(username,password_hash,role,branch_id,must_change_password)
   SELECT $1,password_hash,role,branch_id,false FROM users WHERE username='e2e'`,[username]);}
+
+const noticeDialog=(page:Page)=>page.locator('.app-dialog:has(#app-dialog-title)');
+async function expectNotice(page:Page,text:string|RegExp){await expect(noticeDialog(page).locator('#app-dialog-title')).toContainText(text);}
+async function closeNotice(page:Page){
+  await noticeDialog(page).getByRole('button',{name:'Fechar',exact:true}).click();
+  await expect(noticeDialog(page)).toHaveCount(0);
+}
 
 test('login, painel, compartilhamento, promotor, TI, pendências e offline',async({page,context})=>{
   await mkdir('test-results/visual',{recursive:true});
@@ -27,10 +34,15 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await page.getByRole('dialog').getByRole('button',{name:'Fechar'}).click();
   await page.getByRole('button',{name:'Colaboradores'}).click();
   await page.getByRole('heading',{name:'Cadastrar pessoa externa'}).scrollIntoViewIfNeeded();
-  await page.getByLabel('Nome',{exact:true}).fill('Promotora Teste');
+  const registrationForm=page.locator('form.form-grid');
+  await registrationForm.getByLabel('Nome',{exact:true}).fill('Promotora Teste');
+  await registrationForm.getByLabel('Categoria').selectOption({label:'Terceirizado'});
+  await registrationForm.getByLabel('Precisa de armário fixo').check();
   await page.getByLabel('Matrícula',{exact:true}).last().fill('0003');
   await page.getByRole('button',{name:'Salvar cadastro'}).click();
   await expect(page.getByText('Promotora Teste').first()).toBeVisible();
+  await expectNotice(page,'Cadastro salvo.');
+  await closeNotice(page);
   await page.screenshot({path:'test-results/visual/04-promotor.png'});
   await page.getByRole('button',{name:'Importações'}).click();
   await page.getByLabel('Arquivo de colaboradores, XLSX ou CSV').setInputFiles({name:'ti.csv',mimeType:'text/csv',buffer:Buffer.from('MATRÍCULA;NOME;SETOR;FUNÇÃO\r\n0001;Ana Exemplo;Loja;Operadora\r\n0002;Bia Fictícia;Loja;Operadora\r\n')});
@@ -58,10 +70,12 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await page.getByRole('dialog').getByLabel('Cópia da chave').selectOption('sim');
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Atribuir armário'}).click();
-  await expect(page.locator('.notice')).toContainText('Armário atribuído');
+  await expectNotice(page,'Armário atribuído');
+  await closeNotice(page);
   await page.getByRole('button',{name:'Administração'}).click();
   await page.getByRole('button',{name:'Autorizar este navegador'}).click();
-  await expect(page.getByText('Este navegador foi autorizado')).toBeVisible();
+  await expectNotice(page,'Este navegador foi autorizado');
+  await closeNotice(page);
   await expect(page.getByRole('button',{name:'Revogar'})).toBeVisible();
   await page.waitForFunction(async()=>{const request=indexedDB.open('armarios-offline',1);return new Promise(resolve=>{request.onsuccess=()=>{const tx=request.result.transaction('state','readonly'),get=tx.objectStore('state').get('copy');get.onsuccess=()=>resolve(!!get.result);};request.onerror=()=>resolve(false);});});
   await page.evaluate(()=>navigator.serviceWorker.ready);
@@ -75,6 +89,7 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await page.screenshot({path:'test-results/visual/07-offline.png'});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'test-results/visual/08-offline-mobile.png',fullPage:true});
+  await page.getByRole('button',{name:'Abrir menu'}).click();
   await page.getByRole('button',{name:'Sair'}).click();
   await expect(page.getByRole('heading',{name:'Conecte-se para consultar os armários'})).toBeVisible();
   expect(await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open('armarios-offline',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});return new Promise(resolve=>{const tx=db.transaction('state','readonly'),request=tx.objectStore('state').get('copy');request.onsuccess=()=>resolve(request.result);});})).toBeUndefined();
@@ -118,7 +133,10 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await page.getByRole('button',{name:'Entrar'}).click();
   await expect(page.locator('.locker-tile').filter({hasText:'101'})).toHaveClass(/has-pending/);
   await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveClass(/occupied/);
-  await expect(page.locator('.locker-tile').filter({hasText:'102'})).toHaveCSS('background-color','rgb(255, 255, 255)');
+  const occupiedBg=await page.locator('.locker-tile').filter({hasText:'102'}).evaluate(el=>getComputedStyle(el).backgroundImage);
+  const freeBg=await page.locator('.locker-tile').filter({hasText:'103'}).evaluate(el=>getComputedStyle(el).backgroundImage);
+  expect(occupiedBg).toContain('linear-gradient');
+  expect(occupiedBg).not.toBe(freeBg);
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).toHaveClass(/free/);
   await expect(page.locator('.locker-tile').filter({hasText:'104'})).toContainText('Duplo');
   await expect(page.locator('.locker-tile').filter({hasText:'103'})).not.toContainText(/Padrão|Grande|Simples/);
@@ -130,12 +148,12 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.locator('.locker-tile')).toHaveCount(2);
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 103','№ 104']);
   await page.getByRole('button',{name:'Dashboard',exact:true}).click();
-  await page.getByRole('button',{name:'Com pendência',exact:false}).click();
+  await page.getByRole('button',{name:/^Com pendência/}).click();
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 101']);
   await page.getByRole('button',{name:'Armários',exact:true}).click();
-  await page.getByLabel('Situação').selectOption('livre');
+  await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('livre');
   await expect(page.locator('.locker-tile')).toHaveCount(2);
-  await page.getByLabel('Situação').selectOption('');
+  await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('');
   await page.locator('.locker-tile').filter({hasText:'103'}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByLabel('Pesquisar pessoa por nome ou matrícula').fill('0001');
@@ -143,12 +161,14 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.getByText(/Ana Exemplo, armário 102 → 103/)).toBeVisible();
   await page.getByRole('dialog').getByLabel('Cópia da chave ao atribuir').uncheck();
   await page.getByLabel('Motivo da transferência').fill('Melhor altura');
-  page.once('dialog',dialog=>dialog.accept());
   await page.getByRole('button',{name:'Transferir para este armário'}).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.notice')).toContainText('transferido');
-  const toastTop=await page.locator('.notice').evaluate(element=>element.getBoundingClientRect().top);
-  expect(toastTop).toBeGreaterThanOrEqual(0);
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expect(page.getByRole('heading',{name:'Armário Nº 103'})).toHaveCount(0);
+  await expectNotice(page,'transferido');
+  const transferBounds=await noticeDialog(page).evaluate(element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom};});
+  expect(transferBounds.top).toBeGreaterThanOrEqual(0);
+  expect(transferBounds.bottom).toBeLessThanOrEqual(900);
+  await closeNotice(page);
   await page.getByLabel('Filtrar por cópia da chave').selectOption('nao');
   await expect(page.locator('.locker-tile')).toHaveCount(1);
   await page.screenshot({path:'test-results/visual/09-status-armarios.png'});
@@ -190,8 +210,10 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
   await page.getByRole('button',{name:'Transferências'}).click();
   await page.screenshot({path:'test-results/visual/14-transferencias.png'});
   await page.getByRole('button',{name:'Histórico'}).click();
-  await expect(page.getByRole('columnheader',{name:'Evento'})).toBeVisible();
-  await expect(page.getByRole('columnheader',{name:'Registro'})).toHaveCount(0);
+  const timeline=page.getByRole('list',{name:'Linha do tempo de eventos'});
+  await expect(timeline).toBeVisible();
+  await expect(timeline.getByRole('listitem').filter({hasText:'Conferência de teste'})).toHaveCount(1);
+  await expect(page.getByRole('table')).toHaveCount(0);
   await page.screenshot({path:'test-results/visual/15-historico.png'});
   await page.getByRole('button',{name:'Administração'}).click();
   await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
@@ -246,14 +268,15 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await dialog.getByLabel('Armário duplo').check();
   await dialog.getByLabel('Existe cópia da chave?').uncheck();
   await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
-  await expect(page.locator('.notice')).toContainText('atualizados');
+  await expectNotice(page,'atualizados');
+  const bounds=await noticeDialog(page).evaluate(element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom};});
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.bottom).toBeLessThanOrEqual(900);
+  await closeNotice(page);
   await page.locator('.locker-tile').last().click();
   await expect(page.getByRole('dialog').getByRole('heading',{name:'Armário Nº 477'})).toBeVisible();
   await expect(page.getByRole('dialog').locator('.double-badge')).toBeVisible();
   await expect(page.getByRole('dialog').getByLabel('Existe cópia da chave?')).not.toBeChecked();
-  const bounds=await page.locator('.notice').evaluate(element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom};});
-  expect(bounds.top).toBeGreaterThanOrEqual(0);
-  expect(bounds.bottom).toBeLessThanOrEqual(900);
 });
 
 test('pendências de armários seguem ordem numérica e abrem conferência',async({page})=>{
@@ -284,12 +307,14 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   await dialog.getByLabel('Cadastrar ocupante').uncheck();
   await dialog.getByLabel('Setor ocupante').fill('Restaurante FC revisado');
   await dialog.getByRole('button',{name:'Salvar correções'}).click();
-  await expect(page.locator('.notice')).toContainText('Correções salvas');
+  await expectNotice(page,'Correções salvas');
+  await closeNotice(page);
   await page.locator('.pending-item').first().getByRole('button',{name:'Conferir dados'}).click();
   await expect(page.getByRole('dialog').getByLabel('Setor ocupante')).toHaveValue('Restaurante FC revisado');
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Concluir conferência'}).click();
-  await expect(page.locator('.notice')).toContainText('conferência concluída');
+  await expectNotice(page,'conferência concluída');
+  await closeNotice(page);
   await page.getByLabel('Exibir').selectOption('resolvida');
   await expect(page.getByRole('heading',{name:'Histórico de pendências resolvidas'})).toBeVisible();
   await expect(page.locator('.pending-item').filter({hasText:'Armário 12'})).toContainText('Motivo: Os dados importados deste armário precisavam de conferência.');
