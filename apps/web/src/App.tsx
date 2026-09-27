@@ -9,7 +9,7 @@ import {Dashboard} from './pages/Dashboard';
 import {Overview} from './pages/Overview';
 import type {LockerPreset} from './locker-insights';
 import {People} from './pages/People';
-import {Movements} from './pages/Movements';
+import {Transfers} from './pages/Transfers';
 import {Imports} from './pages/Imports';
 import {Pending} from './pages/Pending';
 import {History} from './pages/History';
@@ -106,7 +106,7 @@ export default function App(){
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
-          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
+          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
     {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}

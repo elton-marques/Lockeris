@@ -61,7 +61,7 @@ async function endSharingIfSolo(client: Client, branchId: string, lockerId: stri
 export async function movementRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches/:branchId/allocations', async request => {
     const actor = await authenticate(request); const { branchId } = route.parse(request.params); branchAccess(actor,branchId);
-    return (await pool.query(`SELECT a.*,p.name,l.number FROM allocations a JOIN people p ON p.id=a.person_id JOIN lockers l ON l.id=a.locker_id WHERE a.branch_id=$1 ORDER BY coalesce(a.started_at,a.migrated_at) DESC LIMIT 1000`,[branchId])).rows;
+    return (await pool.query(`SELECT a.*,p.name,l.number,m.department sector FROM allocations a JOIN people p ON p.id=a.person_id JOIN lockers l ON l.id=a.locker_id LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id WHERE a.branch_id=$1 ORDER BY coalesce(a.started_at,a.migrated_at) DESC LIMIT 1000`,[branchId])).rows;
   });
   app.post('/api/branches/:branchId/allocations/occupy', async request => {
     const actor = await authenticate(request); const { branchId } = route.parse(request.params); branchAccess(actor,branchId,true);

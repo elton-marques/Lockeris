@@ -102,6 +102,9 @@
 :root[data-theme='dark'] tbody tr:hover{background:#2b2e43}
 :root[data-theme='dark'] td small{color:#b5bad0}
 :root[data-theme='dark'] .table-wrap{border-color:#3e425a}
+:root[data-theme='dark'] :is(.movement-table,.history-table) :is(td,th){border-color:#3d4159}
+:root[data-theme='dark'] .status-badge--active{background:#23483d;color:#a9edcf}
+:root[data-theme='dark'] .status-badge--closed{background:#3a3e58;color:#c9cee4}
 :root[data-theme='dark'] .section-head p,
 :root[data-theme='dark'] .operational-intro p,
 :root[data-theme='dark'] .locker-list-heading p{color:#b9bed2}

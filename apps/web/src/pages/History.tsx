@@ -33,17 +33,27 @@ function involved(item:RecordItem):string|null{
   if(item.sector_name)return `Setor: ${item.sector_name}`;
   return null;
 }
-function action(item:RecordItem):string{
-  const description=(item.description??'').trim();
-  return description||eventLabel(item.kind);
+function descriptionOf(item:RecordItem):string{
+  return (item.description??'').trim();
 }
-function summary(item:RecordItem):string|null{
+function uniqueDescription(item:RecordItem):string|null{
+  const description=descriptionOf(item);
+  return description&&description!==eventLabel(item.kind)?description:null;
+}
+function hasContext(item:RecordItem):boolean{
+  return Boolean(item.locker_number||involved(item));
+}
+function summary(item:RecordItem):string{
   const parts:string[]=[];
   if(item.locker_number)parts.push(`Armário #${item.locker_number}`);
   const subject=involved(item);
   if(subject)parts.push(subject);
-  if(!parts.length)return null;
-  return [...parts,action(item)].join(' · ');
+  if(parts.length)return parts.join(' · ');
+  return uniqueDescription(item)??'Evento sem contexto de armário ou ocupante';
+}
+function supporting(item:RecordItem):string|null{
+  const extra=detail(item);
+  return hasContext(item)?uniqueDescription(item)??extra:extra;
 }
 function detail(item:RecordItem):string|null{
   const raw=item.details;
@@ -65,12 +75,12 @@ export function History({branchId}:PageProps){
   return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div><a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a></div>
     <DataState loading={loading} error={error} onRetry={load}/>
       {!loading&&!error&&(records.length?<ol className="timeline" aria-label="Linha do tempo de eventos">{records.map(item=>{
-        const headline=summary(item),extra=detail(item);
+        const headline=summary(item),note=supporting(item);
         return <li className={`timeline-item timeline-item--${eventTone(item.kind)}`} key={item.id}>
         <span className="timeline-marker" aria-hidden="true"/><div className="timeline-event">
           <div className="timeline-event-head"><span className="timeline-event-kind">{eventLabel(item.kind)}</span><time dateTime={item.happened_at}>{new Date(item.happened_at).toLocaleString('pt-BR')}</time></div>
           <div className="timeline-event-meta"><span>{subjects[item.entity_type]??'Operação'}</span></div>
-          {headline&&<p>{headline}</p>}{extra&&<p className="timeline-event-detail">{extra}</p>}
+          <p className="timeline-event-title">{headline}</p>{note&&<p className="timeline-event-detail">{note}</p>}
         </div>
       </li>;})}</ol>:<EmptyState title="Nenhum evento registrado" description="As alterações desta filial aparecerão aqui depois da primeira operação."/>)}
   </section>;

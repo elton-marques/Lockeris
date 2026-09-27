@@ -96,6 +96,15 @@ Clicar em um armário abre o **drawer de detalhes e edição** (`apps/web/src/pa
 
 O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura total no celular), mantém foco preso no diálogo (Esc fecha) e bloqueia a rolagem da página enquanto está aberto.
 
+## Tela de Transferências
+
+A aba **Transferências** (`apps/web/src/pages/Transfers.tsx`) recebeu o subtítulo **Histórico de Ocupações e Transferências** e reúne dois cards:
+
+- **Ocupações** — tabela com cabeçalhos `PESSOA / SETOR`, `ARMÁRIO`, `ENTRADA`, `PREVISÃO / SAÍDA` e `SITUAÇÃO`. A coluna `Modalidade` e o botão **Registrar devolução** saíram da tela junto com o filtro de rotativos, porque o conceito de rotativo não existe mais na operação. A situação aparece em badge arredondado — verde **Ativa**, cinza **Encerrada** —, as células usam `padding: 1rem 1.25rem` com divisória suave (`border-bottom`) e datas sem registro são exibidas como `-`. O filtro **Exibir** oferece Ativas, Encerradas e Todas.
+- **Histórico de trocas de armário** — transferências com data, pessoa e matrícula, armários de origem/destino e motivo (ou `-` quando não informado).
+
+`GET /api/branches/:id/allocations` passou a devolver também o setor do colaborador (`m.department` como `sector`), que preenche a linha secundária de **PESSOA / SETOR**. Os estilos ficam em `design-system.css` (`.movement-table`, `.history-table`, `.status-badge`) com os pares de cores do modo escuro em `theme.css`.
+
 ## Recursos do front-end
 
 - **Controles próprios em vez de `<select>` e `<datalist>` nativos:** os filtros e os campos de setor usam `Select`/`SelectField` (`apps/web/src/components/Select.tsx`, estilos em `select.css`), e a matrícula usa o autocompletar `RegistrationInput` (`apps/web/src/RegistrationInput.tsx`) com realce do trecho digitado. A lista de setores oficiais vem de `apps/web/src/sectors.ts` (departamentos de pessoas ativas, setores já registrados em armários e o valor atual). Os selects de ação e de formulário (situação por linha, perfil, modalidade, categoria do cadastro, prévia de importação) continuam nativos, mantendo `required` e a validação do navegador.
@@ -119,12 +128,14 @@ A tela **Histórico** (`apps/web/src/pages/History.tsx`) lê `GET /api/branches/
 
 A migration `014_audit_event_context.sql` adiciona as colunas de contexto; eventos antigos continuam legíveis e o card cai no resumo disponível em `details`.
 
-Cada card da linha do tempo exibe o **tipo da ação** (badge), a **data/hora**, o assunto (`Filial`, `Pessoa`, `Armário`…) e um resumo contextualizado no formato `Armário · Envolvido · Ação`:
+Cada card da linha do tempo exibe o **tipo da ação** (badge), a **data/hora**, o assunto (`Filial`, `Pessoa`, `Armário`…) e uma linha principal em **negrito** com o contexto da operação:
 
-- Pessoa: `Armário #102 · Carlos Souza (Matrícula: 10452) · Ocupação encerrada`
-- Setor: `Armário #12 · Setor: Manutenção · Atribuição de setor`
+- Pessoa: `Armário #102 · Carlos Souza (Matrícula: 10452)`
+- Setor: `Armário #12 · Setor: Manutenção`
 
-Quando há motivo, resolução ou contagem, uma linha secundária complementa o resumo (`Motivo: …`, `Resolvido com: …`, `12 armários importados.`).
+A linha secundária traz a `description` detalhada do evento (quando ela não repete o rótulo do badge) ou, na ausência dela, o motivo, a resolução ou a contagem lidos de `details` (`Motivo: …`, `Resolvido com: …`, `12 armários importados.`).
+
+Eventos gravados antes da migration `014` não têm `locker_number` nem `person_name`: nesses casos o card usa a `description` como linha principal e, na ausência dela, cai para o resumo padrão `Evento sem contexto de armário ou ocupante` — o card nunca fica vazio nem repete o mesmo texto duas vezes.
 
 ## Migrations do banco
 
