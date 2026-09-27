@@ -6,8 +6,8 @@ import { pool, transaction, one, fail, type Client } from './db.js';
 import { idempotent, event } from './operations.js';
 import { refreshPending } from './pending.js';
 
-type Locker = { id: string; version: number; capacity: number; is_double: boolean; condition: string; migration_status: string; modality: string; sector_occupant: string | null };
-type Allocation = { id: string; person_id: string; locker_id: string; version: number; ended_at: string | null };
+type Locker = { id: string; version: number; number: string; capacity: number; is_double: boolean; condition: string; migration_status: string; modality: string; sector_occupant: string | null };
+type Allocation = { id: string; person_id: string; locker_id: string; version: number; ended_at: string | null; person_name?: string; registration?: string | null };
 const restrictedSharingDepartments=new Set(['limpeza','manutencao','manutencao infraestrutura']);
 const normalizedDepartment=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLocaleLowerCase('pt-BR');
 const route = z.object({ branchId: id });
@@ -43,13 +43,19 @@ async function checkDestination(client: Client, branchId: string, locker: Locker
   }
   if (!sharingReason?.trim() || !sharingDueAt || new Date(sharingDueAt).getTime() <= Date.now()) fail(422,'COMPARTILHAMENTO','Motivo e previsão futura são obrigatórios para compartilhar');
   await client.query('INSERT INTO sharings(locker_id,reason,due_at,authorized_by) VALUES($1,$2,$3,$4)',[locker.id,sharingReason,sharingDueAt,(client as Client & { actorId?: string }).actorId]);
-  await event(client,branchId,(client as Client & { actorId?: string }).actorId ?? null,'compartilhamento_autorizado','locker',locker.id,{ reason: sharingReason, dueAt: sharingDueAt });
+  await event(client,branchId,(client as Client & { actorId?: string }).actorId ?? null,'compartilhamento_autorizado','locker',locker.id,
+    { reason: sharingReason, dueAt: sharingDueAt },
+    { lockerNumber: locker.number, sectorName: locker.sector_occupant, description: 'Compartilhamento autorizado' });
 }
 async function endSharingIfSolo(client: Client, branchId: string, lockerId: string, actorId: string): Promise<void> {
   const count = await client.query<{ count: string }>('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[lockerId]);
   if (Number(count.rows[0].count) <= 1) {
-    const { rows } = await client.query<{ id: string }>('UPDATE sharings SET ended_at=now(),ended_by=$2,version=version+1 WHERE locker_id=$1 AND ended_at IS NULL RETURNING id',[lockerId,actorId]);
-    if (rows[0]) await event(client,branchId,actorId,'compartilhamento_encerrado','sharing',rows[0].id);
+    const { rows } = await client.query<{ id: string; number: string; sector_occupant: string | null }>(
+      `UPDATE sharings SET ended_at=now(),ended_by=$2,version=sharings.version+1 FROM lockers l
+       WHERE sharings.locker_id=$1 AND sharings.locker_id=l.id AND sharings.ended_at IS NULL
+       RETURNING sharings.id,l.number,l.sector_occupant`,[lockerId,actorId]);
+    if (rows[0]) await event(client,branchId,actorId,'compartilhamento_encerrado','sharing',rows[0].id,{},
+      { lockerNumber: rows[0].number, sectorName: rows[0].sector_occupant, description: 'Compartilhamento encerrado' });
   }
 }
 export async function movementRoutes(app: FastifyInstance): Promise<void> {
@@ -63,14 +69,16 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
       (client as Client & { actorId?: string }).actorId = actor.id;
       const locker = (await lockedLockers(client,branchId,[body.lockerId])).get(body.lockerId)!;
-      const member = await one<{ status: string; person_id: string }>(client,'SELECT status,person_id FROM memberships WHERE person_id=$1 AND branch_id=$2 FOR UPDATE',[body.personId,branchId]);
+      const member = await one<{ status: string; person_id: string; registration: string | null; person_name: string }>(client,
+        'SELECT m.status,m.person_id,m.registration,p.name person_name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.person_id=$1 AND m.branch_id=$2 FOR UPDATE OF m',[body.personId,branchId]);
       if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com atuação encerrada');
       if (locker.modality !== body.modality) fail(409,'MODALIDADE','Modalidade incompatível com o armário');
       await checkDestination(client,branchId,locker,body.expectedVersion,body.sharingReason,body.sharingDueAt);
       const { rows } = await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,seasonal,started_at,due_at,reason,note,started_by)
         VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8,$9) RETURNING *`,[branchId,body.lockerId,body.personId,body.modality,body.seasonal,body.dueAt,body.reason,body.note,actor.id]);
       await client.query('UPDATE lockers SET version=version+1,key_copy_available=COALESCE($2,key_copy_available) WHERE id=$1',[body.lockerId,body.keyCopyAvailable??null]);
-      await event(client,branchId,actor.id,'ocupacao_iniciada','allocation',rows[0].id,{ lockerId: body.lockerId, personId: body.personId });
+      await event(client,branchId,actor.id,'ocupacao_iniciada','allocation',rows[0].id,{ lockerId: body.lockerId, personId: body.personId },
+        { lockerNumber: locker.number, personName: member.person_name, personRegistration: member.registration, description: 'Armário atribuído' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -78,14 +86,18 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId } = route.parse(request.params); branchAccess(actor,branchId,true);
     const body = releaseInput.parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const initial = await one<Allocation>(client,'SELECT * FROM allocations WHERE id=$1 AND branch_id=$2',[body.allocationId,branchId]);
-      await lockedLockers(client,branchId,[initial.locker_id]);
+      const initial = await one<Allocation>(client,`SELECT a.*,p.name person_name,m.registration FROM allocations a
+        JOIN people p ON p.id=a.person_id
+        LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id
+        WHERE a.id=$1 AND a.branch_id=$2`,[body.allocationId,branchId]);
+      const releaseLocker = (await lockedLockers(client,branchId,[initial.locker_id])).get(initial.locker_id)!;
       const allocation = await one<Allocation>(client,'SELECT * FROM allocations WHERE id=$1 AND branch_id=$2 FOR UPDATE',[body.allocationId,branchId]);
       if (allocation.ended_at || allocation.version !== body.expectedVersion) fail(409,'ALOCACAO','Alocação alterada ou já encerrada');
       const { rows } = await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,note=COALESCE($3,note),version=version+1 WHERE id=$1 RETURNING *',[body.allocationId,actor.id,body.note]);
       await client.query('UPDATE lockers SET version=version+1 WHERE id=$1',[allocation.locker_id]);
       await endSharingIfSolo(client,branchId,allocation.locker_id,actor.id);
-      await event(client,branchId,actor.id,'ocupacao_encerrada','allocation',allocation.id,{ lockerId: allocation.locker_id, personId: allocation.person_id });
+      await event(client,branchId,actor.id,'ocupacao_encerrada','allocation',allocation.id,{ lockerId: allocation.locker_id, personId: allocation.person_id },
+        { lockerNumber: releaseLocker.number, personName: initial.person_name ?? null, personRegistration: initial.registration ?? null, description: 'Ocupação encerrada' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -99,7 +111,11 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       const lockers = await lockedLockers(client,branchId,[initial.locker_id,body.destinationLockerId]);
       const source = lockers.get(initial.locker_id)!; const destination = lockers.get(body.destinationLockerId)!;
       if (source.version !== body.sourceVersion) fail(409,'VERSAO','Armário de origem alterado');
-      const allocation = await one<Allocation & { modality: string; seasonal: boolean; due_at: string | null }>(client,'SELECT * FROM allocations WHERE id=$1 FOR UPDATE',[body.allocationId]);
+      const allocation = await one<Allocation & { modality: string; seasonal: boolean; due_at: string | null }>(client,
+        `SELECT a.*,p.name person_name,m.registration FROM allocations a
+         JOIN people p ON p.id=a.person_id
+         LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id
+         WHERE a.id=$1 FOR UPDATE OF a`,[body.allocationId]);
       if(allocation.modality!=='fixo')fail(409,'MODALIDADE','Transferências novas exigem ocupação fixa');
       if (allocation.ended_at || allocation.version !== body.expectedAllocationVersion) fail(409,'ALOCACAO','Alocação alterada ou já encerrada');
       const member = await one<{ status: string }>(client,'SELECT status FROM memberships WHERE branch_id=$1 AND person_id=$2',[branchId,allocation.person_id]);
@@ -112,7 +128,8 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       await client.query('UPDATE lockers SET version=version+1 WHERE id=ANY($1::uuid[])',[[source.id,destination.id]]);
       if(body.keyCopyAvailable!==undefined)await client.query('UPDATE lockers SET key_copy_available=$2 WHERE id=$1',[destination.id,body.keyCopyAvailable]);
       await endSharingIfSolo(client,branchId,source.id,actor.id);
-      await event(client,branchId,actor.id,'ocupacao_transferida','allocation',rows[0].id,{ previousAllocationId: allocation.id, sourceLockerId: source.id, destinationLockerId: destination.id, reason: body.reason });
+      await event(client,branchId,actor.id,'ocupacao_transferida','allocation',rows[0].id,{ previousAllocationId: allocation.id, sourceLockerId: source.id, destinationLockerId: destination.id, reason: body.reason },
+        { lockerNumber: `${source.number} → ${destination.number}`, personName: allocation.person_name ?? null, personRegistration: allocation.registration ?? null, description: 'Armário transferido' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -120,12 +137,17 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); branchAccess(actor,branchId,true);
     const body = operation.extend({ expectedVersion: z.number().int().positive(), dueAt: z.iso.datetime(), reason: z.string().min(3) }).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ version: number; due_at: string | null; seasonal:boolean }>(client,'SELECT version,due_at,seasonal FROM allocations WHERE id=$1 AND branch_id=$2 AND ended_at IS NULL FOR UPDATE',[itemId,branchId]);
+      const old = await one<{ version: number; due_at: string | null; seasonal:boolean; locker_number:string; person_name:string; registration:string|null }>(client,
+        `SELECT a.version,a.due_at,a.seasonal,l.number locker_number,p.name person_name,m.registration
+         FROM allocations a JOIN lockers l ON l.id=a.locker_id JOIN people p ON p.id=a.person_id
+         LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id
+         WHERE a.id=$1 AND a.branch_id=$2 AND a.ended_at IS NULL FOR UPDATE OF a`,[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Alocação alterada');
       if (!old.seasonal) fail(409,'MODALIDADE','A previsão pertence a uma alocação sazonal');
       if (new Date(body.dueAt).getTime() <= Date.now()) fail(422,'PRAZO','Informe uma data futura');
       const { rows } = await client.query('UPDATE allocations SET due_at=$2,version=version+1 WHERE id=$1 RETURNING *',[itemId,body.dueAt]);
-      await event(client,branchId,actor.id,'previsao_alterada','allocation',itemId,{ before: old.due_at, after: body.dueAt, reason: body.reason });
+      await event(client,branchId,actor.id,'previsao_alterada','allocation',itemId,{ before: old.due_at, after: body.dueAt, reason: body.reason },
+        { lockerNumber: old.locker_number, personName: old.person_name, personRegistration: old.registration, description: 'Prazo da ocupação atualizado' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -133,11 +155,16 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); branchAccess(actor,branchId,true);
     const body = operation.extend({ expectedVersion: z.number().int().positive(), reason: z.string().min(3) }).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ version:number; seasonal:boolean; due_at:string|null }>(client,'SELECT version,seasonal,due_at FROM allocations WHERE id=$1 AND branch_id=$2 AND ended_at IS NULL FOR UPDATE',[itemId,branchId]);
+      const old = await one<{ version:number; seasonal:boolean; due_at:string|null; locker_number:string; person_name:string; registration:string|null }>(client,
+        `SELECT a.version,a.seasonal,a.due_at,l.number locker_number,p.name person_name,m.registration
+         FROM allocations a JOIN lockers l ON l.id=a.locker_id JOIN people p ON p.id=a.person_id
+         LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id
+         WHERE a.id=$1 AND a.branch_id=$2 AND a.ended_at IS NULL FOR UPDATE OF a`,[itemId,branchId]);
       if(old.version!==body.expectedVersion) fail(409,'VERSAO','Alocação alterada');
       if(!old.seasonal) fail(409,'MODALIDADE','Alocação não é sazonal');
       const {rows}=await client.query('UPDATE allocations SET seasonal=false,due_at=NULL,version=version+1 WHERE id=$1 RETURNING *',[itemId]);
-      await event(client,branchId,actor.id,'sazonal_efetivada','allocation',itemId,{previousDueAt:old.due_at,reason:body.reason});
+      await event(client,branchId,actor.id,'sazonal_efetivada','allocation',itemId,{previousDueAt:old.due_at,reason:body.reason},
+        {lockerNumber:old.locker_number,personName:old.person_name,personRegistration:old.registration,description:'Ocupação mantida sem prazo'});
       await refreshPending(client,branchId);return rows[0];
     }));
   });
@@ -146,10 +173,14 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
     const body = operation.extend({ expectedVersion: z.number().int().positive(), dueAt: z.iso.datetime(), reason: z.string().min(3) }).parse(request.body);
     if (new Date(body.dueAt).getTime() <= Date.now()) fail(422,'PRAZO','Informe uma data futura');
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ version: number; due_at: string }>(client,'SELECT s.version,s.due_at FROM sharings s JOIN lockers l ON l.id=s.locker_id WHERE s.id=$1 AND l.branch_id=$2 AND s.ended_at IS NULL FOR UPDATE',[itemId,branchId]);
+      const old = await one<{ version: number; due_at: string; locker_number: string; sector_occupant: string|null }>(client,
+        `SELECT s.version,s.due_at,l.number locker_number,l.sector_occupant
+         FROM sharings s JOIN lockers l ON l.id=s.locker_id
+         WHERE s.id=$1 AND l.branch_id=$2 AND s.ended_at IS NULL FOR UPDATE OF s`,[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Compartilhamento alterado');
       const { rows } = await client.query('UPDATE sharings SET due_at=$2,reason=$3,version=version+1 WHERE id=$1 RETURNING *',[itemId,body.dueAt,body.reason]);
-      await event(client,branchId,actor.id,'compartilhamento_renovado','sharing',itemId,{ before: old.due_at, after: body.dueAt, reason: body.reason });
+      await event(client,branchId,actor.id,'compartilhamento_renovado','sharing',itemId,{ before: old.due_at, after: body.dueAt, reason: body.reason },
+        { lockerNumber: old.locker_number, sectorName: old.sector_occupant, description: 'Prazo de compartilhamento atualizado' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });

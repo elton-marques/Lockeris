@@ -36,8 +36,8 @@ Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, 
 
 A tela **Administração** (`apps/web/src/pages/Admin.tsx`) é o ponto de criação e exclusão de filiais, restrito ao perfil **Administração geral**:
 
-1. **Criar filial:** o formulário *Criar filial* recebe nome e cidade (opcional) e recarrega a aplicação com a nova filial.
-2. **Filiais cadastradas:** logo abaixo, a tabela *Filiais cadastradas* lista todas as filiais ativas com **Nome**, **Cidade** e **Ações**. A filial selecionada no cabeçalho aparece marcada como *Filial em uso*.
+1. **Criar filial:** o formulário *Criar filial* recebe apenas o **Nome** e recarrega a aplicação com a nova filial. O campo cidade foi removido da interface, do contrato (`branchInput` em `packages/contracts`) e da tabela `branches` (migration `015_drop_branch_city.sql`).
+2. **Filiais cadastradas:** logo abaixo, a tabela *Filiais cadastradas* lista todas as filiais ativas com **Nome** e **Ações**. A filial selecionada no cabeçalho aparece marcada como *Filial em uso*.
 3. **Excluir filial:** o botão **Excluir filial** de cada linha abre a confirmação *"Esta ação excluirá permanentemente a filial e TODOS os armários e históricos associados. Deseja continuar?"*. A `DELETE /api/branches/:id` roda em uma única transação e apaga, nesta ordem: pendências (`pending_items`), histórico/eventos (`events`), importações (`imports`, `import_sources`, `legacy_history`), dispositivos autorizados, compartilhamentos (`sharings`), alocações (`allocations`), armários (`lockers`), vínculos (`memberships`, `need_exceptions`), operações (`operations`), os usuários daquela filial (`users`), localizações (`locations`), pessoas sem nenhum vínculo remanescente e, por fim, o registro em `branches`. Excluir a filial em uso recarrega a aplicação na primeira filial restante.
 4. **Arquivamento removido:** a ação *Arquivar filial* (`POST /api/branches/:id/archive`) foi retirada da API e da interface; nenhuma filial fica mais em estado `inactive`, e o acesso a uma filial inexistente responde `403 FILIAL_INATIVA`.
 
@@ -106,6 +106,25 @@ O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura tot
 - **Modal Sobre / Changelog com rolagem:** o diálogo (`AboutModal.tsx`, estilos em `design-system.css`) usa `max-height: 85vh` com `overflow-y: auto` e espaçamento uniforme de `1.25rem`; o botão **Novidades e Versões** e a lista de entregas são seções próprias com rolagem interna, e o botão **Fechar** fica fixo no rodapé durante a rolagem.
 - **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
 - **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão.
+
+## Trilha de auditoria (Histórico)
+
+A tela **Histórico** (`apps/web/src/pages/History.tsx`) lê `GET /api/branches/:id/history`, que devolve cada evento da tabela `events` já com o contexto da operação gravado no momento da escrita (`event()` em `apps/api/src/operations.ts`):
+
+- `locker_number` — número do armário afetado;
+- `person_name` e `person_registration` — nome e matrícula do colaborador envolvido, quando houver;
+- `sector_name` — setor ocupante, no caso de ocupação por setor;
+- `description` — descrição humanizada da alteração (ex.: `Ocupação encerrada`, `Atribuição de setor`, `Dados do armário atualizados: capacidade, situação`);
+- `details` — payload original da operação (`before`/`after`, motivo, resolução e contagens), também exportado no CSV (`history/export`).
+
+A migration `014_audit_event_context.sql` adiciona as colunas de contexto; eventos antigos continuam legíveis e o card cai no resumo disponível em `details`.
+
+Cada card da linha do tempo exibe o **tipo da ação** (badge), a **data/hora**, o assunto (`Filial`, `Pessoa`, `Armário`…) e um resumo contextualizado no formato `Armário · Envolvido · Ação`:
+
+- Pessoa: `Armário #102 · Carlos Souza (Matrícula: 10452) · Ocupação encerrada`
+- Setor: `Armário #12 · Setor: Manutenção · Atribuição de setor`
+
+Quando há motivo, resolução ou contagem, uma linha secundária complementa o resumo (`Motivo: …`, `Resolvido com: …`, `12 armários importados.`).
 
 ## Migrations do banco
 

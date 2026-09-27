@@ -182,7 +182,8 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
             ti_present=true,status='ativo',version=version+1,updated_at=now() WHERE id=$1`,[old.id,row.department,row.functionName,row.registration]);
           await client.query('UPDATE people SET name=$2 WHERE id=$1',[old.person_id,row.name]);
           if(old.origin==='ti'&&(old.name!==row.name||old.department!==row.department||old.function_name!==row.functionName)) {
-            await event(client,branchId,actor.id,'dados_ti_alterados','membership',old.id,{before:old,after:row,importId});
+            await event(client,branchId,actor.id,'dados_ti_alterados','membership',old.id,{before:old,after:row,importId},
+              {personName:row.name,personRegistration:row.registration,description:'Dados oficiais atualizados'});
             await client.query(`INSERT INTO pending_items(branch_id,kind,subject_type,subject_id,reason) VALUES($1,'dados_alterados','membership',$2,$3)
               ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta',reason=$3,updated_at=now(),version=pending_items.version+1`,[branchId,old.id,`Lote ${importId}`]);
           }
@@ -190,7 +191,8 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
           const personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name])).rows[0].id;
           membershipId=(await client.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
             VALUES($1,$2,'colaborador','ti',$3,$4,$5,true,true) RETURNING id`,[personId,branchId,row.registration,row.department,row.functionName])).rows[0].id;
-          await event(client,branchId,actor.id,'pessoa_ti_incluida','membership',membershipId,{importId});
+          await event(client,branchId,actor.id,'pessoa_ti_incluida','membership',membershipId,{importId},
+            {personName:row.name,personRegistration:row.registration,description:'Colaborador incluído na base ativa'});
         }
         await client.query('INSERT INTO import_sources(import_id,sheet_name,row_number,entity_type,entity_id,raw) VALUES($1,$2,$3,$4,$5,$6)',[importId,batch.sheet_name,row.row,'membership',membershipId,JSON.stringify(row)]);
       }
@@ -199,7 +201,7 @@ export async function importRoutes(app:FastifyInstance):Promise<void> {
       await client.query('UPDATE branches SET ti_revision=ti_revision+1,ti_extracted_on=$2,version=version+1 WHERE id=$1',[branchId,batch.extracted_on]);
       await client.query("UPDATE imports SET state='applied',applied_at=now(),preview=$2 WHERE id=$1",[importId,JSON.stringify(diff)]);
       await refreshPending(client,branchId);
-      await event(client,branchId,actor.id,'lote_ti_aplicado','import',importId,{counts:diff.counts});
+      await event(client,branchId,actor.id,'lote_ti_aplicado','import',importId,{counts:diff.counts},{description:'Base de colaboradores atualizada'});
       const result={ok:true,importId,counts:diff.counts};
       await client.query('UPDATE operations SET result=$2 WHERE id=$1',[body.operationId,JSON.stringify(result)]);
       return result;

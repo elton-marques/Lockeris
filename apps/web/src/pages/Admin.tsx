@@ -7,11 +7,11 @@ import {sectorSelectOptions} from '../sectors';
 type Person={department:string|null;status:string};
 type Locker={id:string;number:string;sector_occupant:string|null;size:string;capacity:number;is_double:boolean;condition:string;modality:string;destination:string|null;version:number;occupants:unknown[];migration_status:string};
 type User={id:string;username:string;role:string;active:boolean;must_change_password:boolean;version:number};
-type Branch={id:string;name:string;city:string|null;version:number};
+type Branch={id:string;name:string;version:number};
 export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false}:PageProps&{general?:boolean}){
   const [lockers,setLockers]=useState<Locker[]>([]),[users,setUsers]=useState<User[]>([]),
     [people,setPeople]=useState<Person[]>([]),[branches,setBranches]=useState<Branch[]>([]);
-  const [branchName,setBranchName]=useState(''),[city,setCity]=useState(''),[lockerSearch,setLockerSearch]=useState('');
+  const [branchName,setBranchName]=useState(''),[lockerSearch,setLockerSearch]=useState('');
   const [locker,setLocker]=useState({number:'',size:'padrao',capacity:1,isDouble:false,modality:'fixo',destination:'',sectorOccupant:'',condition:'disponivel'});
   const [username,setUsername]=useState(''),[role,setRole]=useState('operador'),[temporaryPassword,setTemporaryPassword]=useState('');
   const [resetEditor,setResetEditor]=useState<string|null>(null),[resetValue,setResetValue]=useState('');
@@ -22,7 +22,7 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
   useEffect(()=>{if(!general)return;api<Branch[]>('/branches').then(setBranches).catch(()=>{});},[general]);
   async function act(fn:()=>Promise<unknown>,message:string){try{await fn();try{await load();refresh();notice(message);}catch{notice('A alteração foi concluída, mas a lista não foi atualizada. Recarregue antes de agir novamente.');}return true;}
     catch(e){notice(e instanceof Error?e.message:'Não foi possível concluir a alteração.');return false;}}
-  async function createBranch(event:React.FormEvent){event.preventDefault();try{await post('/branches',{operationId:op(),name:branchName,city:city.trim()||null});window.location.reload();}catch(e){notice(e instanceof Error?e.message:'Falha');}}
+  async function createBranch(event:React.FormEvent){event.preventDefault();try{await post('/branches',{operationId:op(),name:branchName});window.location.reload();}catch(e){notice(e instanceof Error?e.message:'Falha');}}
   async function deleteBranch(item:Branch){
     if(!await askConfirm('Esta ação excluirá permanentemente a filial e TODOS os armários e históricos associados. Deseja continuar?'))return;
     try{await del(`/branches/${item.id}`,{operationId:op(),expectedVersion:item.version});}
@@ -40,11 +40,10 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
   async function toggleDouble(item:Locker){await act(()=>patch(`/branches/${branchId}/lockers/${item.id}`,{operationId:op(),expectedVersion:item.version,isDouble:!item.is_double,capacity:item.is_double?1:2}),`Tipo do armário ${item.number} atualizado.`);}
   async function condition(item:Locker,value:string){if(value===item.condition||!await askConfirm(`Alterar a situação do armário ${item.number} para ${conditionName[value]}?`))return;await act(()=>patch(`/branches/${branchId}/lockers/${item.id}`,{operationId:op(),expectedVersion:item.version,condition:value}),`Situação do armário ${item.number} atualizada.`);}
   const shownLockers=lockers.filter(item=>item.number.toLocaleLowerCase('pt-BR').includes(lockerSearch.trim().toLocaleLowerCase('pt-BR')));
-  return <div className="stack">{general&&<section className="card"><span className="eyebrow">Estrutura</span><h2>Criar filial</h2><form className="inline-form" onSubmit={createBranch}><label>Nome<input required value={branchName} onChange={e=>setBranchName(e.target.value)}/></label><label>Cidade (opcional)<input value={city} onChange={e=>setCity(e.target.value)}/></label><button className="primary">Criar filial</button></form></section>}
+  return <div className="stack">{general&&<section className="card"><span className="eyebrow">Estrutura</span><h2>Criar filial</h2><form className="inline-form" onSubmit={createBranch}><label>Nome<input required value={branchName} onChange={e=>setBranchName(e.target.value)}/></label><button className="primary">Criar filial</button></form></section>}
     {general&&<section className="card"><span className="eyebrow">Filiais</span><h2>Filiais cadastradas</h2>
-      {branches.length?<div className="table-wrap"><table><thead><tr><th>Nome</th><th>Cidade</th><th>Ações</th></tr></thead><tbody>{branches.map(item=><tr key={item.id}>
+      {branches.length?<div className="table-wrap"><table><thead><tr><th>Nome</th><th>Ações</th></tr></thead><tbody>{branches.map(item=><tr key={item.id}>
         <td data-label="Nome"><strong>{item.name}</strong>{item.id===branchId&&<small> Filial em uso</small>}</td>
-        <td data-label="Cidade">{item.city||'Não informada'}</td>
         <td data-label="Ações"><div className="row-actions"><button type="button" onClick={()=>{deleteBranch(item).catch(()=>{});}}>Excluir filial</button></div></td>
       </tr>)}</tbody></table></div>:<EmptyState title="Nenhuma filial cadastrada" description="Crie a primeira filial no formulário acima."/>}
     </section>}

@@ -149,7 +149,7 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
       }
       await client.query("UPDATE imports SET state='applied',applied_at=now() WHERE id=$1",[importId]);
       await refreshPending(client,branchId);
-      await event(client,branchId,actor.id,'armarios_importados','import',importId,{count:lockers.size});
+      await event(client,branchId,actor.id,'armarios_importados','import',importId,{count:lockers.size},{description:'Armários importados'});
       return {ok:true,importId,physicalCount:lockers.size};
     }));
   });

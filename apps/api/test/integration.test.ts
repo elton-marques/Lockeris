@@ -434,6 +434,21 @@ describe('regras transacionais',()=>{
     expect((await pool.query('SELECT category,registration FROM memberships WHERE id=$1',[member.id])).rows[0]).toMatchObject({category:'vinculo_nao_identificado',registration:null});
     expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='sem_matricula' AND state='aberta'",[branch.id])).rows[0].count).toBe('1');
   });
+  it('histórico enriquece armário, pessoa e ação e a filial não tem cidade',async()=>{
+    const {auth,branch}=await setup();
+    expect((branch as {city?:string}).city).toBeUndefined();
+    const cabinet=await locker(auth,branch.id,'102');const member=await person(auth,branch.id,'Carlos Souza','10452');
+    const occupy=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false});
+    expect(occupy.statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,{operationId:uuid(),allocationId:occupy.json().id,expectedVersion:1})).statusCode).toBe(200);
+    const history=await app.inject({method:'GET',url:`/api/branches/${branch.id}/history`,headers:{cookie:auth.cookie}});
+    expect(history.statusCode).toBe(200);
+    const ended=(history.json() as {kind:string;locker_number:string|null;person_name:string|null;person_registration:string|null;description:string|null}[])
+      .find(item=>item.kind==='ocupacao_encerrada');
+    expect(ended).toMatchObject({locker_number:'102',person_name:'Carlos Souza',person_registration:'10452',description:'Ocupação encerrada'});
+    const branches=await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}});
+    expect(JSON.stringify(branches.json())).not.toContain('"city"');
+  });
 });
 
 it('CSV mantém zeros à esquerda e campos entre aspas',async()=>{

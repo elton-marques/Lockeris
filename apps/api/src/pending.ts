@@ -1,7 +1,8 @@
 import type { Client } from './db.js';
 import { registrationKey } from './registration.js';
+import { event } from './operations.js';
 
-type ReconciliationRow={pending_id:string;membership_id:string;person_id:string;registration:string;name:string;department:string|null;function_name:string|null;allocation_id:string};
+type ReconciliationRow={pending_id:string;membership_id:string;person_id:string;registration:string;name:string;department:string|null;function_name:string|null;allocation_id:string;locker_number:string};
 type OfficialRow={membership_id:string;person_id:string;registration:string;name:string;department:string|null;function_name:string|null};
 
 const textKey=(value:string)=>value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
@@ -23,7 +24,7 @@ function strongNameMatch(source:string,target:string):boolean{
 }
 
 async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<void>{
-  const rows=await client.query<{pending_id:string;locker_id:string;function_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,src.raw->>'functionName' function_name
+  const rows=await client.query<{pending_id:string;locker_id:string;locker_number:string;function_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,l.number locker_number,src.raw->>'functionName' function_name
     FROM pending_items p JOIN lockers l ON l.id=p.subject_id
     JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
     JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
@@ -44,15 +45,17 @@ async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<
       VALUES($1,$2,$3,'fixo',NULL,true,now(),'Carga inicial; função provisória')`,[branchId,row.locker_id,person.id]);
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
     await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Ocupação provisória reconhecida pela função ${row.function_name}.`]);
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupacao_provisoria_reconhecida','locker',row.locker_id,JSON.stringify({functionName:row.function_name})]);
+    await event(client,branchId,null,'ocupacao_provisoria_reconhecida','locker',row.locker_id,{functionName:row.function_name},
+      {lockerNumber:row.locker_number,personName:row.function_name,description:'Ocupação provisória reconhecida'});
   }
 }
 
 async function reconcileExternalPlaceholders(client:Client,branchId:string):Promise<void>{
-  const rows=await client.query<{pending_id:string;locker_id:string;function_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,coalesce(nullif(trim(m.function_name),''),src.raw->>'functionName') function_name
+  const rows=await client.query<{pending_id:string;locker_id:string;locker_number:string;function_name:string;person_name:string}>(`SELECT DISTINCT ON (p.id) p.id pending_id,l.id locker_id,l.number locker_number,pn.name person_name,coalesce(nullif(trim(m.function_name),''),src.raw->>'functionName') function_name
     FROM pending_items p JOIN lockers l ON l.id=p.subject_id
     JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
     JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=l.branch_id
+    JOIN people pn ON pn.id=m.person_id
     JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
     JOIN imports imp ON imp.id=src.import_id AND imp.state='applied'
     WHERE p.branch_id=$1 AND p.kind='migracao_inconclusiva' AND p.state='aberta'
@@ -63,12 +66,13 @@ async function reconcileExternalPlaceholders(client:Client,branchId:string):Prom
   for(const row of rows.rows){
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
     await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Terceirizado sem matrícula; função ${row.function_name||'não informada'}.`]);
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'terceirizado_sem_matricula_reconhecido','locker',row.locker_id,JSON.stringify({functionName:row.function_name})]);
+    await event(client,branchId,null,'terceirizado_sem_matricula_reconhecido','locker',row.locker_id,{functionName:row.function_name},
+      {lockerNumber:row.locker_number,personName:row.person_name,description:'Terceirizado sem matrícula reconhecido'});
   }
 }
 
 async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promise<void>{
-  const rows=await client.query<{allocation_id:string;membership_id:string;locker_id:string;name:string}>(`SELECT a.id allocation_id,m.id membership_id,l.id locker_id,p.name
+  const rows=await client.query<{allocation_id:string;membership_id:string;locker_id:string;locker_number:string;sector_occupant:string|null;name:string}>(`SELECT a.id allocation_id,m.id membership_id,l.id locker_id,l.number locker_number,l.sector_occupant,p.name
     FROM memberships m JOIN people p ON p.id=m.person_id
     JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
     JOIN lockers l ON l.id=a.locker_id
@@ -78,12 +82,13 @@ async function retireRoteiristaPlaceholders(client:Client,branchId:string):Promi
     await client.query('UPDATE allocations SET ended_at=now(),version=version+1 WHERE id=$1',[row.allocation_id]);
     await client.query("UPDATE memberships SET status='encerrado',version=version+1,updated_at=now() WHERE id=$1",[row.membership_id]);
     await client.query("UPDATE lockers SET sector_occupant=COALESCE(NULLIF(trim(sector_occupant),''),$2),version=version+1 WHERE id=$1",[row.locker_id,row.name]);
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'promotor_roteirista_retirado','locker',row.locker_id,JSON.stringify({name:row.name})]);
+    await event(client,branchId,null,'promotor_roteirista_retirado','locker',row.locker_id,{name:row.name},
+      {lockerNumber:row.locker_number,personName:row.name,sectorName:row.sector_occupant?.trim()||row.name,description:'Promotor roteirista retirado'});
   }
 }
 
 async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<void>{
-  const rows=await client.query<{pending_id:string|null;locker_id:string;membership_id:string;allocation_id:string;source_name:string}>(`SELECT DISTINCT ON (l.id) p.id pending_id,l.id locker_id,m.id membership_id,a.id allocation_id,src.raw->>'name' source_name
+  const rows=await client.query<{pending_id:string|null;locker_id:string;locker_number:string;membership_id:string;allocation_id:string;source_name:string}>(`SELECT DISTINCT ON (l.id) p.id pending_id,l.id locker_id,l.number locker_number,m.id membership_id,a.id allocation_id,src.raw->>'name' source_name
     FROM lockers l
     LEFT JOIN pending_items p ON p.subject_type='locker' AND p.subject_id=l.id AND p.kind='migracao_inconclusiva' AND p.state='aberta'
     JOIN import_sources src ON src.entity_type='locker' AND src.entity_id=l.id
@@ -114,14 +119,16 @@ async function reconcileNamePlaceholders(client:Client,branchId:string):Promise<
     if(row.pending_id){
       await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[row.pending_id,`Nome associado automaticamente à matrícula ${official.registration} (${official.name}).`]);
     }
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'ocupante_associado_por_nome','locker',row.locker_id,JSON.stringify({sourceName:row.source_name,registration:official.registration,name:official.name})]);
+    await event(client,branchId,null,'ocupante_associado_por_nome','locker',row.locker_id,{sourceName:row.source_name,registration:official.registration,name:official.name},
+      {lockerNumber:row.locker_number,personName:official.name,personRegistration:official.registration,description:'Ocupante associado por nome'});
   }
 }
 
 async function autoReconcile(client:Client,branchId:string):Promise<void>{
-  const pending=await client.query<ReconciliationRow>(`SELECT p.id pending_id,m.id membership_id,m.person_id,m.registration,pn.name,m.department,m.function_name,a.id allocation_id
+  const pending=await client.query<ReconciliationRow>(`SELECT p.id pending_id,m.id membership_id,m.person_id,m.registration,pn.name,m.department,m.function_name,a.id allocation_id,l.number locker_number
     FROM pending_items p JOIN memberships m ON m.id=p.subject_id JOIN people pn ON pn.id=m.person_id
-    JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
+    JOIN allocations a ON a.person_id=pn.id AND a.ended_at IS NULL
+    JOIN lockers l ON l.id=a.locker_id
     WHERE p.branch_id=$1 AND p.kind='ausente_ti' AND p.state='aberta' AND m.origin='migracao' AND m.registration IS NOT NULL`,[branchId]);
   if(!pending.rowCount)return;
   const officials=await client.query<OfficialRow>(`SELECT m.id membership_id,m.person_id,m.registration,p.name,m.department,m.function_name
@@ -141,7 +148,8 @@ async function autoReconcile(client:Client,branchId:string):Promise<void>{
     await client.query('UPDATE allocations SET person_id=$2,version=version+1 WHERE id=$1',[item.allocation_id,official.person_id]);
     await client.query("UPDATE memberships SET status='encerrado',ti_present=false,version=version+1,updated_at=now() WHERE id=$1",[item.membership_id]);
     await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,updated_at=now(),version=version+1 WHERE id=$1",[item.pending_id,`Matrícula reconciliada automaticamente com ${official.registration} (${official.name}).`]);
-    await client.query('INSERT INTO events(branch_id,actor_id,kind,entity_type,entity_id,details) VALUES($1,NULL,$2,$3,$4,$5)',[branchId,'pendencia_auto_reconciliada','pending',item.pending_id,JSON.stringify({from:item.registration,to:official.registration,name:official.name})]);
+    await event(client,branchId,null,'pendencia_auto_reconciliada','pending',item.pending_id,{from:item.registration,to:official.registration,name:official.name},
+      {lockerNumber:item.locker_number,personName:official.name,personRegistration:official.registration,description:'Matrícula reconciliada automaticamente'});
   }
 }
 

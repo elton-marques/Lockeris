@@ -1,6 +1,7 @@
 export const changelog=[
+  {title:'Trilha de auditoria enriquecida e filiais sem cidade',kind:'sparkles',description:'Cada evento do Histórico grava e exibe armário, pessoa com matrícula, setor e a descrição humanizada da ação no resumo do card; o campo Cidade saiu do formulário e da listagem de filiais, dos contratos e da tabela branches.'},
   {title:'Exclusão de filial em cascata e ajustes de layout',kind:'bug',description:'Lista de filiais com exclusão definitiva em cascata (pendências, eventos, armários, alocações e usuários), seletor de filial ancorado à direita sem cortes, tabela de armários sem o botão de setor ocupante e modal Sobre/Changelog com rolagem e rodapé corrigidos.'},
-  {title:'Ajustes de domínio e arquivamento',kind:'shield',description:'Vínculo não identificado, pendências cadastrais, arquivamento protegido de filiais e cadastro de cidade.'},
+  {title:'Ajustes de domínio e arquivamento',kind:'shield',description:'Vínculo não identificado, pendências cadastrais e arquivamento protegido de filiais.'},
   {title:'Correções de cadastro',kind:'bug',description:'Ocupantes sem matrícula deixaram de ser classificados automaticamente como terceirizados.'},
   {title:'Centro de Comando',kind:'sparkles',description:'Indicadores de ocupação, capacidade, setores e pendências no painel da filial.'},
   {title:'Rebranding Lockeris',kind:'sparkles',description:'Identidade visual Lockeris e interface de administração renovada.'},

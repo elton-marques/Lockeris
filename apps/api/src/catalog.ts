@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { branchInput, lockerInput, operation, personInput, personUpdateInput, id } from '@armarios/contracts';
 import { authenticate, branchAccess, adminAccess } from './auth.js';
 import { pool, transaction, one, fail } from './db.js';
-import { idempotent, event } from './operations.js';
+import { idempotent, event, changedFields, lockerFieldLabels, personFieldLabels, auditContext } from './operations.js';
 import { refreshPending } from './pending.js';
 import {registrationKey} from './registration.js';
 
@@ -13,7 +13,7 @@ const routeItem = z.object({ branchId: id, itemId: id });
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches', async request => {
     const actor = await authenticate(request);
-    const { rows } = await pool.query("SELECT id,name,city,timezone,status,version FROM branches WHERE status='active' AND ($1::text=$2 OR id=$3) ORDER BY name", [actor.role,'geral',actor.branch_id]);
+    const { rows } = await pool.query("SELECT id,name,timezone,status,version FROM branches WHERE status='active' AND ($1::text=$2 OR id=$3) ORDER BY name", [actor.role,'geral',actor.branch_id]);
     return rows;
   });
   app.post('/api/branches', async request => {
@@ -21,8 +21,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     if (actor.role !== 'geral') fail(403,'PERMISSAO','Acesso negado');
     const body = branchInput.and(operation).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,null,actor.id,body, async () => {
-      const { rows } = await client.query('INSERT INTO branches(name,city) VALUES($1,$2) RETURNING *',[body.name,body.city??null]);
-      await event(client,rows[0].id,actor.id,'filial_criada','branch',rows[0].id);
+      const { rows } = await client.query('INSERT INTO branches(name) VALUES($1) RETURNING *',[body.name]);
+      await event(client,rows[0].id,actor.id,'filial_criada','branch',rows[0].id,{name:rows[0].name},{description:`Filial criada: ${rows[0].name}`});
       return rows[0];
     }));
   });
@@ -98,7 +98,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         WHERE id=ANY($1::uuid[])`,[selected]);
       if (selected.length) await client.query('UPDATE branches SET ti_revision=ti_revision+1,version=version+1 WHERE id=$1',[branchId]);
       await refreshPending(client,branchId);
-      await event(client,branchId,actor.id,'colaboradores_removidos_da_base','membership',null,{count:selected.length,ids:selected});
+      await event(client,branchId,actor.id,'colaboradores_removidos_da_base','membership',null,{count:selected.length,ids:selected},{description:'Colaboradores removidos da base ativa'});
       return {removed:selected.length};
     }));
   });
@@ -114,7 +114,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (body.personId) await one(client,'SELECT id FROM people WHERE id=$1',[body.personId]);
       const { rows } = await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,company,department,function_name,needs_fixed)
         VALUES($1,$2,$3,'manual',$4,$5,$6,$7,$8) RETURNING *`,[personId,branchId,body.category,body.registration || null,body.company || null,body.department || null,body.functionName || null,body.needsFixed]);
-      await event(client,branchId,actor.id,'pessoa_cadastrada','membership',rows[0].id,{ category: body.category });
+      await event(client,branchId,actor.id,'pessoa_cadastrada','membership',rows[0].id,{ category: body.category },
+        {personName:body.name,personRegistration:body.registration??null,description:'Pessoa cadastrada'});
       await refreshPending(client,branchId); return { ...rows[0], name: body.name };
     }));
   });
@@ -122,7 +123,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); branchAccess(actor,branchId,true);
     const body = personUpdateInput.parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ person_id: string; version: number; category: string; name:string; registration:string|null; company:string|null; department:string|null; function_name:string|null; needs_fixed:boolean; origin:'manual'|'ti'|'migracao' }>(client,'SELECT m.*,p.name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.id=$1 AND m.branch_id=$2 FOR UPDATE OF m',[itemId,branchId]);
+      const old = await one<{ person_id: string; version: number; category: string; name:string; registration:string|null; company:string|null; department:string|null; function_name:string|null; needs_fixed:boolean; origin:'manual'|'ti'|'migracao'; locker_number:string|null }>(client,
+        `SELECT m.*,p.name,l.number locker_number FROM memberships m JOIN people p ON p.id=m.person_id
+         LEFT JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
+         LEFT JOIN lockers l ON l.id=a.locker_id
+         WHERE m.id=$1 AND m.branch_id=$2 FOR UPDATE OF m`,[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Registro alterado; recarregue');
       const checked=personInput.parse({name:body.name??old.name,category:body.category??old.category,registration:body.registration===undefined?old.registration:body.registration,company:body.company===undefined?old.company:body.company,department:body.department===undefined?old.department:body.department,functionName:body.functionName===undefined?old.function_name:body.functionName,needsFixed:body.needsFixed??old.needs_fixed,origin:old.origin});
       if(!checked.registration && !checked.company && checked.category==='terceirizado') checked.category='vinculo_nao_identificado';
@@ -130,7 +135,12 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         department=$5,function_name=$6,needs_fixed=$7,version=version+1,updated_at=now() WHERE id=$1 RETURNING *`,
         [itemId,checked.category,checked.registration,checked.company,checked.department,checked.functionName,checked.needsFixed]);
       if (checked.name!==old.name) await client.query('UPDATE people SET name=$2 WHERE id=$1',[old.person_id,checked.name]);
-      await event(client,branchId,actor.id,'pessoa_alterada','membership',itemId,{ before: old, after: rows[0] });
+      const after=rows[0] as unknown as Record<string,unknown>;
+      const afterValues:Record<string,unknown>={...after,name:checked.name,registration:checked.registration,company:checked.company,department:checked.department,function_name:checked.functionName,category:checked.category,needs_fixed:checked.needsFixed};
+      const changed=changedFields(old as unknown as Record<string,unknown>,afterValues,personFieldLabels);
+      await event(client,branchId,actor.id,'pessoa_alterada','membership',itemId,{ before: old, after: rows[0], ...(changed.length?{changed}:{}) },
+        {lockerNumber:old.locker_number,personName:checked.name,personRegistration:checked.registration??null,
+          description:changed.length?`Cadastro de pessoa atualizado: ${changed.join(', ')}`:'Cadastro de pessoa atualizado'});
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -138,11 +148,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); branchAccess(actor,branchId,true);
     const body = operation.extend({ expectedVersion: z.number().int().positive(), status: z.enum(['ativo','encerrado']) }).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ version: number; category: string; ti_present: boolean | null }>(client,'SELECT version,category,ti_present FROM memberships WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
+      const old = await one<{ version: number; category: string; ti_present: boolean | null; person_name: string; registration: string|null; locker_number: string|null }>(client,
+        `SELECT m.version,m.category,m.ti_present,p.name person_name,m.registration,l.number locker_number
+         FROM memberships m JOIN people p ON p.id=m.person_id
+         LEFT JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL
+         LEFT JOIN lockers l ON l.id=a.locker_id
+         WHERE m.id=$1 AND m.branch_id=$2 FOR UPDATE OF m`,[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Registro alterado; recarregue');
       if (body.status==='ativo' && old.category==='colaborador' && old.ti_present===false) fail(409,'BASE_COLABORADORES','Colaborador ausente da base atual; importe uma nova lista para reativá-lo');
       const { rows } = await client.query('UPDATE memberships SET status=$2,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[itemId,body.status]);
-      await event(client,branchId,actor.id,body.status==='encerrado'?'atuacao_encerrada':'atuacao_reativada','membership',itemId);
+      await event(client,branchId,actor.id,body.status==='encerrado'?'atuacao_encerrada':'atuacao_reativada','membership',itemId,{},
+        {lockerNumber:old.locker_number,personName:old.person_name,personRegistration:old.registration,
+          description:body.status==='encerrado'?'Atuação encerrada':'Atuação reativada'});
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -162,17 +179,19 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if(body.isDouble&&body.capacity<2)fail(422,'CAPACIDADE','Armário duplo precisa de capacidade para duas pessoas');
       const { rows } = await client.query(`INSERT INTO lockers(branch_id,number,size,capacity,is_double,modality,destination,condition,sector_occupant)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[branchId,body.number,body.size,body.capacity,body.isDouble??false,body.modality,body.destination,body.condition,body.sectorOccupant??null]);
-      await event(client,branchId,actor.id,'armario_criado','locker',rows[0].id); return rows[0];
+      await event(client,branchId,actor.id,'armario_criado','locker',rows[0].id,{number:rows[0].number},
+        auditContext({locker_number:rows[0].number,sector_occupant:rows[0].sector_occupant},'Armário cadastrado')); return rows[0];
     }));
   });
   app.post('/api/branches/:branchId/lockers/:itemId/key-copy', async request => {
     const actor=await authenticate(request);const {branchId,itemId}=routeItem.parse(request.params);branchAccess(actor,branchId,true);
     const body=operation.extend({expectedVersion:z.number().int().positive(),available:z.boolean()}).parse(request.body);
     return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
-      const old=await one<{version:number;key_copy_available:boolean|null}>(client,'SELECT version,key_copy_available FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
+      const old=await one<{version:number;number:string;sector_occupant:string|null;key_copy_available:boolean|null}>(client,'SELECT version,number,sector_occupant,key_copy_available FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
       if(old.version!==body.expectedVersion)fail(409,'VERSAO','Armário alterado; recarregue');
       const {rows}=await client.query('UPDATE lockers SET key_copy_available=$2,version=version+1 WHERE id=$1 RETURNING *',[itemId,body.available]);
-      await event(client,branchId,actor.id,'copia_chave_atualizada','locker',itemId,{before:old.key_copy_available,after:body.available});
+      await event(client,branchId,actor.id,'copia_chave_atualizada','locker',itemId,{before:old.key_copy_available,after:body.available},
+        {lockerNumber:old.number,sectorName:old.sector_occupant,description:'Cópia da chave atualizada'});
       return rows[0];
     }));
   });
@@ -180,7 +199,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId,itemId } = routeItem.parse(request.params); adminAccess(actor,branchId);
     const body = lockerInput.partial().extend({ operationId: id, expectedVersion: z.number().int().positive(), migrationStatus: z.enum(['conferido','inconclusivo']).optional(), number:z.never().optional() }).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
-      const old = await one<{ version: number; capacity: number; is_double:boolean }>(client,'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
+      const old = await one<{ version: number; capacity: number; is_double:boolean; size:string; modality:string; destination:string|null; condition:string; migration_status:string; sector_occupant:string|null; key_copy_available:boolean|null; number:string }>(client,'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Armário alterado; recarregue');
       const count = await client.query<{ count: string }>('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[itemId]);
       if (body.capacity && body.capacity < Number(count.rows[0].count)) fail(409,'CAPACIDADE','Capacidade inferior à ocupação atual');
@@ -191,7 +210,13 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         modality=COALESCE($4,modality),destination=COALESCE($5,destination),condition=COALESCE($6,condition),migration_status=COALESCE($7,migration_status),
         sector_occupant=CASE WHEN $9::boolean THEN $8 ELSE sector_occupant END,is_double=COALESCE($10,is_double),version=version+1 WHERE id=$1 RETURNING *`,
         [itemId,body.size,body.capacity,body.modality,body.destination,body.condition,body.migrationStatus,body.sectorOccupant??null,body.sectorOccupant!==undefined,body.isDouble]);
-      await event(client,branchId,actor.id,'armario_alterado','locker',itemId,{ before: old, after: rows[0] });
+      const after = rows[0] as unknown as Record<string, unknown>;
+      const changed = changedFields(old as unknown as Record<string, unknown>, after, lockerFieldLabels);
+      const sectorChanged = String(old.sector_occupant ?? '') !== String(after.sector_occupant ?? '');
+      const description = sectorChanged ? (after.sector_occupant ? 'Atribuição de setor' : 'Setor de ocupação removido')
+        : changed.length ? `Dados do armário atualizados: ${changed.join(', ')}` : 'Dados do armário atualizados';
+      await event(client,branchId,actor.id,'armario_alterado','locker',itemId,{ before: old, after: rows[0], ...(changed.length?{changed}:{}) },
+        { lockerNumber: old.number, sectorName: typeof after.sector_occupant === 'string' ? after.sector_occupant : null, description });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
