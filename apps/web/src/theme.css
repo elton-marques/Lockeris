@@ -59,14 +59,15 @@
 
 :root[data-theme='dark']{
   color-scheme:dark;
-  --bg-app:#151726;--border:#3d4059;
-  --surface-base:#151726;--surface-raised:#222537;--surface-subtle:#292c40;--surface-inverse:#10121f;
-  --text-primary:#ececf8;--text-secondary:#bdc1d6;--text-muted:#a7adc6;--text-on-brand:#211b3a;
-  --border-divider:#3d4059;--border-strong:#51556f;--brand-accent:#b2a5ff;--brand-accent-hover:#c7bcff;
-  --brand-surface:#342f56;--focus-ring:#c0aaff;--status-success:#a5e4cc;--status-warning:#f1d5a3;--status-danger:#ffb0bb;
-  --ink:#ececf8;--ink-soft:#bdc1d6;--muted:#a7adc6;
-  --line:#3d4059;--surface:#23263a;--canvas:#151726;
-  --brand:#a99bff;--brand-hover:#c0b5ff;--brand-soft:#342f56;--focus:#c0aaff;
+  --primary:#7C3AED;--primary-dark:#2E1065;--accent:#34D399;--accent-hover:#10B981;
+  --warning:#FBBF24;--danger:#F43F5E;--bg-app:#18181B;--bg-card:#27272A;--border:#3F3F46;
+  --surface-base:#18181B;--surface-raised:#27272A;--surface-subtle:#3F3F46;--surface-inverse:#2E1065;
+  --text-primary:#FAFAFA;--text-secondary:#D4D4D8;--text-muted:#A1A1AA;--text-on-brand:#FFFFFF;
+  --border-divider:#3F3F46;--border-strong:#71717A;--brand-accent:#7C3AED;--brand-accent-hover:#6D28D9;
+  --brand-surface:#3B2364;--focus-ring:#C4B5FD;--status-success:#34D399;--status-warning:#FBBF24;--status-danger:#F43F5E;
+  --ink:#FAFAFA;--ink-soft:#D4D4D8;--muted:#A1A1AA;
+  --line:#3F3F46;--surface:#27272A;--canvas:#18181B;
+  --brand:#A78BFA;--brand-hover:#C4B5FD;--brand-soft:#3B2364;--focus:#C4B5FD;
   --shadow:0 18px 38px #080a1780;
   color:var(--ink);background:var(--canvas);
 }
@@ -369,3 +370,39 @@
 :root[data-theme='dark'] .overview-page .kpi-pill--free{background:#2a2e44;border-color:#41455e;color:#c6cadd}
 :root[data-theme='dark'] .overview-page .kpi-pill strong{color:#f2f1fb}
 :root[data-theme='dark'] .overview-page .insight-panel{box-shadow:none}
+
+/* Lockeris: superfícies e estados finais, após as camadas operacionais. */
+:root .locker-list-panel .locker-tile{--tile-accent:#7C3AED;--tile-glow:#7C3AED26;border-color:#E4E4E7;background:linear-gradient(150deg,#FFFFFF 6%,#FFFFFF 60%,#FAF5FF 100%)}
+:root .locker-list-panel .locker-tile:is(.occupied,.free,.has-pending,.unavailable){border-color:#E4E4E7}
+:root .locker-list-panel .locker-tile.occupied{--tile-accent:#F43F5E;--tile-glow:#F43F5E26;background:linear-gradient(150deg,#FFFFFF 5%,#FFFFFF 70%,#FFF1F2 100%)}
+:root .locker-list-panel .locker-tile.free{--tile-accent:#10B981;--tile-glow:#10B98126;background:linear-gradient(150deg,#FFFFFF 5%,#FFFFFF 70%,#ECFDF5 100%)}
+:root .locker-list-panel .locker-tile.has-pending{--tile-accent:#F59E0B;--tile-glow:#F59E0B26;background:linear-gradient(150deg,#FFFFFF 5%,#FFFFFF 70%,#FFFBEB 100%)}
+:root .locker-list-panel .locker-tile:focus-visible{border-color:#7C3AED;box-shadow:0 0 0 4px #7C3AED38}
+:root .locker-list-panel .badge{background:#F3E8FF;border-color:#E9D5FF;color:#6B21A8}
+:root .locker-list-panel .free .badge{background:#ECFDF5;border-color:#A7F3D0;color:#047857}
+:root .locker-list-panel .has-pending .badge{background:#FFFBEB;border-color:#FDE68A;color:#92400E}
+:root .locker-list-panel .locker-tile.occupied .badge{background:#FFF1F2;border-color:#FECDD3;color:#BE123C}
+:root[data-theme='dark'] .main-area{background:radial-gradient(circle at 82% -5%,#2E1065 0,transparent 470px),var(--canvas)}
+:root[data-theme='dark'] .sidebar{background:linear-gradient(165deg,#2E1065 0%,#24104E 58%,#18181B 100%)}
+:root[data-theme='dark'] .sidebar .nav-item:hover:not(:disabled){background:#4C1D95}
+:root[data-theme='dark'] .sidebar .nav-item.active{background:linear-gradient(105deg,#7C3AED,#5B21B6);box-shadow:inset 3px 0 #34D399}
+:root[data-theme='dark'] .topbar{background:#27272AEE;border-color:#3F3F46}
+:root[data-theme='dark'] .topbar-brand{border-color:#3F3F46}
+:root[data-theme='dark'] .topbar-brand strong{color:#E9D5FF}
+:root[data-theme='dark'] .card,:root[data-theme='dark'] .insight-panel,:root[data-theme='dark'] .stat,:root[data-theme='dark'] .auth-card{background:#27272A;border-color:#3F3F46}
+:root[data-theme='dark'] button.primary,:root[data-theme='dark'] .primary{background:#7C3AED;border-color:#7C3AED;color:#FFFFFF}
+:root[data-theme='dark'] button.primary:hover:not(:disabled){background:#6D28D9;border-color:#6D28D9;color:#FFFFFF}
+:root[data-theme='dark'] .locker-list-panel .locker-tile,:root[data-theme='dark'] .locker-list-panel .locker-tile:is(.occupied,.free,.has-pending,.unavailable){background:#27272A;border-color:#3F3F46;color:#FAFAFA}
+:root[data-theme='dark'] .locker-list-panel .locker-tile.occupied{--tile-accent:#F43F5E;--tile-glow:#F43F5E38;background:linear-gradient(150deg,#27272A,#3B252D)}
+:root[data-theme='dark'] .locker-list-panel .locker-tile.free{--tile-accent:#34D399;--tile-glow:#34D39938;background:linear-gradient(150deg,#27272A,#1D3930)}
+:root[data-theme='dark'] .locker-list-panel .locker-tile.has-pending{--tile-accent:#FBBF24;--tile-glow:#FBBF2438;background:linear-gradient(150deg,#27272A,#3D3420)}
+:root[data-theme='dark'] .locker-modal,:root[data-theme='dark'] .locker-modal>.section-head{background:#27272A;border-color:#3F3F46}
+:root[data-theme='dark'] .locker-card,:root[data-theme='dark'] .control-cell,:root[data-theme='dark'] .locker-empty{background:#27272A;border-color:#3F3F46}
+:root[data-theme='dark'] .insight-track button{background:#A78BFA}
+:root[data-theme='dark'] .status.online{background:#123A2D;border-color:#166534;color:#34D399}
+:root[data-theme='dark'] .status.offline{background:#443318;border-color:#92400E;color:#FBBF24}
+:root[data-theme='dark'] .auth-page,:root[data-theme='dark'] .center{background:radial-gradient(circle at 15% 10%,#5B21B6 0,transparent 35%),linear-gradient(145deg,#18181B,#2E1065 75%,#18181B)}
+:root[data-theme='dark'] .overview-page .kpi-card,:root[data-theme='dark'] .overview-page .kpi-card--capacity{background:#27272A;border-color:#3F3F46;color:#FAFAFA}
+:root[data-theme='dark'] .overview-page button.kpi-card--capacity:hover:not(:disabled){background:#27272A;border-color:#7C3AED;color:#FAFAFA}
+:root[data-theme='dark'] .overview-page .kpi-icon,:root[data-theme='dark'] .overview-page .kpi-card--capacity .kpi-icon{background:#3B2364;color:#C4B5FD}
+:root[data-theme='dark'] .overview-page .kpi-progress,:root[data-theme='dark'] .overview-page .kpi-card--capacity .kpi-progress{background:#3F3F46;border-color:#52525B}

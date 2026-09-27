@@ -7,8 +7,8 @@
 
 /* --- Cartões: superfície branca com profundidade suave --- */
 :root .locker-list-panel .locker-tile{
-  --tile-accent:#94a3b8;
-  --tile-glow:rgb(148 163 184 / 20%);
+  --tile-accent:#7C3AED;
+  --tile-glow:rgb(124 58 237 / 20%);
   position:relative;
   isolation:isolate;
   overflow:hidden;
@@ -19,23 +19,23 @@
   padding:18px 18px 16px 21px;
   border:1px solid var(--border);
   border-radius:16px;
-  background:linear-gradient(158deg,#fff 0%,#fff 58%,#f8fafc 100%);
+  background:linear-gradient(158deg,#FFFFFF 0%,#FFFFFF 58%,#FAF5FF 100%);
   color:var(--ink);
   box-shadow:var(--shadow-soft);
   transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease,border-color .22s ease,background .22s ease;
 }
 :root .locker-list-panel .locker-tile.occupied{
-  --tile-accent:#e11d48;--tile-glow:rgb(225 29 72 / 16%);
+  --tile-accent:#F43F5E;--tile-glow:rgb(244 63 94 / 16%);
   border-color:var(--border);
   background:linear-gradient(158deg,#fff 0%,#fff 56%,#fff1f2 100%);
 }
 :root .locker-list-panel .locker-tile.free{
-  --tile-accent:#059669;--tile-glow:rgb(5 150 105 / 16%);
+  --tile-accent:#10B981;--tile-glow:rgb(16 185 129 / 16%);
   border-color:var(--border);
   background:linear-gradient(158deg,#fff 0%,#fff 56%,#ecfdf5 100%);
 }
 :root .locker-list-panel .locker-tile.has-pending{
-  --tile-accent:#d97706;--tile-glow:rgb(217 119 6 / 18%);
+  --tile-accent:#F59E0B;--tile-glow:rgb(245 158 11 / 18%);
   border-color:var(--border);
   background:linear-gradient(158deg,#fff 0%,#fff 56%,#fffbeb 100%);
 }

@@ -1,4 +1,4 @@
-# Piloto portátil da Gestão de Armários no Windows
+# Piloto portátil do Lockeris no Windows
 
 **Data:** 2026-09-23
 

@@ -18,11 +18,14 @@ async function closeNotice(page:Page){
 test('login, painel, compartilhamento, promotor, TI, pendências e offline',async({page,context})=>{
   await mkdir('test-results/visual',{recursive:true});
   await page.goto('/');
+  await expect(page).toHaveTitle('Lockeris — Plataforma Integrada de Alocação e Armários');
+  await expect(page.getByText('Lockeris',{exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Entrar'})).toBeVisible();
   await page.screenshot({path:'test-results/visual/01-login.png'});
   await page.getByLabel('Nome de usuário').fill('e2e');
   await page.getByLabel('Senha').fill('Testing-Password-123');
   await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.locator('.sidebar .brand')).toContainText('Lockeris');
   await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   await expect(page.getByText('3 resultados')).toBeVisible();
   await page.screenshot({path:'test-results/visual/02-painel.png'});
@@ -254,6 +257,8 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
   await page.getByRole('button',{name:'Abrir menu'}).click();
   await page.getByRole('button',{name:'Armários',exact:true}).click();
   await page.waitForTimeout(250);
+  await expect(page.locator('.topbar-brand')).toBeVisible();
+  await expect(page.locator('.topbar-brand')).toContainText('Lockeris');
   await page.screenshot({path:'test-results/visual/17-armarios-mobile.png',fullPage:true});
   for(const [label,file] of [['Colaboradores','18-colaboradores-mobile'],['Pendências','19-pendencias-mobile'],
     ['Transferências','20-transferencias-mobile'],['Importações','21-importacoes-mobile'],

@@ -1,1 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192"><rect width="192" height="192" rx="32" fill="#24354d"/><rect x="43" y="35" width="106" height="122" rx="8" fill="#fff"/><path d="M96 35v122M69 91h9m36 0h9" stroke="#24354d" stroke-width="6" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Lockeris: duas portas de armário">
+  <rect width="192" height="192" rx="38" fill="#2E1065"/>
+  <path d="M31 53 96 26l65 27-65 27z" fill="#7C3AED"/>
+  <path d="M31 53 96 80v83l-65-27z" fill="#6D28D9"/>
+  <path d="M96 80 161 53v83l-65 27z" fill="#7C3AED"/>
+  <path d="M96 80v83M31 53l65 27 65-27" fill="none" stroke="#D8B4FE" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m45 79 36 15v48l-36-15z" fill="#2E1065" opacity=".72"/>
+  <path d="m111 94 36-15v48l-36 15z" fill="#2E1065" opacity=".72"/>
+  <path d="m72 105 5 2v17l-5-2zm43 2 5-2v17l-5 2z" fill="#34D399"/>
+  <path d="M97 37 144 56 97 75 50 56z" fill="#34D399" opacity=".92"/>
+</svg>

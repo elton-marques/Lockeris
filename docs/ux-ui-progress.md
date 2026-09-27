@@ -1,4 +1,6 @@
-# Reformulação UX/UI — registro de execução
+# Lockeris — registro da reformulação UX/UI
+
+> Este documento registra decisões anteriores à identidade Lockeris. A paleta vigente está descrita em [Identidade Lockeris](lockeris-identidade.md).
 
 - Ponto inicial: `238b2ab2d5efa24f7abe220e3afcf2485e33c5ca`, branch `main`, remote `origin` em `https://github.com/elton-marques/armario-app.git`.
 - Alterações locais preexistentes, preservadas: `docs/prompt-gpt-6-sol-implementacao.md` e `docs/roadmap-auditoria-ux-ui-2026-09-23.md` (ambos não versionados). O SHA acima não contém esses arquivos.

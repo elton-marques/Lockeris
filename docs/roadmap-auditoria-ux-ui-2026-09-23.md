@@ -1,6 +1,6 @@
 # Roadmap de auditoria e reformulação de UX, UI e linguagem
 
-**Produto:** Gestão de Armários • **Data:** 23/09/2026 • **Status:** proposta para execução
+**Produto:** Lockeris • **Data:** 23/09/2026 • **Status:** proposta para execução
 
 O objetivo é transformar o aplicativo em uma ferramenta profissional, confiável e rápida para a operação diária. A direção recomendada combina hierarquia visual clara, linguagem objetiva, componentes consistentes e movimento discreto. O efeito “uau” deve surgir do acabamento e da fluidez, com efeitos mais expressivos concentrados em áreas de apresentação.
 

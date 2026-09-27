@@ -1,6 +1,12 @@
-# Gestão de Armários
+# Lockeris
 
-Aplicação interna para acompanhar os armários e seus ocupantes por filial. A interface e a API estão em português brasileiro. A instalação usa PostgreSQL, Fastify e React.
+**Plataforma Integrada de Alocação e Armários**
+
+O Lockeris é uma aplicação interna para acompanhar armários, ocupantes e alocações por filial. A interface e a API estão em português brasileiro. A instalação usa PostgreSQL, Fastify e React.
+
+## Identidade visual
+
+A marca usa um símbolo de duas portas de armário em perspectiva, aplicado ao ícone PWA, à navegação e ao acesso. O design system combina **roxo violeta** (`#7C3AED`) e roxo profundo (`#2E1065`) com **verde menta** (`#34D399` e `#10B981`). Pendências usam amarelo (`#FBBF24` e `#F59E0B`); ocupações e alertas críticos usam rosa (`#F43F5E` e `#E11D48`). No tema claro, a aplicação usa fundo `#FAFAFA`, cartões `#FFFFFF` e bordas `#E4E4E7`. No tema escuro, usa fundo `#18181B`, cartões `#27272A` e bordas `#3F3F46`. Os tokens ficam em `apps/web/src/design-system.css` e `apps/web/src/theme.css`.
 
 ## Arquitetura do monorepo
 

@@ -1,4 +1,4 @@
-# Gestão de armários — auditoria e proposta de evolução
+# Lockeris — auditoria e proposta de evolução
 
 Data: 22/09/2026. Documento de discussão arquitetural, sem implementação.
 
