@@ -9,7 +9,7 @@ O projeto é um monorepo com workspaces npm (`apps/*` e `packages/*`):
 | Pasta | Pacote | Descrição |
 | --- | --- | --- |
 | `apps/api` | `@armarios/api` | API Fastify: autenticação por cookie, operações com idempotência (`operationId`), importação de planilhas, pendências, OpenAPI em `/api/docs` e as migrations SQL em `apps/api/migrations`. |
-| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `locker-status.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
+| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `locker-status.css`, `select.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
 | `packages/contracts` | `@armarios/contracts` | Contratos e utilitários compartilhados entre API e web (esquemas, identificadores e formas de dados). |
 
 A build de produção compila os três pacotes na ordem contracts → api → web (`npm run build`). A checagem de tipos roda com `tsc -b` na raiz e cobre todos os pacotes.
@@ -17,8 +17,8 @@ A build de produção compila os três pacotes na ordem contracts → api → we
 ## Como os dados entram
 
 1. **Colaboradores:** o administrador envia uma planilha XLSX com **matrícula, nome, setor e cargo ou função**. Cada matrícula identifica uma única pessoa. A prévia mostra inclusões, alterações e ausências antes da confirmação. A nova planilha passa a ser a lista de colaboradores ativos. Matrículas repetidas ou linhas incompletas são recusadas.
-2. **Armários:** uma planilha XLSX com **uma única aba** faz a carga inicial. O cabeçalho fica na primeira linha, com `N°` (ou `NÚMERO`/`ARMÁRIO`), `NOME`, `MATRÍCULA`, `SETOR`, `FUNÇÃO` (ou `CARGO`) e `STATUS` (`OCUPADO` ou `DISPONÍVEL`). A coluna `DUPLO` aceita `verdadeiro`/`falso`, `true`/`false` ou `sim`/`não`. O número repetido em duas linhas ocupadas representa um único armário duplo com duas pessoas; números repetidos em outras condições são recusados. Um armário duplo pode ter só uma pessoa ou estar vazio. A classificação pode ser alterada depois pelo card do armário ou em Administração. Se não houver nome nem matrícula, o valor de `SETOR` identifica o setor ocupante, como `Jerinana` ou `Restaurante FC`. Ocupantes sem matrícula e armários marcados como ocupados sem identificação ficam pendentes de conferência, sem associação automática pelo nome à base mensal de colaboradores.
-3. **Uso diário:** encontre o colaborador pela matrícula para ver seus dados e atribuir ou transferir um armário. No painel, os armários aparecem em ordem numérica; clique em um deles para abrir o cadastro na mesma tela e pesquise qualquer pessoa ativa por nome ou matrícula. O número do armário é fixo depois do cadastro. Todo armário começa marcado como **com cópia da chave**; altere para **não** ao identificar uma exceção. O administrador pode editar tipo duplo, situação, setor ocupante e ocupantes no próprio card. A matrícula aceita digitação ou escolha na lista completa da base ativa; se encontrada, nome, setor e função oficiais são usados. Ao marcar um armário como duplo, é possível cadastrar o segundo ocupante no mesmo formulário. Uma transferência exige motivo e aparece no histórico de trocas para operadores. Os filtros mostram livres, ocupados, pendentes, duplos e setores. O registro técnico de eventos e a importação ficam restritos aos administradores.
+2. **Armários:** uma planilha XLSX com **uma única aba** faz a carga inicial. O cabeçalho fica na primeira linha, com `N°` (ou `NÚMERO`/`ARMÁRIO`), `NOME`, `MATRÍCULA`, `SETOR`, `FUNÇÃO` (ou `CARGO`) e `STATUS` (`OCUPADO` ou `DISPONÍVEL`). A coluna `DUPLO` aceita `verdadeiro`/`falso`, `true`/`false` ou `sim`/`não`. O número repetido em duas linhas ocupadas representa um único armário duplo com duas pessoas; números repetidos em outras condições são recusados. Um armário duplo pode ter só uma pessoa ou estar vazio. A classificação física é definida na carga inicial e só pode ser alterada em Administração. Se não houver nome nem matrícula, o valor de `SETOR` identifica o setor ocupante, como `Jerinana` ou `Restaurante FC`. Ocupantes sem matrícula e armários marcados como ocupados sem identificação ficam pendentes de conferência, sem associação automática pelo nome à base mensal de colaboradores.
+3. **Uso diário:** encontre o colaborador pela matrícula para ver seus dados e atribuir ou transferir um armário. No painel, os armários aparecem em ordem numérica; clique em um deles para abrir o cadastro na mesma tela e pesquise qualquer pessoa ativa por nome ou matrícula. O número do armário é fixo depois do cadastro. Todo armário começa marcado como **com cópia da chave**; altere para **não** ao identificar uma exceção. O administrador pode editar situação, cópia da chave, setor ocupante e ocupantes no próprio card; o tipo (padrão ou duplo) aparece como leitura e é alterado apenas em Administração. A matrícula aceita digitação ou escolha no autocompletar da base ativa; se encontrada, nome, setor e função oficiais são usados. O setor ocupante só pode ser escolhido entre os setores oficiais da filial (departamentos ativos e setores já registrados). Em armários duplos é possível cadastrar o segundo ocupante no mesmo formulário. Uma transferência exige motivo e aparece no histórico de trocas para operadores. Os filtros mostram com vaga, livres, ocupados, pendentes, duplos e setores. O registro técnico de eventos e a importação ficam restritos aos administradores.
 
 A carga de armários acontece uma vez por filial; depois, armários individuais podem ser cadastrados em Administração.
 
@@ -35,12 +35,14 @@ A tela **Armários** mostra os registros em cards ou tabela. A visualização em
 - a linha de setor com ícone, os ocupantes com nome em destaque e a matrícula precedida de `#`, ou a mensagem `Sem ocupante`;
 - o rodapé com a situação (`Ocupado`, `Livre · 1 vaga disponível`) e os *chips* de duplo, pendência e ausência de cópia da chave.
 
-Os filtros ficam unificados em um único painel branco com borda e raio de 14px: busca com ícone de lupa embutido, os três seletores (situação, setor, cópia da chave) e a caixa **Somente duplos**, todos com altura de 44px e anel de foco na cor da marca. Os atalhos rápidos aparecem logo abaixo em um grupo de *chips* segmentados (container em pílula com os quatro atalhos), destacados com a cor da marca quando ativos:
+Cartões **livres** são intencionalmente minimalistas: apenas o número, o *badge* `Livre` (e `Duplo`, quando couber) e a área visual limpa — sem setor, ocupante, rodapé ou aviso de chave.
+
+Os filtros ficam unificados em um único painel branco com borda e raio de 14px: busca com ícone de lupa embutido e os três seletores (**Situação**, **Setor** e **Filtrar por cópia da chave**), todos com altura de 44px e anel de foco na cor da marca. Os seletores usam o componente próprio `Select`/`SelectField` (`apps/web/src/components/Select.tsx` + `select.css`): um botão com `role="combobox"` e menu `role="listbox"` posicionado por script, com teclado (setas, Enter, Esc), tema claro/escuro e opções fixas em `<ul>`. Os atalhos rápidos aparecem logo abaixo em um grupo de *chips* segmentados (container em pílula com os quatro atalhos), destacados com a cor da marca quando ativos:
 
 - **Com vaga** — apenas armários com pelo menos uma vaga livre;
 - **Livres** — sem ocupação e com vaga disponível;
 - **Pendentes** — com pendência aberta ou conferência de migração inconclusiva;
-- **Sem cópia** — sem cópia da chave registrada.
+- **Duplos** — apenas os classificados como duplos em Administração.
 
 Os filtros ativos aparecem como etiquetas removíveis e podem ser limpos de uma vez com **Limpar filtros**.
 
@@ -48,11 +50,12 @@ Clicar em um armário abre o **drawer de detalhes e edição** (`apps/web/src/pa
 
 1. **Cabeçalho fixo** — o número do armário é permanente e não é editável: aparece como título `Armário Nº X` com o *badge* da filial, o indicador de duplo e a linha `Ocupado / Sem ocupante · situação`. O cabeçalho fica fixo no topo do drawer durante a rolagem.
 2. **Cartão Status do armário** — estado atual (Livre, Ocupado, Pendente, Indisponível), destaque das vagas disponíveis (`0 vagas` / `1 vaga disponível`), situação (Disponível, Manutenção, Bloqueado), capacidade operacional, posições ocupadas, cópia da chave e avisos de conferência ou de setor ocupante.
-3. **Cartão Ocupantes** — cada pessoa com nome, matrícula, setor e função, mais os botões secundários **Imprimir Termo** e **Registrar saída**.
+3. **Cartão Ocupantes** — cada pessoa com nome, matrícula, setor e função, mais os botões secundários **Imprimir Termo**, **Editar** e **Desocupar armário** (antes chamado de *Registrar saída*).
 4. **Cartão Edição e configurações** (administração) — controles refinados:
-   - **Toggle switch** para *Armário duplo* e para *Existe cópia da chave?*;
+   - **Tipo de armário** em leitura (`Padrão` ou `Duplo`) com aviso de que a troca é feita em Administração;
+   - **Toggle switch** apenas para *Existe cópia da chave?*;
    - **Botões segmentados** para a situação: `Disponível | Manutenção | Bloqueado`;
-   - micro-ícones nos campos de matrícula, nome, setor e função;
+   - **Setor ocupante** escolhido em lista derivada dos setores oficiais da filial (`apps/web/src/sectors.ts`);
    - cadastro ou correção de ocupantes com matrícula oficial da base ativa.
 5. **Cartão Cadastrar pessoa neste armário** — pesquisa por nome ou matrícula, atribuição, transferência com motivo e compartilhamento com previsão de encerramento.
 
@@ -60,6 +63,8 @@ O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura tot
 
 ## Recursos do front-end
 
+- **Controles próprios em vez de `<select>` e `<datalist>` nativos:** os filtros e os campos de setor usam `Select`/`SelectField` (`apps/web/src/components/Select.tsx`, estilos em `select.css`), e a matrícula usa o autocompletar `RegistrationInput` (`apps/web/src/RegistrationInput.tsx`) com realce do trecho digitado. A lista de setores oficiais vem de `apps/web/src/sectors.ts` (departamentos de pessoas ativas, setores já registrados em armários e o valor atual). Os selects de ação e de formulário (situação por linha, perfil, modalidade, categoria do cadastro, prévia de importação) continuam nativos, mantendo `required` e a validação do navegador.
+- **Armário duplo só em Administração:** o atributo `is_double` é criado na carga inicial ou na tela Administração; nos cards de leitura e nos drawers operacionais ele aparece como *badge* e como campo fixo, sem controle editável.
 - **PWA e modo offline:** o `service worker` (`apps/web/public/sw.js`) faz o cache do *shell* e dos assets; a cópia de consulta fica no **IndexedDB** (`armarios-offline`) por até 24 horas e autoriza um navegador na tela Administração. Sem conexão, o sistema entra em modo somente consulta.
 - **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
 - **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão.

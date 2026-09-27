@@ -202,6 +202,11 @@
 .control-cell .segmented { background: var(--surface-subtle); }
 .control-span { grid-column: 1 / -1; }
 
+/* ---------- Informação fixa (somente leitura) ---------- */
+.static-caption { color: var(--text-secondary); font-size: .78rem; font-weight: 750; }
+.static-value { display: flex; align-items: center; gap: 7px; font-size: .86rem; }
+.static-hint { color: var(--muted); font-size: .75rem; line-height: 1.45; margin: 0; }
+
 /* ---------- Micro-ícones nos campos ---------- */
 .field-glyph { display: inline-block; vertical-align: -2px; margin-right: 6px; color: var(--muted); opacity: .85; }
 

@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {api,op,post,patch} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState} from '../ui';
+import {SelectField} from '../components/Select';
 
 type Person={id:string;person_id:string;name:string;registration:string|null;category:string;origin:string;company:string|null;
   department:string|null;function_name:string|null;status:string;needs_fixed:boolean;ti_present:boolean|null;version:number;locker_id:string|null;number:string|null};
@@ -91,8 +92,8 @@ export function People({branchId,branchName,readonly,copy,refresh,notice,askConf
     </section>}
     <section className="card"><div className="section-head"><div><span className="eyebrow">Base ativa</span><h2>Colaboradores e outras pessoas</h2><p>{filtered.length} {filtered.length===1?'cadastro ativo encontrado':'cadastros ativos encontrados'}</p></div></div>
       <div className="filters"><label>Buscar<input value={q} onChange={event=>setQ(event.target.value)} placeholder="Nome, matrícula ou armário"/></label>
-        <label>Categoria<select value={category} onChange={event=>setCategory(event.target.value)}><option value="">Todas</option>
-          <option value="colaborador">Colaborador</option><option value="promotor_fixo">Promotor fixo</option><option value="terceirizado">Terceirizado</option></select></label></div>
+        <SelectField label="Categoria" value={category} onChange={setCategory}
+          options={[{value:'',label:'Todas'},{value:'colaborador',label:'Colaborador'},{value:'promotor_fixo',label:'Promotor fixo'},{value:'terceirizado',label:'Terceirizado'}]}/></div>
       {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={visibleCollaborators.length>0&&visibleCollaborators.every(person=>selected.includes(person.id))}
         onChange={event=>setSelected(event.target.checked?[...new Set([...selected,...visibleCollaborators.map(person=>person.id)])]:selected.filter(id=>!visibleCollaborators.some(person=>person.id===id)))}/>
         Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Remover selecionados ({selected.length})</button>

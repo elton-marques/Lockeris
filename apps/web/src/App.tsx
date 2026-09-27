@@ -3,6 +3,7 @@ import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LayoutDashb
 import {api,post,type User} from './api';
 import {clearOffline,clearAuthorization,loadCopy,loadDevice,saveCopy,type OfflineCopy} from './offline';
 import {roleName} from './ui';
+import {Select} from './components/Select';
 import {Dashboard} from './pages/Dashboard';
 import {Overview} from './pages/Overview';
 import type {LockerPreset} from './locker-insights';
@@ -99,7 +100,9 @@ export default function App(){
     </aside>
     <div className="main-area">
       <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
-        {branches.length>1?<label className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><select value={branchId} onChange={e=>{setBranchId(e.target.value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}>{branches.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
+        {branches.length>1?<div className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><Select className="branch-select-field" ariaLabel="Filial" value={branchId}
+          onChange={value=>{setBranchId(value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
+          options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
       </div></header>
       {offline&&<div className="offline-banner" role="status"><strong>Dados locais para consulta.</strong> Atualizados em {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Válidos até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}

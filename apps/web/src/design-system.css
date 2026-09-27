@@ -111,7 +111,6 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .stat strong { font-size: 1.85rem; color: var(--ink); line-height: 1.1; }
 .filters { gap: 12px; }
 .filters label { min-width: 145px; }
-.locker-filters .check { padding-bottom: 6px; }
 .locker-grid { grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 10px; }
 .locker-tile { min-height: 142px; padding: 15px; border-radius: 13px; gap: 7px; box-shadow: none; }
 .locker-tile:hover:not(:disabled) { box-shadow: 0 10px 22px rgb(16 52 60 / 9%); transform: translateY(-2px); }

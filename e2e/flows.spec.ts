@@ -151,9 +151,12 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await page.getByRole('button',{name:/^Com pendência/}).click();
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 101']);
   await page.getByRole('button',{name:'Armários',exact:true}).click();
-  await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('livre');
+  await page.getByRole('combobox',{name:'Situação',exact:true}).click();
+  await page.locator('.select-menu').getByRole('option',{name:'Livres',exact:true}).click();
   await expect(page.locator('.locker-tile')).toHaveCount(2);
-  await page.getByRole('combobox',{name:'Situação',exact:true}).selectOption('');
+  await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 103','№ 104']);
+  await page.getByRole('combobox',{name:'Situação',exact:true}).click();
+  await page.locator('.select-menu').getByRole('option',{name:'Todas',exact:true}).click();
   await page.locator('.locker-tile').filter({hasText:'103'}).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByLabel('Pesquisar pessoa por nome ou matrícula').fill('0001');
@@ -169,7 +172,8 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   expect(transferBounds.top).toBeGreaterThanOrEqual(0);
   expect(transferBounds.bottom).toBeLessThanOrEqual(900);
   await closeNotice(page);
-  await page.getByLabel('Filtrar por cópia da chave').selectOption('nao');
+  await page.getByRole('combobox',{name:'Filtrar por cópia da chave',exact:true}).click();
+  await page.locator('.select-menu').getByRole('option',{name:'Sem cópia',exact:true}).click();
   await expect(page.locator('.locker-tile')).toHaveCount(1);
   await page.screenshot({path:'test-results/visual/09-status-armarios.png'});
 });
@@ -248,9 +252,12 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
 
 test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
-  try{await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,modality)
+  try{    await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,modality)
     SELECT b.id,n::text,'padrao',1,'fixo' FROM branches b CROSS JOIN generate_series(1,477) n
-    WHERE b.name='Caruaru Demonstração' ON CONFLICT(branch_id,number) DO NOTHING`);await createAdminAlias(pool,'e2e-477');}finally{await pool.end();}
+    WHERE b.name='Caruaru Demonstração' ON CONFLICT(branch_id,number) DO NOTHING`);
+    await pool.query(`UPDATE lockers SET is_double=true,capacity=2 WHERE number='477' AND branch_id IN
+      (SELECT id FROM branches WHERE name='Caruaru Demonstração')`);
+    await createAdminAlias(pool,'e2e-477');}finally{await pool.end();}
   await page.goto('/');
   await page.getByLabel('Nome de usuário').fill('e2e-477');
   await page.getByLabel('Senha').fill('Testing-Password-123');
@@ -265,7 +272,8 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await expect(dialog.getByLabel('Número do armário')).toHaveCount(0);
   await expect(dialog.getByLabel('Existe cópia da chave?')).toBeChecked();
   await page.screenshot({path:'test-results/visual/11-edicao-armario.png'});
-  await dialog.getByLabel('Armário duplo').check();
+  await expect(dialog.getByLabel('Armário duplo')).toHaveCount(0);
+  await expect(dialog.locator('.static-value')).toContainText('Duplo');
   await dialog.getByLabel('Existe cópia da chave?').uncheck();
   await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
   await expectNotice(page,'atualizados');
@@ -275,7 +283,7 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await closeNotice(page);
   await page.locator('.locker-tile').last().click();
   await expect(page.getByRole('dialog').getByRole('heading',{name:'Armário Nº 477'})).toBeVisible();
-  await expect(page.getByRole('dialog').locator('.double-badge')).toBeVisible();
+  await expect(page.getByRole('dialog').locator('.double-badge')).toHaveCount(2);
   await expect(page.getByRole('dialog').getByLabel('Existe cópia da chave?')).not.toBeChecked();
 });
 
@@ -285,7 +293,9 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   try{await pool.query(`UPDATE lockers SET migration_status='inconclusivo' WHERE number IN ('12','101');
     INSERT INTO pending_items(branch_id,kind,subject_type,subject_id)
     SELECT branch_id,'migracao_inconclusiva','locker',id FROM lockers WHERE number IN ('12','101')
-    ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta'`);await createAdminAlias(pool,'e2e-pending');}finally{await pool.end();}
+    ON CONFLICT(branch_id,kind,subject_type,subject_id) DO UPDATE SET state='aberta';
+    UPDATE memberships SET department='Restaurante FC revisado' WHERE registration IN ('0001','0002')`);
+    await createAdminAlias(pool,'e2e-pending');}finally{await pool.end();}
   await page.goto('/');
   await page.getByLabel('Nome de usuário').fill('e2e-pending');
   await page.getByLabel('Senha').fill('Testing-Password-123');
@@ -301,35 +311,38 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   await dialog.getByLabel('Conferi os dados acima').check();
   await expect(dialog.getByRole('button',{name:'Concluir conferência'})).toBeEnabled();
   await dialog.getByLabel('Cadastrar ocupante').check();
-  await expect(dialog.locator('datalist option')).toHaveCount(2);
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).click();
+  await expect(dialog.locator('.combobox-menu .combobox-option')).toHaveCount(2);
   await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0001');
   await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Ana Exemplo');
   await dialog.getByLabel('Cadastrar ocupante').uncheck();
-  await dialog.getByLabel('Setor ocupante').fill('Restaurante FC revisado');
+  await dialog.getByRole('combobox',{name:'Setor ocupante',exact:true}).click();
+  await dialog.locator('.select-menu .select-option',{hasText:'Restaurante FC revisado'}).click();
   await dialog.getByRole('button',{name:'Salvar correções'}).click();
   await expectNotice(page,'Correções salvas');
   await closeNotice(page);
   await page.locator('.pending-item').first().getByRole('button',{name:'Conferir dados'}).click();
-  await expect(page.getByRole('dialog').getByLabel('Setor ocupante')).toHaveValue('Restaurante FC revisado');
+  await expect(page.getByRole('dialog').getByRole('combobox',{name:'Setor ocupante',exact:true})).toContainText('Restaurante FC revisado');
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Concluir conferência'}).click();
   await expectNotice(page,'conferência concluída');
   await closeNotice(page);
-  await page.getByLabel('Exibir').selectOption('resolvida');
+  await page.getByRole('combobox',{name:'Exibir',exact:true}).click();
+  await page.locator('.select-menu').getByRole('option',{name:'Resolvidas',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Histórico de pendências resolvidas'})).toBeVisible();
   await expect(page.locator('.pending-item').filter({hasText:'Armário 12'})).toContainText('Motivo: Os dados importados deste armário precisavam de conferência.');
   await expect(page.locator('.pending-item').filter({hasText:'Armário 12'})).toContainText('Resolução: Os dados do armário foram conferidos.');
   await page.screenshot({path:'test-results/visual/12-pendencias-resolvidas.png'});
 });
 
-test('card troca matrícula e permite segundo ocupante depois de marcar duplo',async({page})=>{
+test('card troca matrícula e permite segundo ocupante em armário duplo',async({page})=>{
   await mkdir('test-results/visual',{recursive:true});
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
   const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
   const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
   try{
     const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
-    await pool.query("INSERT INTO lockers(branch_id,number,size,capacity,modality) VALUES($1,'500','padrao',1,'fixo')",[branch.id]);
+    await pool.query("INSERT INTO lockers(branch_id,number,size,capacity,is_double,modality) VALUES($1,'500','padrao',2,true,'fixo')",[branch.id]);
     for(const [registration,name] of [['0004','Dora Oficial'],['0005','Eva Oficial']]){
       const person=(await pool.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[name])).rows[0];
       await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present)
@@ -347,11 +360,12 @@ test('card troca matrícula e permite segundo ocupante depois de marcar duplo',a
   await page.getByLabel('Buscar armário, nome ou matrícula').fill('500');
   await page.locator('.locker-tile').filter({hasText:'500'}).click();
   const dialog=page.getByRole('dialog');
-  await dialog.getByLabel('Armário duplo').check();
+  await expect(dialog.getByLabel('Armário duplo')).toHaveCount(0);
   await dialog.getByRole('button',{name:'Cadastrar ocupante'}).click();
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).click();
+  await expect(dialog.locator('.combobox-menu .combobox-option')).toHaveCount(4);
   await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0004');
   await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Dora Oficial');
-  await expect(dialog.locator('datalist option')).toHaveCount(4);
   await page.screenshot({path:'test-results/visual/13-edicao-matricula.png'});
   await dialog.getByRole('button',{name:'Salvar ocupante'}).click();
   await expect(page.getByRole('alertdialog').getByRole('heading',{name:/Dora Oficial/})).toBeVisible();

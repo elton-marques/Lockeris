@@ -1,0 +1,119 @@
+/* =========================================================================
+   Seletor e autocompletar próprios do produto (substituem <select> e
+   <datalist> nativos). Uso exclusivo de variáveis do design-system para
+   acompanhar os temas claro e escuro.
+   ========================================================================= */
+
+.select-field{position:relative;min-width:0}
+.select-field-label{display:block;color:var(--text-secondary);font-size:.84rem;font-weight:700}
+
+.select{position:relative;min-width:0}
+.select-trigger{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;min-height:44px;margin-top:6px;padding:0 12px;
+  border:1px solid var(--border-strong);border-radius:10px;
+  background:var(--surface-raised);color:var(--ink);
+  font-size:.84rem;font-weight:600;text-align:left;white-space:nowrap;
+  transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease;
+}
+.select-trigger:hover:not(:disabled){border-color:color-mix(in srgb,var(--brand-accent) 45%,var(--border-strong))}
+.select-trigger[aria-expanded='true']{border-color:var(--brand-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand-accent) 20%,transparent)}
+.select-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.select-value.is-placeholder{color:var(--text-muted);font-weight:500}
+.select-chevron{flex:none;color:var(--text-muted);transition:transform .16s ease}
+.select-trigger[aria-expanded='true'] .select-chevron{transform:rotate(180deg)}
+
+.select-menu{
+  z-index:900;margin:0;padding:5px;list-style:none;overflow-y:auto;
+  border:1px solid var(--border);border-radius:12px;
+  background:var(--surface-raised);color:var(--text-primary);
+  box-shadow:var(--shadow-lift);
+}
+.select-option{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  min-height:38px;padding:8px 10px;border-radius:8px;cursor:pointer;
+  color:var(--text-primary);font-size:.8rem;font-weight:600;
+}
+.select-option.active{background:var(--brand-surface);color:var(--brand-accent)}
+.select-option[aria-selected='true']{color:var(--brand-accent);font-weight:800}
+.select-option[aria-disabled='true']{opacity:.5;cursor:not-allowed}
+.select-option svg{flex:none}
+.select-empty{padding:9px 10px;color:var(--text-muted);font-size:.78rem}
+
+/* Contextos: filtros, formulários e barra superior */
+.filters .select-field{min-width:180px;flex:1}
+.filters .select-field:first-child{flex:2}
+.filters .select-field .select-trigger,
+.form-grid .select-trigger,
+.inline-form .select-trigger,
+.pending-actions .select-trigger{width:100%}
+:root .locker-list-panel .locker-filters .select-field{min-width:0}
+:root .locker-list-panel .locker-filters .select-trigger{
+  height:44px;min-height:44px;margin-top:7px;padding:0 12px;
+  border:1px solid var(--border);border-radius:10px;
+  background:var(--surface-raised);color:var(--ink);
+  font-size:12.5px;font-weight:550;
+}
+:root .locker-list-panel .locker-filters .select-trigger:hover:not(:disabled){border-color:#b6c2d3}
+:root .locker-list-panel .locker-filters .select-trigger[aria-expanded='true']{
+  border-color:var(--brand);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent);
+}
+.branch-select .select{display:inline-block;min-width:170px}
+.branch-select .select-trigger{min-height:40px;margin-top:0;max-width:220px;font-size:.79rem}
+.inline-edit .select-field{min-width:220px}
+.inline-edit .select-trigger{margin-top:0;min-height:42px}
+
+/* --- Autocompletar de matrícula (combobox) --- */
+.combobox-field{position:relative;grid-column:1 / -1;min-width:0}
+.combobox-label{display:block;color:var(--text-secondary);font-size:.84rem;font-weight:700}
+.combobox-control{position:relative;display:flex;align-items:center}
+.combobox-control > svg{position:absolute;left:12px;color:var(--text-muted);pointer-events:none}
+.combobox-input{
+  width:100%;min-height:44px;margin-top:6px;padding:0 12px 0 36px;
+  border:1px solid var(--border-strong);border-radius:10px;
+  background:var(--surface-raised);color:var(--ink);font-size:.84rem;font-weight:600;
+}
+.combobox-input:hover:not(:disabled){border-color:color-mix(in srgb,var(--brand-accent) 45%,var(--border-strong))}
+.combobox-menu{
+  z-index:900;margin:0;padding:5px;list-style:none;overflow-y:auto;
+  border:1px solid var(--border);border-radius:12px;
+  background:var(--surface-raised);box-shadow:var(--shadow-lift);
+}
+.combobox-option{
+  display:grid;gap:2px;padding:9px 10px;border-radius:8px;cursor:pointer;
+  color:var(--text-primary);font-size:.8rem;
+}
+.combobox-option.active{background:var(--brand-surface)}
+.combobox-option-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.combobox-option-head strong{font-size:.85rem;font-weight:800;color:var(--ink)}
+.combobox-option-head span{color:var(--brand-accent);font-size:.76rem;font-weight:800;letter-spacing:.02em}
+.combobox-option small{display:flex;gap:6px;color:var(--text-muted);font-size:.73rem;font-weight:600}
+.combobox-option mark{background:color-mix(in srgb,var(--brand-accent) 24%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.combobox-empty{padding:10px;color:var(--text-muted);font-size:.78rem}
+.combobox-field .registration-match{margin:7px 0 0}
+
+/* Tema escuro */
+:root[data-theme='dark'] .select-trigger,
+:root[data-theme='dark'] .combobox-input{background:#2d3045;border-color:#4a4e68;color:#e6e7f4}
+:root[data-theme='dark'] .select-trigger:hover:not(:disabled),
+:root[data-theme='dark'] .combobox-input:hover:not(:disabled){background:#383b55;border-color:#77729e}
+:root[data-theme='dark'] .select-trigger[aria-expanded='true'],
+:root[data-theme='dark'] .combobox-input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 24%,transparent)}
+:root[data-theme='dark'] .select-menu,
+:root[data-theme='dark'] .combobox-menu{background:#2d3045;border-color:#4a4e68;box-shadow:0 18px 38px #080a1780}
+:root[data-theme='dark'] .select-option,
+:root[data-theme='dark'] .combobox-option{color:#e6e7f4}
+:root[data-theme='dark'] .select-option.active,
+:root[data-theme='dark'] .select-option[aria-selected='true'],
+:root[data-theme='dark'] .combobox-option.active{background:#342f56;color:#c7bcff}
+:root[data-theme='dark'] .combobox-option-head strong{color:#f0f0fa}
+:root[data-theme='dark'] .combobox-option-head span{color:#c7bcff}
+:root[data-theme='dark'] .select-field-label,
+:root[data-theme='dark'] .combobox-label{color:#d5d8e9}
+:root[data-theme='dark'] .select-value.is-placeholder,
+:root[data-theme='dark'] .select-chevron,
+:root[data-theme='dark'] .select-empty,
+:root[data-theme='dark'] .combobox-empty,
+:root[data-theme='dark'] .combobox-option small{color:#a7adc6}
+:root[data-theme='dark'] .branch-select .select-trigger{background:#2a2d40;border-color:#484c66;color:#e4e6f3}

@@ -7,6 +7,8 @@ import {RegistrationInput,findRegistration,registrationKey} from '../Registratio
 import type {RegistrationOption} from '../RegistrationInput';
 import {TermoResponsabilidade} from '../components/TermoResponsabilidade';
 import {FieldIcon,SegmentedControl,ToggleSwitch} from '../components/LockerControls';
+import {SelectField} from '../components/Select';
+import {sectorSelectOptions} from '../sectors';
 import {availablePositions,effectiveCapacity,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,showsLockerPositions,type LockerPreset} from '../locker-insights';
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
@@ -32,7 +34,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
   const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
   const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
   const [printData,setPrintData]=useState<PrintData|null>(null);
-  const [edit,setEdit]=useState({isDouble:false,condition:'disponivel',sectorOccupant:'',keyCopy:'sim'});
+  const [edit,setEdit]=useState({condition:'disponivel',sectorOccupant:'',keyCopy:'sim'});
   const [occupantEdit,setOccupantEdit]=useState<OccupantEdit|null>(null),[draft,setDraft]=useState<OccupantDraft>(emptyDraft);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
 
@@ -87,19 +89,19 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     sectorFilter&&{label:`Setor: ${sectorFilter==='__none__'?'Sem setor':sectorFilter}`,clear:()=>setSectorFilter('')},
     keyFilter&&{label:`Cópia da chave: ${keyFilter==='sim'?'Sim':'Não'}`,clear:()=>setKeyFilter('')},
     pendingKindFilter&&{label:`Motivo: ${pendingKindLabels[pendingKindFilter]??'Conferência necessária'}`,clear:()=>setPendingKindFilter('')},
-    doubleOnly&&{label:'Somente duplos',clear:()=>setDoubleOnly(false)}
+    doubleOnly&&{label:'Duplos',clear:()=>setDoubleOnly(false)}
   ].filter((item):item is {label:string;clear:()=>void}=>!!item);
   const quickFilters=[
     {label:'Com vaga',active:statusFilter==='com_vaga',apply:()=>{setStatusFilter(statusFilter==='com_vaga'?'':'com_vaga');setPendingKindFilter('');}},
     {label:'Livres',active:statusFilter==='livre',apply:()=>{setStatusFilter(statusFilter==='livre'?'':'livre');setPendingKindFilter('');}},
     {label:'Pendentes',active:statusFilter==='pendente',apply:()=>setStatusFilter(statusFilter==='pendente'?'':'pendente')},
-    {label:'Sem cópia',active:keyFilter==='nao',apply:()=>setKeyFilter(keyFilter==='nao'?'':'nao')}
+    {label:'Duplos',active:doubleOnly,apply:()=>setDoubleOnly(current=>!current)}
   ];
   function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);}
   const locker=lockers.find(item=>item.id===selected);
   const editingOccupant=occupantEdit&&occupantEdit.allocationId&&locker?locker.occupants.find(item=>item.allocationId===occupantEdit.allocationId):undefined;
   const creatingOccupant=!!occupantEdit&&!editingOccupant;
-  const showSecondSlot=!!locker&&(edit.isDouble||locker.occupants.length>1);
+  const showSecondSlot=!!locker&&(locker.is_double||locker.occupants.length>1);
   const canEditOccupants=admin&&!readonly;
   const officialEdit=findRegistration(registrations,draft.registration);
   const officialFieldsLocked=!!officialEdit||!!editingOccupant&&editingOccupant.origin==='ti'&&
@@ -117,7 +119,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     setKeyCopy(item.key_copy_available===false?'nao':'sim');
     setOccupantEdit(null);setDraft(emptyDraft);fillEdit(item);setSelected(item.id);
   }
-  function fillEdit(item:Locker){setEdit({isDouble:item.is_double,condition:item.condition,
+  function fillEdit(item:Locker){setEdit({condition:item.condition,
     sectorOccupant:item.sector_occupant??'',keyCopy:item.key_copy_available===false?'nao':'sim'});}
   function startOccupantEdit(item:Locker,slot:number){
     const occupant=item.occupants[slot];
@@ -163,7 +165,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     event?.preventDefault();if(!locker||!admin)return;
     const withOccupant=scope==='occupant'&&!!occupantEdit&&!!(editingOccupant||creatingOccupant);
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/lockers/${locker.id}/revise`,{operationId:op(),expectedLockerVersion:locker.version,
-      isDouble:edit.isDouble,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
+      isDouble:locker.is_double,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
       sectorOccupant:withOccupant&&creatingOccupant?null:edit.sectorOccupant.trim()||null,
       occupant:withOccupant?{allocationId:editingOccupant?.allocationId,membershipId:editingOccupant?.membershipId,
         expectedMembershipVersion:editingOccupant?.membershipVersion,name:draft.name.trim(),registration:draft.registration.trim()||null,
@@ -189,9 +191,9 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     `${chosen.name} cadastrado no armário ${locker.number}.`,true,offerPrint);
   }
   async function release(occupant:Occupant){
-    if(!locker||!await askConfirm(`Confirmar saída de ${occupant.name} do armário ${locker.number}?`))return;
+    if(!locker||!await askConfirm(`Desocupar o armário ${locker.number} e encerrar a ocupação de ${occupant.name}?`))return;
     act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:occupant.allocationId,
-      expectedVersion:occupant.allocationVersion}),'Saída registrada.');
+      expectedVersion:occupant.allocationVersion}),'Armário desocupado.');
   }
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
     if(event.key==='Escape'){event.preventDefault();setSelected(null);return;}
@@ -223,13 +225,16 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
             <input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome ou matrícula"/>
           </span>
         </label>
-        <label>Situação<select value={statusFilter} onChange={event=>{setStatusFilter(event.target.value);if(event.target.value!=='pendente')setPendingKindFilter('');}}><option value="">Todas</option><option value="com_vaga">Com vaga</option><option value="livre">Livres</option>
-          <option value="ocupado">Ocupados</option><option value="pendente">Com pendência</option><option value="indisponivel">Bloqueados / revisão</option></select></label>
-        <label>Setor<select value={sectorFilter} onChange={event=>setSectorFilter(event.target.value)}><option value="">Todos</option>
-          {sectorOptions.map(sector=><option key={sector} value={sector}>{sector==='__none__'?'Sem setor':sector}</option>)}</select></label>
-        <label>Filtrar por cópia da chave<select value={keyFilter} onChange={event=>setKeyFilter(event.target.value)}><option value="">Todas</option>
-          <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
-        <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
+        <SelectField label="Situação" value={statusFilter} placeholder="Todas"
+          onChange={value=>{setStatusFilter(value);if(value!=='pendente')setPendingKindFilter('');}}
+          options={[{value:'',label:'Todas'},{value:'com_vaga',label:'Com vaga'},{value:'livre',label:'Livres'},
+            {value:'ocupado',label:'Ocupados'},{value:'pendente',label:'Com pendência'},{value:'indisponivel',label:'Bloqueados / revisão'}]}/>
+        <SelectField label="Setor" value={sectorFilter} placeholder="Todos"
+          onChange={setSectorFilter}
+          options={[{value:'',label:'Todos'},...sectorOptions.map(sector=>({value:sector,label:sector==='__none__'?'Sem setor':sector}))]}/>
+        <SelectField label="Filtrar por cópia da chave" value={keyFilter} placeholder="Todas"
+          onChange={setKeyFilter}
+          options={[{value:'',label:'Todas'},{value:'sim',label:'Com cópia'},{value:'nao',label:'Sem cópia'}]}/>
       </div>
       <div className="quick-filters">
         <span>Atalhos</span>
@@ -242,11 +247,12 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
         return <button key={item.id} className={`locker-tile ${itemState==='pendente'?'has-pending':itemState==='ocupado'?'occupied':itemState==='livre'?'free':'unavailable'}`}
           onClick={()=>openLocker(item)} aria-haspopup="dialog" aria-label={`Abrir detalhes do armário ${item.number}`}>
           <span className="tile-top"><strong className="tile-number">№ {item.number}</strong><span className="tile-badges">{item.is_double&&<span className="double-badge">Duplo</span>}<span className="badge">{stateLabels[itemState]}</span></span></span>
+          {itemState==='livre'?<span className="tile-free" aria-hidden="true"></span>:<>
           <span className="tile-meta"><Building2 size={12} aria-hidden="true"/><span>{item.is_double?'Duplo · ':''}{sectors(item).join(', ')||'Sem setor'}</span></span>
           <span className="tile-people">{item.sector_occupant?item.sector_occupant:item.occupants.length?item.occupants.map(person=><span key={person.allocationId} className="tile-person"><span className="tile-person-name">{person.name}</span><small><Hash size={11} aria-hidden="true"/>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):<span className="tile-empty">{item.destination||'Sem ocupante'}</span>}</span>
           <span className="tile-footer">{showsLockerPositions(item)?`${occupiedPositions(item)}/${effectiveCapacity(item)} ${effectiveCapacity(item)===1?'posição ocupada':'posições ocupadas'}`:occupiedPositions(item)>0?'Ocupado':'Livre'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
           {item.key_copy_available===false&&<span className="tile-key"><KeyRound size={13} aria-hidden="true"/> Sem cópia da chave</span>}
-          {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}
+          {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}</>}
         </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong>{item.is_double&&<span className="double-badge table-badge">Duplo</span>}</td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{showsLockerPositions(item)?`${occupiedPositions(item)} de ${effectiveCapacity(item)}`:occupiedPositions(item)>0?'Ocupado':'Livre'}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
@@ -292,7 +298,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
                 <span><Building2 size={12} aria-hidden="true"/>{occupant.department||'Setor não informado'}</span>
                 {occupant.functionName&&<span><Briefcase size={12} aria-hidden="true"/>{occupant.functionName}</span>}</small></div>
             <div className="row-actions occupant-actions"><button type="button" className="btn-action" onClick={()=>printOccupantTerm(locker,occupant)}>Imprimir Termo</button>
-              {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Registrar saída</button>}</div></div>)}</div>
+              {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Desocupar armário</button>}</div></div>)}</div>
             :<p className="locker-empty"><Users size={16} aria-hidden="true"/>{locker.sector_occupant?'Ocupação por setor, sem pessoa identificada.':'Nenhuma pessoa ocupando este armário no momento.'}</p>}
         </section>
         {!admin&&<section className="locker-card" aria-labelledby="locker-key-title">
@@ -307,9 +313,9 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
           <div className="locker-card-head"><h3 id="locker-editor-title"><span className="card-icon"><PencilLine size={16} aria-hidden="true"/></span>Edição e configurações</h3></div>
           <p className="locker-card-note">Somente atributos físicos e operacionais do armário. O número é fixo; matrícula e cadastro dos ocupantes são editados no cartão Ocupantes.</p>
           <div className="form-grid"><div className="control-cell">
-              <ToggleSwitch label="Armário duplo" hint="Dois compartimentos com duas posições." checked={edit.isDouble} disabled={busy}
-                onChange={checked=>{setEdit(current=>({...current,isDouble:checked}));
-                  if(!checked&&occupantEdit?.slot===1&&!locker.occupants[1])cancelOccupantEdit();}}/></div>
+              <span className="static-caption">Tipo de armário</span>
+              <strong className="static-value">{locker.is_double?<span className="double-badge">Duplo</span>:'Padrão'}</strong>
+              <small className="static-hint">Atributo físico fixo: a troca entre Padrão e Duplo é feita em Administração.</small></div>
             <div className="control-cell">
               <ToggleSwitch label="Existe cópia da chave?" hint="Indique se há cópia disponível para este armário." checked={edit.keyCopy==='sim'} disabled={busy}
                 onChange={checked=>setEdit(current=>({...current,keyCopy:checked?'sim':'nao'}))}/></div>
@@ -317,7 +323,10 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
               <SegmentedControl label="Situação" value={edit.condition} disabled={busy}
                 options={[{value:'disponivel',label:'Disponível',icon:Check},{value:'manutencao',label:'Manutenção',icon:Wrench},{value:'bloqueado',label:'Bloqueado',icon:Lock}]}
                 onChange={value=>setEdit(current=>({...current,condition:value}))}/></div>
-            <label className="field-icon control-span"><FieldIcon icon={Building2}/>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>
+            <div className="control-cell control-span">
+              <SelectField label="Setor ocupante" value={edit.sectorOccupant} placeholder="Sem setor ocupante"
+                onChange={value=>setEdit(current=>({...current,sectorOccupant:value}))}
+                options={sectorSelectOptions(people,lockers,edit.sectorOccupant)}/></div>
           </div>
           <button className="primary" disabled={busy}>Salvar dados do armário</button>
         </form>}
@@ -409,7 +418,7 @@ function OccupantSlot({slot,occupant,draft,editing,creating,busy,officialLocked,
     <div className="row-actions occupant-actions">
       <button type="button" className="btn-action" disabled={busy} onClick={()=>onPrint(occupant)}>Imprimir Termo</button>
       <button type="button" disabled={busy} aria-label={`Editar ${occupant.name}`} onClick={onEdit}><PencilLine size={14} aria-hidden="true"/>Editar</button>
-      <button type="button" disabled={busy} onClick={()=>onRelease(occupant)}>Registrar saída</button>
+      <button type="button" disabled={busy} onClick={()=>onRelease(occupant)}>Desocupar armário</button>
     </div>
   </article>;
 }

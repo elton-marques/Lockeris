@@ -4,6 +4,8 @@ import type {PageProps} from '../App';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
 import {DataState,EmptyState} from '../ui';
+import {SelectField} from '../components/Select';
+import {sectorSelectOptions} from '../sectors';
 
 type Occupant={allocationId:string;allocationVersion:number;membershipId:string;membershipVersion:number;personId:string;
   name:string;registration:string|null;department:string|null;functionName:string|null;origin:string};
@@ -15,6 +17,7 @@ type Item={id:string;version:number;kind:string;subject_type:string;subject_id:s
   sector_occupant:string|null;is_double:boolean|null;condition:string|null;key_copy_available:boolean|null;migration_status:string|null;occupants:Occupant[];source_rows:SourceRow[];
   allocation_id:string|null;allocation_version:number|null;sharing_version:number|null;seasonal_version:number|null;
   reason:string|null;resolution:string|null;updated_at:string};
+type Person={person_id:string;department:string|null;status:string};
 const labels:Record<string,string>={ausente_ti:'Matrícula não encontrada na base atual',sem_armario:'Pessoa precisa de armário',
   atuacao_encerrada:'Cadastro encerrado com armário',sazonal_vencida:'Prazo de ocupação vencido',
   compartilhamento_vencido:'Prazo de compartilhamento vencido',migracao_inconclusiva:'Dados do armário a conferir',
@@ -42,19 +45,20 @@ const originalReason=(item:Item)=>({sem_armario:'A pessoa estava ativa e precisa
 const canBulkResolve=(item:Item)=>item.state==='aberta'&&['dados_alterados','identificacao_conflitante'].includes(item.kind);
 const searchText=(item:Item)=>[item.locker_number,item.person_name,item.registration,item.department,item.function_name,item.sector_occupant,
   ...(item.occupants??[]).flatMap(person=>[person.name,person.registration,person.department])].join(' ').toLocaleLowerCase('pt-BR');
-const emptyEdit={isDouble:false,condition:'disponivel',keyCopy:'sim',sectorOccupant:'',name:'',registration:'',department:'',functionName:''};
+const emptyEdit={condition:'disponivel',keyCopy:'sim',sectorOccupant:'',name:'',registration:'',department:'',functionName:''};
 
 export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
-  const [items,setItems]=useState<Item[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[stateFilter,setStateFilter]=useState('aberta'),[tab,setTab]=useState<'lockers'|'people'>('lockers');
+  const [items,setItems]=useState<Item[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),
+    [people,setPeople]=useState<Person[]>([]),[stateFilter,setStateFilter]=useState('aberta'),[tab,setTab]=useState<'lockers'|'people'>('lockers');
   const [query,setQuery]=useState(''),[selectedId,setSelectedId]=useState<string|null>(null),[reviewed,setReviewed]=useState(false);
   const [selectedIds,setSelectedIds]=useState<Set<string>>(new Set()),[bulkResolution,setBulkResolution]=useState('');
   const [note,setNote]=useState(''),[due,setDue]=useState(''),[busy,setBusy]=useState(false),closeRef=useRef<HTMLButtonElement>(null);
   const [edit,setEdit]=useState(emptyEdit),[occupantId,setOccupantId]=useState(''),[createPerson,setCreatePerson]=useState(false),[lockerId,setLockerId]=useState(''),[keyCopy,setKeyCopy]=useState('');
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
-  async function load(){setLoading(true);setLoadError('');try{if(copy){setItems(copy.pending as Item[]);setLockers(copy.lockers as Locker[]);setRegistrations([]);return;}
-    const [pending,cabinets,roster]=await Promise.all([api<Item[]>(`/branches/${branchId}/pending`),api<Locker[]>(`/branches/${branchId}/lockers`),
-      api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
-    setItems(pending);setLockers(cabinets);setRegistrations(roster);
+  async function load(){setLoading(true);setLoadError('');try{if(copy){setItems(copy.pending as Item[]);setLockers(copy.lockers as Locker[]);setRegistrations([]);setPeople(copy.people as Person[]);return;}
+    const [pending,cabinets,roster,people]=await Promise.all([api<Item[]>(`/branches/${branchId}/pending`),api<Locker[]>(`/branches/${branchId}/lockers`),
+      api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`),api<Person[]>(`/branches/${branchId}/people`)]);
+    setItems(pending);setLockers(cabinets);setRegistrations(roster);setPeople(people);
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}finally{setLoading(false);}}
   useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
   useEffect(()=>{if(!selectedId)return;const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
@@ -66,8 +70,8 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
     searchText(item).includes(query.toLocaleLowerCase('pt-BR'))).sort((a,b)=>tab==='lockers'
       ?numeric.compare(a.locker_number??'',b.locker_number??'')||numeric.compare(a.person_name??a.occupants?.[0]?.name??'',b.person_name??b.occupants?.[0]?.name??'')
       :(a.person_name??'').localeCompare(b.person_name??'','pt-BR',{sensitivity:'base'}));
-  function fillEdit(item:Item,person?:Occupant){setEdit({isDouble:!!item.is_double,
-    condition:item.condition??'disponivel',keyCopy:item.key_copy_available===false?'nao':'sim',
+  function fillEdit(item:Item,person?:Occupant){setEdit({condition:item.condition??'disponivel',
+    keyCopy:item.key_copy_available===false?'nao':'sim',
     sectorOccupant:item.sector_occupant??'',name:person?.name??item.person_name??'',registration:person?.registration??item.registration??'',
     department:person?.department??item.department??'',functionName:person?.functionName??item.function_name??''});}
   function open(item:Item){setSelectedId(item.id);setReviewed(false);setNote('');setDue('');setLockerId('');setKeyCopy('sim');
@@ -104,7 +108,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
     const occupant=selected.occupants?.find(person=>person.allocationId===occupantId);
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/pending/${selected.id}/revise`,{
       operationId:op(),expectedVersion:selected.version,expectedLockerVersion:selected.locker_version,
-      isDouble:edit.isDouble,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
+      isDouble:!!selected.is_double,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
       sectorOccupant:createPerson?null:edit.sectorOccupant.trim()||null,finalize,
       occupant:occupant||createPerson?{allocationId:occupant?.allocationId,membershipId:occupant?.membershipId,expectedMembershipVersion:occupant?.membershipVersion,
         name:edit.name.trim(),registration:edit.registration.trim()||null,department:edit.department.trim()||null,functionName:edit.functionName.trim()||null}:null}),
@@ -119,7 +123,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
       functionName:edit.functionName.trim()||null}),'Dados da pessoa atualizados.');}
   function run(item:Item){if(!reviewed||busy)return;
     if(['ausente_ti','atuacao_encerrada'].includes(item.kind)&&item.allocation_id&&item.allocation_version)
-      return act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.allocation_id,expectedVersion:item.allocation_version}),'Saída do armário registrada.');
+      return act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.allocation_id,expectedVersion:item.allocation_version}),'Armário desocupado.');
     if(item.kind==='migracao_inconclusiva'&&item.locker_version)return saveReview(true);
     if(item.kind==='sem_armario'&&item.membership_version&&note.trim().length>=3)
       return act(()=>post(`/branches/${branchId}/people/${item.subject_id}/exception`,{operationId:op(),expectedVersion:item.membership_version,reason:note.trim()}),'Dispensa de armário registrada.');
@@ -142,7 +146,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
     (item.occupants.length===0||item.is_double&&item.occupants.length<item.capacity)).sort((a,b)=>numeric.compare(a.number,b.number));
   const needsNote=selected&&['sem_armario','dados_alterados','identificacao_conflitante','sazonal_vencida','compartilhamento_vencido'].includes(selected.kind);
   const needsDue=selected&&['sazonal_vencida','compartilhamento_vencido'].includes(selected.kind);
-  const actionLabel=selected&&({ausente_ti:'Registrar saída do armário',atuacao_encerrada:'Registrar saída do armário',
+  const actionLabel=selected&&({ausente_ti:'Desocupar armário',atuacao_encerrada:'Desocupar armário',
     migracao_inconclusiva:'Concluir conferência',sem_armario:'Registrar dispensa de armário',dados_alterados:'Registrar revisão',
     identificacao_conflitante:'Registrar revisão',sazonal_vencida:'Prorrogar prazo',compartilhamento_vencido:'Prorrogar prazo'} as Record<string,string>)[selected.kind];
   const reviewReady=(!chosenOccupant||!!edit.name.trim())&&(!createPerson||!!edit.name.trim()||!!edit.registration.trim());
@@ -158,8 +162,8 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
         <button type="button" role="tab" aria-selected={tab==='people'} onClick={()=>setTab('people')}>Pessoas ({counts.people})</button>
       </div>
       <div className="filters"><label>Buscar<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome, matrícula ou setor"/></label>
-        <label>Exibir<select value={stateFilter} onChange={event=>setStateFilter(event.target.value)}><option value="aberta">Abertas</option>
-          <option value="resolvida">Resolvidas</option><option value="todas">Todas</option></select></label></div>
+        <SelectField label="Exibir" value={stateFilter} onChange={setStateFilter}
+          options={[{value:'aberta',label:'Abertas'},{value:'resolvida',label:'Resolvidas'},{value:'todas',label:'Todas'}]}/></div>
       {!readonly&&selectedIds.size>0&&<div className="bulk-action-bar" role="region" aria-label="Ações em lote">
         <strong>{selectedIds.size} selecionada(s)</strong><label>Justificativa da resolução<input value={bulkResolution} onChange={event=>setBulkResolution(event.target.value)} placeholder="Descreva a decisão" minLength={3}/></label>
         <button type="button" className="primary" disabled={busy||bulkResolution.trim().length<3} onClick={bulkResolve}>Resolver selecionadas</button>
@@ -199,24 +203,25 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
         {admin&&!readonly&&selected.state==='aberta'&&selected.locker_number&&<div className="pending-editor">
           <h3>Corrigir dados nesta pendência</h3><p>Ao informar uma matrícula da base atual, nome, setor e função oficiais serão usados automaticamente.</p>
           <div className="form-grid"><div><small>Número do armário (fixo)</small><strong className="fixed-locker-number">{selected.locker_number}</strong></div>
-            <label className="check"><input type="checkbox" checked={edit.isDouble} onChange={event=>{
-              if(!event.target.checked&&createPerson&&selected.occupants.length)toggleCreatePerson(selected,false);
-              setEdit(current=>({...current,isDouble:event.target.checked}));
-            }}/>Armário duplo</label>
+            <div className="control-cell"><span className="static-caption">Tipo de armário</span>
+              <strong className="static-value">{selected.is_double?<span className="double-badge">Duplo</span>:'Padrão'}</strong>
+              <small className="static-hint">Alteração exclusiva em Administração.</small></div>
             <label>Situação<select value={edit.condition} onChange={event=>setEdit({...edit,condition:event.target.value})}>
               <option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="bloqueado">Bloqueado</option></select></label>
             <label>Cópia da chave<select value={edit.keyCopy} onChange={event=>setEdit({...edit,keyCopy:event.target.value})}>
               <option value="sim">Sim</option><option value="nao">Não</option></select></label>
             {selected.occupants?.length>1&&<label>Ocupante a corrigir<select value={occupantId} onChange={event=>chooseOccupant(selected,event.target.value)}>
               {selected.occupants.map(person=><option key={person.allocationId} value={person.allocationId}>{person.name} · {person.registration??'Sem matrícula'}</option>)}</select></label>}
-            {(selected.occupants.length===0||edit.isDouble&&selected.occupants.length<2)&&<label className="check"><input type="checkbox" checked={createPerson} onChange={event=>toggleCreatePerson(selected,event.target.checked)}/>
+            {(selected.occupants.length===0||selected.is_double&&selected.occupants.length<2)&&<label className="check"><input type="checkbox" checked={createPerson} onChange={event=>toggleCreatePerson(selected,event.target.checked)}/>
               {selected.occupants.length?'Adicionar segundo ocupante':'Cadastrar ocupante'}</label>}
             {chosenOccupant||createPerson?<>
               <RegistrationInput id="pending-occupant-registration" value={edit.registration} options={registrations} onChange={changeRegistration}/>
               <label>Nome<input value={edit.name} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,name:event.target.value})}/></label>
               <label>Setor<input value={edit.department} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,department:event.target.value})}/></label>
               <label>Função<input value={edit.functionName} disabled={officialFieldsLocked} onChange={event=>setEdit({...edit,functionName:event.target.value})}/></label>
-            </>:<label>Setor ocupante<input value={edit.sectorOccupant} onChange={event=>setEdit({...edit,sectorOccupant:event.target.value})} placeholder="Ex.: Restaurante FC"/></label>}
+            </>:<div className="control-cell control-span"><SelectField label="Setor ocupante" value={edit.sectorOccupant} placeholder="Sem setor ocupante"
+              onChange={value=>setEdit(current=>({...current,sectorOccupant:value}))}
+              options={sectorSelectOptions(people,lockers,edit.sectorOccupant)}/></div>}
           </div>
           {officialFieldsLocked&&<p className="muted">Nome, setor e função vêm da base atual de colaboradores.</p>}
           <button type="button" disabled={!reviewed||busy||!reviewReady} onClick={()=>saveReview(false)}>Salvar correções</button>
