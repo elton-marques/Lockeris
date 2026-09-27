@@ -1,9 +1,9 @@
-import {useEffect,useId,useRef,useState} from 'react';
+import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
 import {Check,ChevronDown} from 'lucide-react';
 
 export type SelectOption={value:string;label:string;disabled?:boolean};
 
-export type MenuPosition={top?:number;bottom?:number;left:number;minWidth:number;maxHeight:number};
+export type MenuPosition={top?:number;bottom?:number;left:number;right?:number;minWidth:number;maxHeight:number};
 
 const menuGap=6,menuEdge=10;
 
@@ -14,9 +14,11 @@ export function placeMenu(trigger:HTMLElement):MenuPosition{
   const openUp=below<170&&above>below;
   const maxHeight=Math.max(150,openUp?above:below);
   const left=Math.max(menuEdge,Math.min(rect.left,window.innerWidth-rect.width-menuEdge));
-  return openUp
+  const position:MenuPosition=openUp
     ?{bottom:window.innerHeight-rect.top+menuGap,left,minWidth:rect.width,maxHeight}
     :{top:rect.bottom+menuGap,left,minWidth:rect.width,maxHeight};
+  if(trigger.closest('.branch-select'))position.right=Math.max(menuEdge,window.innerWidth-rect.right);
+  return position;
 }
 
 type SelectProps={
@@ -31,10 +33,28 @@ type SelectProps={
 
 export function Select({value,onChange,options,ariaLabel,placeholder='Selecione',className='',disabled=false}:SelectProps){
   const [open,setOpen]=useState(false),[active,setActive]=useState(0),[position,setPosition]=useState<MenuPosition|null>(null);
-  const rootRef=useRef<HTMLDivElement>(null),triggerRef=useRef<HTMLButtonElement>(null);
+  const rootRef=useRef<HTMLDivElement>(null),triggerRef=useRef<HTMLButtonElement>(null),menuRef=useRef<HTMLUListElement>(null);
   const listId=useId();
   const selected=options.find(option=>option.value===value);
   const activeId=`${listId}-option-${active}`;
+
+  useLayoutEffect(()=>{
+    if(!open||!position)return;
+    const menu=menuRef.current,trigger=triggerRef.current;
+    if(!menu||!trigger)return;
+    const width=menu.offsetWidth;
+    if(!width)return;
+    const maxOffset=Math.max(menuEdge,window.innerWidth-width-menuEdge);
+    if(position.right!==undefined){
+      const right=Math.min(Math.max(position.right,menuEdge),maxOffset);
+      if(right!==position.right)setPosition({...position,right});
+      return;
+    }
+    const rect=trigger.getBoundingClientRect();
+    const overflows=position.left+width>window.innerWidth-menuEdge;
+    const left=Math.min(Math.max(overflows?rect.right-width:position.left,menuEdge),maxOffset);
+    if(left!==position.left)setPosition({...position,left});
+  },[open,position]);
 
   function openMenu(){
     if(disabled)return;
@@ -99,8 +119,9 @@ export function Select({value,onChange,options,ariaLabel,placeholder='Selecione'
       <span className={selected?'select-value':'select-value is-placeholder'}>{selected?.label??placeholder}</span>
       <ChevronDown size={15} className="select-chevron" aria-hidden="true"/>
     </button>
-    {open&&<ul id={listId} role="listbox" aria-label={ariaLabel} className="select-menu"
-      style={{position:'fixed',top:position?.top,bottom:position?.bottom,left:position?.left,
+    {open&&<ul id={listId} role="listbox" aria-label={ariaLabel} className="select-menu" ref={menuRef}
+      style={{position:'fixed',top:position?.top,bottom:position?.bottom,
+        left:position&&position.right===undefined?position.left:undefined,right:position?.right,
         minWidth:position?.minWidth,maxHeight:position?.maxHeight}}>
       {options.length?options.map((option,index)=>
         <li key={option.value} id={`${listId}-option-${index}`} role="option" aria-selected={option.value===value}

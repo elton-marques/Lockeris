@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 
 type Auth={cookie:string;csrf:string};
 const uuid=()=>randomUUID();
-async function send(auth:Auth,method:'POST'|'PATCH',url:string,payload:Record<string,unknown>){return app.inject({method,url,payload,headers:{cookie:auth.cookie,'x-csrf-token':auth.csrf}});}
+async function send(auth:Auth,method:'POST'|'PATCH'|'DELETE',url:string,payload:Record<string,unknown>){return app.inject({method,url,payload,headers:{cookie:auth.cookie,'x-csrf-token':auth.csrf}});}
 async function login():Promise<Auth>{const response=await app.inject({method:'POST',url:'/api/auth/login',payload:{username:'test',password:'Testing-Password-123'}});expect(response.statusCode).toBe(200);return {cookie:response.headers['set-cookie']!.toString().split(';')[0],csrf:response.json().csrf};}
 async function session():Promise<Auth>{const user=(await pool.query<{id:string}>('SELECT id FROM users WHERE username=$1',['test'])).rows[0],token=uuid(),csrf=uuid();await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);return {cookie:`armarios_session=${token}`,csrf};}
 async function setup(){const auth=await login();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();return {auth,branch};}
@@ -198,7 +198,7 @@ describe('regras transacionais',()=>{
     expect(results.filter(x=>x.statusCode===409)).toHaveLength(9);
     expect((await pool.query('SELECT id FROM allocations WHERE ended_at IS NULL')).rowCount).toBe(1);
   });
-  it('bloqueia filial alheia, escrita de consulta e rotas da filial arquivada',async()=>{
+  it('bloqueia filial alheia, escrita de consulta e rotas da filial excluída',async()=>{
     const {auth,branch}=await setupWithoutLogin();
     const other=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Outra Filial',timezone:'America/Fortaleza'})).json();
     const readUser=(await pool.query<{id:string}>("INSERT INTO users(username,password_hash,role,branch_id,must_change_password) VALUES($1,$2,'consulta',$3,false) RETURNING id",['consulta',await argon2.hash('Consult-Password-123',{type:argon2.argon2id}),branch.id])).rows[0];
@@ -206,8 +206,10 @@ describe('regras transacionais',()=>{
     await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),readUser.id,hash(csrf)]);
     const denied=await app.inject({method:'GET',url:`/api/branches/${other.id}/lockers`,headers:{cookie:consult.cookie}});expect(denied.statusCode).toBe(403);
     const write=await send(consult,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'Sem permissão',size:'padrao',capacity:1,modality:'fixo'});expect(write.statusCode).toBe(403);
-    const archived=await send(auth,'POST',`/api/branches/${other.id}/archive`,{operationId:uuid(),expectedVersion:other.version});expect(archived.statusCode).toBe(200);
+    const forbidden=await send(consult,'DELETE',`/api/branches/${other.id}`,{operationId:uuid(),expectedVersion:other.version});expect(forbidden.statusCode).toBe(403);
+    const removed=await send(auth,'DELETE',`/api/branches/${other.id}`,{operationId:uuid(),expectedVersion:other.version});expect(removed.statusCode).toBe(200);
     const rejected=await app.inject({method:'GET',url:`/api/branches/${other.id}/lockers`,headers:{cookie:auth.cookie}});expect(rejected.statusCode).toBe(403);
+    expect((await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}})).json().map((row:{id:string})=>row.id)).not.toContain(other.id);
   });
   it('importa uma única aba, liga matrícula existente e registra setor sem pessoa',async()=>{
     const {auth,branch}=await setupWithoutLogin();
@@ -394,18 +396,30 @@ describe('regras transacionais',()=>{
       .toEqual([{name:'Caio Oficial',registration:'0003',category:'colaborador'},{name:'Pessoa conferida',registration:null,category:'vinculo_nao_identificado'}]);
     expect((await pool.query("SELECT count(*) FROM pending_items WHERE kind='sem_matricula' AND state='aberta'")).rows[0].count).toBe('1');
   });
-  it('impede arquivar filial ocupada e mantém o histórico rotativo legível',async()=>{
+  it('exclui a filial em cascata com armários ocupados e recusa versão antiga',async()=>{
     const {auth,branch}=await setupWithoutLogin();
     const cabinet=await locker(auth,branch.id,'101');const member=await person(auth,branch.id,'Pessoa A','0001');
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo'})).statusCode).toBe(200);
-    const blocked=await send(auth,'POST',`/api/branches/${branch.id}/archive`,{operationId:uuid(),expectedVersion:branch.version});
-    expect(blocked.statusCode).toBe(409);
-    expect(blocked.json().error.message).toBe('Não é possível arquivar uma filial com armários ocupados. Remaneje ou libere os armários antes.');
-    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'102',size:'padrao',capacity:1,modality:'rotativo'})).statusCode).toBe(422);
+    await pool.query("UPDATE lockers SET migration_status='inconclusivo' WHERE id=$1",[cabinet.id]);
+    await pool.query(`INSERT INTO pending_items(branch_id,kind,subject_type,subject_id) VALUES($1,'migracao_inconclusiva','locker',$2)`,[branch.id,cabinet.id]);
     await pool.query("INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,ended_at) VALUES($1,$2,$3,'rotativo',now(),now())",[branch.id,cabinet.id,member.person_id]);
     const history=await app.inject({method:'GET',url:`/api/branches/${branch.id}/allocations`,headers:{cookie:auth.cookie}});
     expect(history.statusCode).toBe(200);
     expect(JSON.stringify(history.json())).toContain('rotativo');
+    expect((await pool.query('SELECT id FROM pending_items')).rowCount).toBe(1);
+    const stale=await send(auth,'DELETE',`/api/branches/${branch.id}`,{operationId:uuid(),expectedVersion:branch.version+5});
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error.message).toBe('Filial alterada; recarregue');
+    const deleted=await send(auth,'DELETE',`/api/branches/${branch.id}`,{operationId:uuid(),expectedVersion:branch.version});
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toMatchObject({id:branch.id,deleted:true});
+    for(const table of ['branches','lockers','allocations','pending_items','events','memberships','locations','imports','import_sources']){
+      expect((await pool.query(`SELECT 1 FROM ${table}`)).rowCount,table).toBe(0);
+    }
+    expect((await pool.query('SELECT 1 FROM users WHERE branch_id IS NOT NULL')).rowCount).toBe(0);
+    expect((await pool.query('SELECT 1 FROM operations WHERE branch_id IS NOT NULL')).rowCount).toBe(0);
+    expect((await app.inject({method:'GET',url:`/api/branches/${branch.id}/lockers`,headers:{cookie:auth.cookie}})).statusCode).toBe(403);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'102',size:'padrao',capacity:1,modality:'rotativo'})).statusCode).toBe(403);
   });
   it('reclassifica a pessoa editada sem matrícula e abre pendência cadastral',async()=>{
     const {auth,branch}=await setupWithoutLogin();

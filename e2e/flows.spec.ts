@@ -236,10 +236,8 @@ test('estados de navegação, busca vazia e movimento reduzido',async({page})=>{
   await page.screenshot({path:'test-results/visual/15-historico.png'});
   await page.getByRole('button',{name:'Administração'}).click();
   await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Setor ocupante'})).toHaveCount(0);
   await page.screenshot({path:'test-results/visual/16-administracao.png'});
-  await page.getByRole('button',{name:'Setor ocupante'}).first().click();
-  await expect(page.getByLabel('Setor que ocupa o armário 12')).toBeVisible();
-  await page.getByRole('button',{name:'Cancelar'}).click();
   await page.getByRole('button',{name:'Redefinir senha'}).first().click();
   await expect(page.getByLabel(/Nova senha temporária para/)).toBeVisible();
   await page.getByRole('button',{name:'Cancelar'}).click();

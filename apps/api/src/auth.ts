@@ -19,7 +19,7 @@ export async function authenticate(request: FastifyRequest): Promise<Actor> {
   const branchId = /^\/api\/branches\/([0-9a-f-]{36})(?:\/|$)/i.exec(request.url)?.[1];
   if (branchId) {
     const branch = await pool.query<{status:string}>('SELECT status FROM branches WHERE id=$1',[branchId]);
-    if (branch.rows[0]?.status !== 'active') fail(403,'FILIAL_INATIVA','Filial arquivada ou indisponível');
+    if (branch.rows[0]?.status !== 'active') fail(403,'FILIAL_INATIVA','Filial indisponível ou excluída');
   }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const csrf = request.headers['x-csrf-token'];

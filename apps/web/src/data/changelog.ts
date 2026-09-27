@@ -1,4 +1,5 @@
 export const changelog=[
+  {title:'Exclusão de filial em cascata e ajustes de layout',kind:'bug',description:'Lista de filiais com exclusão definitiva em cascata (pendências, eventos, armários, alocações e usuários), seletor de filial ancorado à direita sem cortes, tabela de armários sem o botão de setor ocupante e modal Sobre/Changelog com rolagem e rodapé corrigidos.'},
   {title:'Ajustes de domínio e arquivamento',kind:'shield',description:'Vínculo não identificado, pendências cadastrais, arquivamento protegido de filiais e cadastro de cidade.'},
   {title:'Correções de cadastro',kind:'bug',description:'Ocupantes sem matrícula deixaram de ser classificados automaticamente como terceirizados.'},
   {title:'Centro de Comando',kind:'sparkles',description:'Indicadores de ocupação, capacidade, setores e pendências no painel da filial.'},

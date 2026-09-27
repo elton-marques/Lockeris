@@ -27,3 +27,4 @@ export async function api<T>(path:string,init:RequestInit={}):Promise<T> {
 }
 export const post=<T>(path:string,value:unknown)=>api<T>(path,{method:'POST',body:JSON.stringify(value)});
 export const patch=<T>(path:string,value:unknown)=>api<T>(path,{method:'PATCH',body:JSON.stringify(value)});
+export const del=<T>(path:string,value:unknown)=>api<T>(path,{method:'DELETE',body:JSON.stringify(value)});

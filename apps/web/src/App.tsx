@@ -40,7 +40,7 @@ export default function App(){
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [aboutOpen,setAboutOpen]=useState(false);
-  const refresh=()=>setBranches(current=>[...current]);
+  const refresh=()=>{setBranches(current=>[...current]);void api<Branch[]>('/branches').then(list=>{setBranches(list);setBranchId(current=>list.some(branch=>branch.id===current)?current:list[0]?.id??'');}).catch(()=>{});};
   useEffect(()=>{void purgeOfflineCopy();},[]);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#2E1065');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
   const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');

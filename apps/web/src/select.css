@@ -24,11 +24,13 @@
 .select-trigger[aria-expanded='true'] .select-chevron{transform:rotate(180deg)}
 
 .select-menu{
-  z-index:900;margin:0;padding:5px;list-style:none;overflow-y:auto;
+  z-index:9999;max-width:280px;margin:0;padding:5px;list-style:none;overflow-y:auto;
   border:1px solid var(--border);border-radius:12px;
   background:var(--surface-raised);color:var(--text-primary);
   box-shadow:var(--shadow-lift);
 }
+.branch-select .select-menu{max-width:min(280px,calc(100vw - 20px));overflow-x:hidden}
+.branch-select .select-option{white-space:normal}
 .select-option{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   min-height:38px;padding:8px 10px;border-radius:8px;cursor:pointer;

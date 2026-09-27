@@ -26,22 +26,33 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       return rows[0];
     }));
   });
-  app.post('/api/branches/:branchId/archive', async request => {
+  app.delete('/api/branches/:branchId', async request => {
     const actor=await authenticate(request);const {branchId}=routeBranch.parse(request.params);
     if(actor.role!=='geral')fail(403,'PERMISSAO','Acesso administrativo geral necessário');
     const body=operation.extend({expectedVersion:z.number().int().positive()}).parse(request.body);
     return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
-      const branch=await one<{version:number;status:string}>(client,'SELECT version,status FROM branches WHERE id=$1 FOR UPDATE',[branchId]);
-      if(branch.version!==body.expectedVersion||branch.status!=='active')fail(409,'VERSAO','Filial alterada; recarregue');
-      await client.query('SELECT id FROM lockers WHERE branch_id=$1 ORDER BY id FOR UPDATE',[branchId]);
-      const occupied=await client.query(`SELECT 1 FROM lockers l WHERE l.branch_id=$1 AND
-        (l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) LIMIT 1`,[branchId]);
-      if(occupied.rowCount)fail(409,'FILIAL_OCUPADA','Não é possível arquivar uma filial com armários ocupados. Remaneje ou libere os armários antes.');
-      const pending=await client.query("SELECT 1 FROM pending_items WHERE branch_id=$1 AND state='aberta' LIMIT 1",[branchId]);
-      if(pending.rowCount)fail(409,'PENDENCIAS','Resolva as pendências da filial antes de arquivá-la');
-      const {rows}=await client.query("UPDATE branches SET status='inactive',version=version+1 WHERE id=$1 RETURNING *",[branchId]);
-      await event(client,branchId,actor.id,'filial_arquivada','branch',branchId);
-      return rows[0];
+      const branch=await one<{version:number;name:string}>(client,'SELECT version,name FROM branches WHERE id=$1 FOR UPDATE',[branchId]);
+      if(branch.version!==body.expectedVersion)fail(409,'VERSAO','Filial alterada; recarregue');
+      const branchUsers='SELECT id FROM users WHERE branch_id=$1';
+      await client.query('DELETE FROM pending_items WHERE branch_id=$1',[branchId]);
+      await client.query(`DELETE FROM events WHERE branch_id=$1 OR actor_id IN (${branchUsers})`,[branchId]);
+      await client.query('DELETE FROM legacy_history WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);
+      await client.query('DELETE FROM import_sources WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);
+      await client.query('DELETE FROM imports WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM authorized_devices WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM sharings WHERE locker_id IN (SELECT id FROM lockers WHERE branch_id=$1)',[branchId]);
+      await client.query('DELETE FROM allocations WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM lockers WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM need_exceptions WHERE membership_id IN (SELECT id FROM memberships WHERE branch_id=$1)',[branchId]);
+      await client.query('DELETE FROM memberships WHERE branch_id=$1',[branchId]);
+      await client.query('UPDATE operations SET branch_id=NULL WHERE branch_id=$1 AND id=$2',[branchId,body.operationId]);
+      await client.query(`DELETE FROM operations WHERE (branch_id=$1 OR actor_id IN (${branchUsers})) AND id<>$2`,[branchId,body.operationId]);
+      await client.query(`DELETE FROM users WHERE branch_id=$1`,[branchId]);
+      await client.query('DELETE FROM locations WHERE branch_id=$1',[branchId]);
+      await client.query(`DELETE FROM people p WHERE NOT EXISTS(SELECT 1 FROM memberships m WHERE m.person_id=p.id)
+        AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=p.id)`);
+      await client.query('DELETE FROM branches WHERE id=$1',[branchId]);
+      return {id:branchId,name:branch.name,deleted:true};
     }));
   });
   app.get('/api/branches/:branchId/people', async request => {

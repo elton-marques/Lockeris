@@ -1,5 +1,6 @@
 {
   "name": "gestao-armarios",
+  "author": "Elton Marques",
   "private": true,
   "type": "module",
   "workspaces": ["apps/*", "packages/*"],

@@ -45,11 +45,14 @@ export function AboutModal({onClose}:{onClose:()=>void}){
           {stack.map(item=>{const Icon=item.icon;return <li key={item.label}><Icon size={13} strokeWidth={2} aria-hidden="true"/>{item.label}</li>;})}
         </ul>
       </div>
-      <button type="button" onClick={()=>setShowVersions(value=>!value)} aria-expanded={showVersions} aria-controls="about-versions"><GitCommit size={16} aria-hidden="true"/> Novidades e Versões</button>
-      {showVersions&&<div id="about-versions" className="about-stack"><h3>Entregas do Lockeris</h3><ul className="about-stack-list about-versions-list">{changelog.map(item=>{
-        const Icon=item.kind==='commit'?GitCommit:item.kind==='shield'?ShieldCheck:item.kind==='bug'?Bug:Sparkles;
-        return <li key={item.title}><Icon size={16} aria-hidden="true"/><span><strong>{item.title}</strong><br/>{item.description}</span></li>;
-      })}</ul></div>}
+      <button type="button" className="about-versions-toggle" onClick={()=>setShowVersions(value=>!value)} aria-expanded={showVersions} aria-controls="about-versions"><GitCommit size={16} aria-hidden="true"/> Novidades e Versões</button>
+      {showVersions&&<section id="about-versions" className="about-versions" aria-label="Entregas do Lockeris">
+        <h3>Entregas do Lockeris</h3>
+        <ul className="about-versions-list">{changelog.map(item=>{
+          const Icon=item.kind==='commit'?GitCommit:item.kind==='shield'?ShieldCheck:item.kind==='bug'?Bug:Sparkles;
+          return <li key={item.title}><Icon size={16} aria-hidden="true"/><span><strong>{item.title}</strong><br/>{item.description}</span></li>;
+        })}</ul>
+      </section>}
 
       <div className="app-dialog-actions about-actions">
         <button type="button" className="primary" onClick={onClose}><X size={16} strokeWidth={2.2} aria-hidden="true"/> Fechar</button>

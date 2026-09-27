@@ -32,6 +32,15 @@ Quando uma matrícula sai da nova planilha, seu cadastro deixa de aparecer na ba
 
 Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, preservando zeros à esquerda. Se a matrícula da planilha de armários existir na base de colaboradores, o sistema usa automaticamente o nome, setor e função oficiais, mesmo que o nome na carga inicial esteja vazio ou diferente. A tela Pendências separa armários e pessoas em abas; armários ficam em ordem numérica e pessoas em ordem alfabética. Cada registro abre uma conferência com os dados atuais e as linhas originais da planilha, quando houver. Em **Resolvidas**, cada registro mostra o motivo original e o que encerrou a pendência; uma pessoa que recebeu armário continua na aba Pessoas do histórico.
 
+## Gestão de filiais
+
+A tela **Administração** (`apps/web/src/pages/Admin.tsx`) é o ponto de criação e exclusão de filiais, restrito ao perfil **Administração geral**:
+
+1. **Criar filial:** o formulário *Criar filial* recebe nome e cidade (opcional) e recarrega a aplicação com a nova filial.
+2. **Filiais cadastradas:** logo abaixo, a tabela *Filiais cadastradas* lista todas as filiais ativas com **Nome**, **Cidade** e **Ações**. A filial selecionada no cabeçalho aparece marcada como *Filial em uso*.
+3. **Excluir filial:** o botão **Excluir filial** de cada linha abre a confirmação *"Esta ação excluirá permanentemente a filial e TODOS os armários e históricos associados. Deseja continuar?"*. A `DELETE /api/branches/:id` roda em uma única transação e apaga, nesta ordem: pendências (`pending_items`), histórico/eventos (`events`), importações (`imports`, `import_sources`, `legacy_history`), dispositivos autorizados, compartilhamentos (`sharings`), alocações (`allocations`), armários (`lockers`), vínculos (`memberships`, `need_exceptions`), operações (`operations`), os usuários daquela filial (`users`), localizações (`locations`), pessoas sem nenhum vínculo remanescente e, por fim, o registro em `branches`. Excluir a filial em uso recarrega a aplicação na primeira filial restante.
+4. **Arquivamento removido:** a ação *Arquivar filial* (`POST /api/branches/:id/archive`) foi retirada da API e da interface; nenhuma filial fica mais em estado `inactive`, e o acesso a uma filial inexistente responde `403 FILIAL_INATIVA`.
+
 ## Dashboard: centro de comando operacional
 
 A tela **Dashboard** (`apps/web/src/pages/Overview.tsx`) é o centro de comando de prevenção de perdas e gestão de armários da filial. Os cálculos ficam em `apps/web/src/locker-insights.ts` (testes em `locker-insights.test.ts`) e a tela abre com quatro cards de KPI:
@@ -92,6 +101,9 @@ O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura tot
 - **Controles próprios em vez de `<select>` e `<datalist>` nativos:** os filtros e os campos de setor usam `Select`/`SelectField` (`apps/web/src/components/Select.tsx`, estilos em `select.css`), e a matrícula usa o autocompletar `RegistrationInput` (`apps/web/src/RegistrationInput.tsx`) com realce do trecho digitado. A lista de setores oficiais vem de `apps/web/src/sectors.ts` (departamentos de pessoas ativas, setores já registrados em armários e o valor atual). Os selects de ação e de formulário (situação por linha, perfil, modalidade, categoria do cadastro, prévia de importação) continuam nativos, mantendo `required` e a validação do navegador.
 - **Armário duplo só em Administração:** o atributo `is_double` é criado na carga inicial ou na tela Administração; nos cards de leitura e nos drawers operacionais ele aparece como *badge* e como campo fixo, sem controle editável.
 - **Limpeza do antigo modo offline:** na inicialização, o navegador remove as chaves `device` e `copy` do IndexedDB e desregistra o antigo service worker, sem alterar as preferências do usuário.
+- **Seletor de filial do cabeçalho sempre visível:** o menu do `Select` (`apps/web/src/components/Select.tsx`) é ancorado à direita do próprio gatilho quando aberto para a direita cortaria a tela, respeita `max-width: 280px` e abre com `z-index: 9999` (`select.css`), garantindo que nomes longos de filial não saiam da viewport.
+- **Tabela de armários em Administração sem botões residuais:** a coluna *Ações* mantém apenas o controle **Marcar/Remover duplo** e a seleção de **Situação**; o botão *Setor ocupante* e seu editor em linha foram removidos, e o setor continua editável no drawer do armário (`drawer` do painel) e no formulário de novo armário.
+- **Modal Sobre / Changelog com rolagem:** o diálogo (`AboutModal.tsx`, estilos em `design-system.css`) usa `max-height: 85vh` com `overflow-y: auto` e espaçamento uniforme de `1.25rem`; o botão **Novidades e Versões** e a lista de entregas são seções próprias com rolagem interna, e o botão **Fechar** fica fixo no rodapé durante a rolagem.
 - **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
 - **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão.
 
@@ -196,3 +208,7 @@ $backup = Get-ChildItem .\backups -Filter *.dump | Sort-Object LastWriteTime -De
 ```
 
 O teste de restauração usa outro banco. Não restaure por cima dos dados operacionais sem uma cópia e validação separadas.
+
+## Autoria e Desenvolvimento
+
+Projeto idealizado e desenvolvido do zero por **Elton Marques** para automação, controle de custódia e Prevenção de Perdas.
