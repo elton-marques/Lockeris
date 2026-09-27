@@ -449,6 +449,24 @@ describe('regras transacionais',()=>{
     const branches=await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}});
     expect(JSON.stringify(branches.json())).not.toContain('"city"');
   });
+  it('limpa apenas eventos legados do histórico e preserva os operacionais recentes',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'101');const member=await person(auth,branch.id,'Pessoa A','0001');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
+    await pool.query(`INSERT INTO events(branch_id,kind,entity_type,details,happened_at) VALUES
+      ($1,'pessoa_cadastrada','membership','{}',now()-interval '400 days'),
+      ($1,'armarios_importados','import','{"count":1}',now()),
+      ($1,'pessoa_cadastrada','membership','{}',now())`,[branch.id]);
+    const before=Number((await pool.query<{count:string}>('SELECT count(*) FROM events WHERE branch_id=$1',[branch.id])).rows[0].count);
+    const cleared=await send(auth,'DELETE',`/api/branches/${branch.id}/history/clear`,{operationId:uuid()});
+    expect(cleared.statusCode).toBe(200);
+    expect(Number(cleared.json().removed)).toBe(3);
+    const kinds=(await pool.query<{kind:string}>('SELECT kind FROM events WHERE branch_id=$1',[branch.id])).rows.map(row=>row.kind);
+    expect(kinds).toContain('ocupacao_iniciada');
+    expect(kinds).toContain('historico_limpo');
+    expect(kinds).not.toContain('armarios_importados');
+    expect(Number((await pool.query<{count:string}>('SELECT count(*) FROM events WHERE branch_id=$1',[branch.id])).rows[0].count)).toBe(before-2);
+  });
 });
 
 it('CSV mantém zeros à esquerda e campos entre aspas',async()=>{
@@ -458,4 +476,5 @@ it('CSV mantém zeros à esquerda e campos entre aspas',async()=>{
 it('OpenAPI publica contratos de operação',()=>{
   const document=app.swagger() as {paths:Record<string,Record<string,{requestBody?:unknown}>>};
   expect(document.paths['/api/branches/{branchId}/allocations/occupy'].post.requestBody).toBeDefined();
+  expect(document.paths['/api/branches/{branchId}/history/clear'].delete.requestBody).toBeDefined();
 });

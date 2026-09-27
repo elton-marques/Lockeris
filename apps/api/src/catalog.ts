@@ -220,4 +220,18 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       await refreshPending(client,branchId); return rows[0];
     }));
   });
+  app.delete('/api/branches/:branchId/history/clear', async request => {
+    const actor=await authenticate(request);const {branchId}=routeBranch.parse(request.params);adminAccess(actor,branchId);
+    const body=operation.parse(request.body);
+    return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
+      const {rowCount}=await client.query(`DELETE FROM events WHERE branch_id=$1 AND
+        (happened_at < now() - interval '365 days'
+          OR entity_type='import'
+          OR (locker_number IS NULL AND person_name IS NULL AND sector_name IS NULL AND description IS NULL))`,[branchId]);
+      const removed=Number(rowCount??0);
+      await event(client,branchId,actor.id,'historico_limpo','branch',branchId,{removed},
+        {description:'Limpeza de histórico legado'});
+      return {removed};
+    }));
+  });
 }

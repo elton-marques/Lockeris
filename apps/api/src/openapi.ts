@@ -8,6 +8,7 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/auth\/password$/,schema:z.object({oldPassword:z.string(),newPassword:z.string().min(12)}),summary:'Trocar senha'},
   {match:/^POST \/api\/branches$/,schema:branchInput.and(operation),summary:'Criar filial'},
   {match:/^DELETE \/api\/branches\/:branchId$/,schema:withOperation({expectedVersion:z.number().int().positive()}),summary:'Excluir filial em cascata'},
+  {match:/^DELETE \/api\/branches\/:branchId\/history\/clear$/,schema:withOperation({}),summary:'Limpar histórico legado'},
   {match:/^POST \/api\/branches\/:branchId\/people$/,schema:personInput.safeExtend({operationId:id,personId:id.optional()}),summary:'Cadastrar pessoa'},
   {match:/^PATCH \/api\/branches\/:branchId\/people\/:itemId$/,schema:personUpdateInput,summary:'Alterar pessoa'},
   {match:/^POST \/api\/branches\/:branchId\/people\/:itemId\/status$/,schema:withOperation({expectedVersion:z.number().int().positive(),status:z.enum(['ativo','encerrado'])}),summary:'Encerrar ou reativar atuação'},

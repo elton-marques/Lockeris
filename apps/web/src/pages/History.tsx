@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {api} from '../api';
+import {api,del,op} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState} from '../ui';
 
@@ -23,7 +23,8 @@ const events:Record<string,string>={
   ocupacao_provisoria_reconhecida:'Ocupação provisória reconhecida',
   terceirizado_sem_matricula_reconhecido:'Terceirizado sem matrícula reconhecido',
   promotor_roteirista_retirado:'Promotor roteirista retirado',ocupante_associado_por_nome:'Ocupante associado por nome',
-  pendencia_auto_reconciliada:'Matrícula reconciliada automaticamente'
+  pendencia_auto_reconciliada:'Matrícula reconciliada automaticamente',
+  historico_limpo:'Histórico legado limpo'
 };
 const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Dispositivo legado',allocation:'Ocupação',sharing:'Compartilhamento'};
 export const eventLabel=(kind:string)=>events[kind]??'Evento registrado';
@@ -49,7 +50,7 @@ function summary(item:RecordItem):string{
   const subject=involved(item);
   if(subject)parts.push(subject);
   if(parts.length)return parts.join(' · ');
-  return uniqueDescription(item)??'Evento sem contexto de armário ou ocupante';
+  return uniqueDescription(item)??'Ajuste de registro de ocupação';
 }
 function supporting(item:RecordItem):string|null{
   const extra=detail(item);
@@ -68,11 +69,23 @@ function detail(item:RecordItem):string|null{
   if(!item.person_name&&typeof data.officialName==='string'&&data.officialName.trim())return `Ocupante: ${data.officialName}`;
   return null;
 }
-export function History({branchId}:PageProps){
-  const [records,setRecords]=useState<RecordItem[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
-  function load(){setLoading(true);setError('');api<RecordItem[]>(`/branches/${branchId}/history`).then(setRecords).catch(e=>setError(e instanceof Error?e.message:'Confira a conexão e tente novamente.')).finally(()=>setLoading(false));}
+export function History({branchId,notice,askConfirm}:PageProps){
+  const [records,setRecords]=useState<RecordItem[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[clearing,setClearing]=useState(false);
+  function load(){setLoading(true);setError('');return api<RecordItem[]>(`/branches/${branchId}/history`).then(setRecords).catch(e=>setError(e instanceof Error?e.message:'Confira a conexão e tente novamente.')).finally(()=>setLoading(false));}
   useEffect(()=>{load();},[branchId]);
-  return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div><a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a></div>
+  async function clearLegacy(){
+    if(!await askConfirm('Deseja remover os registros de histórico legados/incompletos? Esta ação não afetará os logs operacionais recentes.'))return;
+    setClearing(true);
+    try{
+      const result=await del<{removed:number}>(`/branches/${branchId}/history/clear`,{operationId:op()});
+      await load();
+      notice(result.removed?`${result.removed} registro(s) legado(s) removido(s) do histórico.`:'Nenhum registro legado foi encontrado para remoção.');
+    }catch(e){notice(e instanceof Error?e.message:'Não foi possível limpar o histórico antigo.');}
+    finally{setClearing(false);}
+  }
+  return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div>
+    <div className="section-head-actions"><button type="button" onClick={clearLegacy} disabled={clearing||loading}>{clearing?'Limpando…':'Limpar históricos antigos'}</button>
+      <a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a></div></div>
     <DataState loading={loading} error={error} onRetry={load}/>
       {!loading&&!error&&(records.length?<ol className="timeline" aria-label="Linha do tempo de eventos">{records.map(item=>{
         const headline=summary(item),note=supporting(item);

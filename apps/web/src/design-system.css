@@ -98,6 +98,8 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .card > p { max-width: 82ch; }
 .section-head { align-items: center; }
 .section-head p { color: var(--muted); font-size: .86rem; }
+.section-head-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.section-head-actions button { font-size: .82rem; }
 .section-meta { font-size: .79rem; color: var(--muted); background: #f0f6f3; padding: 7px 10px; border-radius: 8px; }
 .subsection-title { margin: 24px 0 14px; padding-top: 22px; border-top: 1px solid var(--line); }
 .inline-control { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; }

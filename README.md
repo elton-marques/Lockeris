@@ -100,7 +100,7 @@ O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura tot
 
 A aba **Transferências** (`apps/web/src/pages/Transfers.tsx`) recebeu o subtítulo **Histórico de Ocupações e Transferências** e reúne dois cards:
 
-- **Ocupações** — tabela com cabeçalhos `PESSOA / SETOR`, `ARMÁRIO`, `ENTRADA`, `PREVISÃO / SAÍDA` e `SITUAÇÃO`. A coluna `Modalidade` e o botão **Registrar devolução** saíram da tela junto com o filtro de rotativos, porque o conceito de rotativo não existe mais na operação. A situação aparece em badge arredondado — verde **Ativa**, cinza **Encerrada** —, as células usam `padding: 1rem 1.25rem` com divisória suave (`border-bottom`) e datas sem registro são exibidas como `-`. O filtro **Exibir** oferece Ativas, Encerradas e Todas.
+- **Ocupações** — tabela com cabeçalhos `PESSOA / SETOR`, `ARMÁRIO`, `ENTRADA` e `SITUAÇÃO`. A coluna `PREVISÃO / SAÍDA` foi removida junto com a `Modalidade` e o botão **Registrar devolução**, porque a previsão de saída deixou de ser usada na operação (o prazo continua registrado na ocupação e aparece nas pendências). A situação aparece em badge arredondado — verde **Ativa**, cinza **Encerrada** —, as células usam `padding: 1rem 1.25rem` com divisória suave (`border-bottom`) e datas sem registro são exibidas como `-`. O filtro **Exibir** oferece Ativas, Encerradas e Todas.
 - **Histórico de trocas de armário** — transferências com data, pessoa e matrícula, armários de origem/destino e motivo (ou `-` quando não informado).
 
 `GET /api/branches/:id/allocations` passou a devolver também o setor do colaborador (`m.department` como `sector`), que preenche a linha secundária de **PESSOA / SETOR**. Os estilos ficam em `design-system.css` (`.movement-table`, `.history-table`, `.status-badge`) com os pares de cores do modo escuro em `theme.css`.
@@ -135,7 +135,18 @@ Cada card da linha do tempo exibe o **tipo da ação** (badge), a **data/hora**,
 
 A linha secundária traz a `description` detalhada do evento (quando ela não repete o rótulo do badge) ou, na ausência dela, o motivo, a resolução ou a contagem lidos de `details` (`Motivo: …`, `Resolvido com: …`, `12 armários importados.`).
 
-Eventos gravados antes da migration `014` não têm `locker_number` nem `person_name`: nesses casos o card usa a `description` como linha principal e, na ausência dela, cai para o resumo padrão `Evento sem contexto de armário ou ocupante` — o card nunca fica vazio nem repete o mesmo texto duas vezes.
+Eventos gravados antes da migration `014` não têm `locker_number` nem `person_name`: nesses casos o card usa a `description` como linha principal e, na ausência dela, cai para o resumo padrão `Ajuste de registro de ocupação` — o card nunca fica vazio nem repete o mesmo texto duas vezes.
+
+### Limpeza de históricos antigos
+
+O cabeçalho da tela reúne dois controles: **Limpar históricos antigos** (ao lado do **Exportar registro CSV**) e a exportação. A limpeza:
+
+1. abre a confirmação *"Deseja remover os registros de histórico legados/incompletos? Esta ação não afetará os logs operacionais recentes?"*;
+2. chama `DELETE /api/branches/:id/history/clear` (`catalog.ts`) com o `operationId` da operação, restrito a perfis administrativos;
+3. dentro de uma única transação apaga os eventos da filial que são **legados/incompletos** (sem `locker_number`, `person_name`, `sector_name` nem `description`), **antigos** (anteriores a 365 dias) ou **de migração de sistema** (`entity_type='import'`, as cargas de armários e de base de colaboradores);
+4. grava o próprio evento `historico_limpo` com a quantidade removida, que permanece na trilha porque tem contexto.
+
+Ocupações, transferências, cadastros e demais eventos operacionais recentes continuam no histórico; a resposta devolve `{removed}` e a tela recarrega a linha do tempo com o aviso da contagem.
 
 ## Migrations do banco
 
