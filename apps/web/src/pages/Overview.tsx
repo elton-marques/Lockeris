@@ -1,9 +1,9 @@
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,Plus,ShieldAlert,TriangleAlert,Undo2,Upload,UserPlus,Wrench} from 'lucide-react';
+import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,KeyRound,Plus,ShieldAlert,TriangleAlert,Undo2,Upload,UserPlus} from 'lucide-react';
 import {api} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
-import {alertLevelLabels,doubleLockerBreakdown,lockerExceptions,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
+import {alertLevelLabels,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
 type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string)=>void};
 type AllocationRow={started_at:string|null;ended_at:string|null};
@@ -47,7 +47,7 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
 
   const summary=useMemo(()=>occupancySummary(lockers),[lockers]);
   const doubles=useMemo(()=>doubleLockerBreakdown(lockers),[lockers]);
-  const exceptions=useMemo(()=>lockerExceptions(lockers),[lockers]);
+  const keyControl=useMemo(()=>keyControlSummary(lockers),[lockers]);
   const categories=useMemo(()=>occupancyByCategory(lockers),[lockers]);
   const sectors=useMemo(()=>occupancyBySector(lockers),[lockers]);
   const pendingIds=pendingLockerIds(pending);
@@ -106,48 +106,50 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
           <span className="kpi-progress kpi-progress--double" role="img" aria-label={`${doubles.filled} de ${doubles.positions} vagas duplas preenchidas`}><span style={{width:`${doubles.utilization}%`}}/></span>
           <span className="kpi-pills">
             <span className="kpi-pill"><strong>{doubles.total}</strong> Total de Duplos</span>
-            <span className="kpi-pill kpi-pill--full"><strong>{doubles.full}</strong> 100% Ocupados (2/2)</span>
+            <span className="kpi-pill kpi-pill--full"><strong>{doubles.full}</strong> 100% Ocupados</span>
             <span className="kpi-pill kpi-pill--partial"><strong>{doubles.partial}</strong> Subutilizados (1/2)</span>
             <span className="kpi-pill kpi-pill--free"><strong>{doubles.free}</strong> Livres (0/2)</span>
           </span>
+          <p className="kpi-foot kpi-foot--inline">Duplos de Transporte Pesado e Conservação/Manutenção com um único ocupante valem como 100% ocupados (armário duplo individual, dentro da regra).</p>
           <button type="button" className="kpi-action" onClick={()=>onOpenLockers({double:true})}>Ver armários duplos <ArrowRight size={15} aria-hidden="true"/></button>
         </section>
 
-        <section className="kpi-card kpi-card--health" aria-labelledby="kpi-health-title">
-          <span className="kpi-head"><span className="kpi-icon"><Wrench size={18} aria-hidden="true"/></span><span className="kpi-title" id="kpi-health-title">Saúde física e segurança de chaves</span></span>
-          <span className="kpi-value-row"><strong className="kpi-value">{exceptions.total}</strong><span className="kpi-value-label">Armários com exceção</span></span>
+        <section className="kpi-card kpi-card--keys" aria-labelledby="kpi-keys-title">
+          <span className="kpi-head"><span className="kpi-icon"><KeyRound size={18} aria-hidden="true"/></span><span className="kpi-title" id="kpi-keys-title">Controle de Chaves</span></span>
+          <span className="kpi-value-row"><strong className="kpi-value">{keyControl.withoutKey}</strong><span className="kpi-value-label">{keyControl.withoutKey===1?'Armário sem cópia da chave cadastrada':'Armários sem cópia da chave cadastrada'}</span></span>
           <span className="kpi-subs kpi-subs--stack">
-            <button type="button" className="kpi-sub kpi-sub--action" onClick={()=>onOpenLockers({status:'indisponivel'})}>
-              <span>Manutenção ou bloqueio</span><strong>{exceptions.blocked}</strong><small>ver armários indisponíveis</small>
-            </button>
             <button type="button" className="kpi-sub kpi-sub--action" onClick={()=>onOpenLockers({key:'nao'})}>
-              <span>Pendentes de cópia de chave</span><strong>{exceptions.noKey}</strong><small>ver armários sem cópia</small>
+              <span>Armários sem cópia</span><strong>{keyControl.withoutKey}</strong><small>ver armários sem cópia</small>
             </button>
+            <button type="button" className="kpi-sub kpi-sub--action" onClick={()=>onOpenLockers({key:'sim'})}>
+              <span>Armários com cópia</span><strong>{keyControl.withKey}</strong><small>ver armários com cópia</small>
+            </button>
+            <span className="kpi-sub"><span>Cópia não informada</span><strong>{keyControl.unreported}</strong></span>
           </span>
-          <p className="kpi-foot">Manutenção, bloqueio e ausência de cópia da chave reduzem a disponibilidade segura da filial.</p>
+          <button type="button" className="kpi-action" onClick={()=>onOpenLockers({key:'nao'})}>Ver armários sem cópia <ArrowRight size={15} aria-hidden="true"/></button>
         </section>
       </section>
 
       <div className="overview-widgets">
         <section className="insight-panel" aria-labelledby="sector-widget-title">
           <div className="insight-heading"><div><h2 id="sector-widget-title">Ranking de ocupação por setor</h2><p>Posições ocupadas, dos mais demandantes aos menos</p></div><span>{branchName}</span></div>
-          {sectors.length?<div className="insight-bars">{sectors.map(item=><div className={item.anomaly?'insight-bar-row anomaly':'insight-bar-row'} key={item.name}>
+          {sectors.length?<div className="insight-scroll"><div className="insight-bars">{sectors.map(item=><div className={item.anomaly?'insight-bar-row anomaly':'insight-bar-row'} key={item.name}>
             <span>{item.anomaly&&<TriangleAlert size={13} aria-hidden="true"/>}{item.name}</span>
             <div className="insight-track"><button style={{width:`${Math.max(8,item.count/Math.max(1,sectors[0].count)*100)}%`}}
               onClick={()=>onOpenLockers({sector:item.anomaly?'__none__':item.name,status:'ocupado'})}
               aria-label={`${item.name}: ${item.count} ${item.count===1?'posição ocupada':'posições ocupadas'}. Ver armários`}/></div>
-            <strong>{item.count}</strong></div>)}</div>:<p className="insight-empty">Ainda não há ocupações registradas nesta filial.</p>}
+            <strong>{item.count}</strong></div>)}</div></div>:<p className="insight-empty">Ainda não há ocupações registradas nesta filial.</p>}
           {missingSector&&<p className="insight-alert"><TriangleAlert size={15} aria-hidden="true"/><span><strong>{missingSector.count} {missingSector.count===1?'posição':'posições'} sem setor identificado.</strong> Confira o cadastro desses ocupantes antes que virem perda de rastreio.</span></p>}
           <p className="insight-note">Cada posição ocupada é atribuída ao setor do ocupante. Clique em uma barra para ver os registros.</p>
         </section>
 
         <section className="insight-panel" aria-labelledby="category-widget-title">
-          <div className="insight-heading"><div><h2 id="category-widget-title">Ocupação por vínculo</h2><p>Distribuição por categoria de cadastro</p></div></div>
+          <div className="insight-heading"><div><h2 id="category-widget-title">Ocupação por vínculo</h2><p>Colaboradores FC, Promotores Fixos e Terceirizados</p></div></div>
           <div className="category-bars">{categories.map(item=><div className="category-row" key={item.key}>
             <div className="category-row-head"><span>{item.label}</span><strong>{item.count} <small>{item.percent}%</small></strong></div>
             <div className="insight-track"><span className={`category-fill fill-${item.key}`} style={{width:`${Math.max(item.count?3:0,item.percent)}%`}}/></div>
           </div>)}</div>
-          <p className="insight-note">A posição conta pelo vínculo do ocupante: Colaborador FC, Promotor Fixo, Terceirizado e Roteirista. Ocupações por setor, sem pessoa identificada, aparecem como “Ocupação por setor”.</p>
+          <p className="insight-note">A posição conta pelo vínculo operacional do ocupante: Colaboradores FC, Promotores Fixos e Terceirizados. O setor PROMOTOR(A) entra como Promotor Fixo e empresas externas (por exemplo, Delta Climatização) como Terceirizado; roteiristas não têm armário fixo e não aparecem aqui.</p>
         </section>
       </div>
 

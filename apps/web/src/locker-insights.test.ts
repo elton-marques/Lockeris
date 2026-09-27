@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {availablePositions,doubleLockerBreakdown,effectiveCapacity,lockerExceptions,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupiedPositions,occupancySummary,pendingAlertLevel,pendingLockerIds,requiresReview,showsLockerPositions,type InsightLocker} from './locker-insights';
+import {availablePositions,doubleLockerBreakdown,effectiveCapacity,hasExclusiveDoubleRule,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupiedPositions,occupancySummary,pendingAlertLevel,pendingLockerIds,requiresReview,showsLockerPositions,type InsightLocker} from './locker-insights';
 
 const locker=(overrides:Partial<InsightLocker>={}):InsightLocker=>({
   id:'101',number:'101',capacity:2,is_double:true,sector_occupant:null,condition:'disponivel',migration_status:'conferido',
@@ -47,6 +47,50 @@ describe('indicadores de armários da filial',()=>{
   });
 });
 
+describe('regra de armário duplo por setor',()=>{
+  it('trata duplo de TRANSPORTE PESADO com um ocupante como 100% ocupado, não subutilizado',()=>{
+    const item=locker({occupants:[{name:'Téo',registration:'0010',department:'TRANSPORTE PESADO'}]});
+    expect(hasExclusiveDoubleRule(item)).toBe(true);
+    expect(effectiveCapacity(item)).toBe(1);
+    expect(occupiedPositions(item)).toBe(1);
+    expect(availablePositions(item)).toBe(0);
+    expect(doubleLockerBreakdown([item])).toEqual({total:1,free:0,partial:0,full:1,positions:1,filled:1,utilization:100});
+  });
+
+  it('aplica a mesma regra para CONSERVAÇÃO E MANUTENÇÃO e suas variações',()=>{
+    for(const department of ['CONSERVAÇÃO E MANUTENÇÃO','Conservação','Limpeza','MANUTENCAO','Manutenção Infraestrutura']){
+      const item=locker({occupants:[{name:'Ana',registration:'0001',department}]});
+      expect(hasExclusiveDoubleRule(item),department).toBe(true);
+      expect(doubleLockerBreakdown([item]),department).toMatchObject({full:1,partial:0,free:0});
+    }
+  });
+
+  it('mantém duplo de setor comum com um único ocupante como subutilizado',()=>{
+    const item=locker({occupants:[{name:'Ana',registration:'0001',department:'Loja'}]});
+    expect(hasExclusiveDoubleRule(item)).toBe(false);
+    expect(effectiveCapacity(item)).toBe(2);
+    expect(availablePositions(item)).toBe(1);
+    expect(doubleLockerBreakdown([item])).toEqual({total:1,free:0,partial:1,full:0,positions:2,filled:1,utilization:50});
+  });
+
+  it('não aplica a regra sem ocupante, com dois ocupantes ou em armário simples',()=>{
+    expect(hasExclusiveDoubleRule(locker({occupants:[]}))).toBe(false);
+    expect(hasExclusiveDoubleRule(locker({occupants:[
+      {name:'Ana',registration:'0001',department:'TRANSPORTE PESADO'},
+      {name:'Bia',registration:'0002',department:'TRANSPORTE PESADO'}]}))).toBe(false);
+    expect(hasExclusiveDoubleRule(locker({capacity:1,is_double:false,
+      occupants:[{name:'Caio',registration:'0003',department:'CONSERVAÇÃO E MANUTENÇÃO'}]}))).toBe(false);
+    expect(hasExclusiveDoubleRule(locker({sector_occupant:'LIMPEZA',occupants:[]}))).toBe(false);
+  });
+
+  it('resume a filial com duplo de setor especial em 100% de ocupação',()=>{
+    expect(occupancySummary([
+      locker({id:'1',occupants:[{name:'Téo',registration:'0010',department:'TRANSPORTE PESADO'}]}),
+      locker({id:'2',capacity:1,is_double:false,occupants:[{name:'Ana',registration:'0001',department:'Loja'}]})
+    ])).toMatchObject({physical:2,capacity:2,occupied:2,available:0,percent:100});
+  });
+});
+
 describe('indicadores executivos do painel',()=>{
   it('separa os armários duplos em 0/2, 1/2 e 2/2 e calcula a utilização',()=>{
     const lockers=[
@@ -59,21 +103,46 @@ describe('indicadores executivos do painel',()=>{
     expect(doubleLockerBreakdown([locker({id:'9',capacity:1,is_double:false})])).toEqual({total:0,free:0,partial:0,full:0,positions:0,filled:0,utilization:0});
   });
 
-  it('agrupa a ocupação por categoria de vínculo',()=>{
+  it('agrupa a ocupação pelos três vínculos operacionais válidos',()=>{
     const rows=occupancyByCategory([
       locker({id:'1',occupants:[{name:'Ana',registration:'0001',department:'Loja',category:'colaborador'}]}),
       locker({id:'2',occupants:[{name:'Bia',registration:'0002',department:'Loja',category:'colaborador'}]}),
-      locker({id:'3',occupants:[{name:'Caio',registration:'0003',department:'Loja',category:'terceirizado'}]}),
-      locker({id:'4',sector_occupant:'Restaurante',capacity:1,is_double:false}),
-      locker({id:'5',occupants:[{name:'Duda',registration:null,department:'Loja'}]})
+      locker({id:'3',occupants:[{name:'Caio',registration:'0003',department:'Delta Climatização',category:'colaborador'}]}),
+      locker({id:'4',sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
+      locker({id:'5',occupants:[{name:'Duda',registration:'0004',department:'Loja',category:'terceirizado'}]}),
+      locker({id:'6',occupants:[{name:'Eli',registration:'0005',department:'PROMOTOR(A)',category:'roteirista',functionName:'PROMOTOR(A)'}]}),
+      locker({id:'7',sector_occupant:'Restaurante FC',capacity:1,is_double:false})
     ]);
-    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({label:'Colaborador FC',count:2,percent:40});
-    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({count:0,percent:0});
-    expect(rows.find(row=>row.key==='terceirizado')).toMatchObject({count:1,percent:20});
-    expect(rows.find(row=>row.key==='roteirista')).toMatchObject({count:0});
-    expect(rows.find(row=>row.key==='sem_vinculo')).toMatchObject({label:'Ocupação por setor',count:1,percent:20});
-    expect(rows.find(row=>row.key==='sem_categoria')).toMatchObject({label:'Sem categoria de vínculo',count:1,percent:20});
+    expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado']);
+    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({label:'Colaboradores FC',count:2,percent:33});
+    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({label:'Promotores Fixos',count:2,percent:33});
+    expect(rows.find(row=>row.key==='terceirizado')).toMatchObject({label:'Terceirizados',count:2,percent:33});
+    expect(rows.some(row=>row.key==='roteirista')).toBe(false);
+    expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(6);
+  });
+
+  it('conta o setor PROMOTOR(A) como Promotores Fixos e empresa externa como Terceirizados',()=>{
+    const rows=occupancyByCategory([
+      locker({id:'1',sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
+      locker({id:'2',sector_occupant:'Delta Climatização',capacity:1,is_double:false}),
+      locker({id:'3',occupants:[{name:'Ana',registration:'0001',department:'LOJA',category:'colaborador'}]}),
+      locker({id:'4',occupants:[{name:'Bia',registration:'0002',department:'PROMOTOR(A)',category:'roteirista',functionName:'PROMOTOR(A)'}]}),
+      locker({id:'5',occupants:[{name:'Caio',registration:'0003',department:'Delta Climatização',category:'colaborador'}]})
+    ]);
+    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({count:2,percent:40});
+    expect(rows.find(row=>row.key==='terceirizado')).toMatchObject({count:2,percent:40});
+    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({count:1,percent:20});
     expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(5);
+  });
+
+  it('descarta categorias legadas fora dos três vínculos operacionais',()=>{
+    const rows=occupancyByCategory([
+      locker({id:'1',occupants:[{name:'Ana',registration:'0001',department:'Loja',category:'roteirista'}]}),
+      locker({id:'2',occupants:[{name:'Bia',registration:'0002',department:'Loja'}]}),
+      locker({id:'3',sector_occupant:'Restaurante FC',capacity:1,is_double:false})
+    ]);
+    expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado']);
+    expect(rows.every(row=>row.count===0&&row.percent===0)).toBe(true);
   });
 
   it('marca a ocupação sem setor como anomalia no ranking de setores',()=>{
@@ -105,13 +174,14 @@ describe('indicadores executivos do painel',()=>{
     ])).toBe(2);
   });
 
-  it('agrupa exceções físicas de manutenção, bloqueio e cópia de chave',()=>{
-    expect(lockerExceptions([
+  it('agrupa a situação da cópia das chaves sem contar status de manutenção ou bloqueio',()=>{
+    expect(keyControlSummary([
       locker({id:'1'}),
       locker({id:'2',condition:'manutencao'}),
       locker({id:'3',condition:'bloqueado',key_copy_available:false}),
-      locker({id:'4',key_copy_available:false})
-    ])).toEqual({total:3,blocked:2,noKey:2});
+      locker({id:'4',key_copy_available:false}),
+      locker({id:'5',key_copy_available:null})
+    ])).toEqual({withoutKey:2,withKey:2,unreported:1});
   });
 
   it('resume capacidade, ocupação, vagas imediatas e percentual da filial',()=>{

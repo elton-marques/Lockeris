@@ -43,12 +43,14 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .kpi-card:hover{transform:translateY(-2px);border-color:#cfc8f3;box-shadow:0 14px 30px #24233914}
 .kpi-card--capacity{--kpi-accent:#8f80ff;background:linear-gradient(155deg,#2b2750 0%,#24213f 55%,#2d2857 100%);border-color:#332e5e;color:#fff;box-shadow:0 16px 32px #28224429}
 .kpi-card--capacity::before{background:linear-gradient(180deg,#9b8dff,#6d5de8)}
-.kpi-card--capacity:hover{border-color:#514a91;box-shadow:0 20px 36px #2822443d}
+/* No tema claro o card hero mantém o gradiente escuro e o texto branco no hover:
+   as regras genéricas de `button:hover` têm especificidade maior e precisam ser vencidas. */
+button.kpi-card--capacity:hover:not(:disabled){background:linear-gradient(155deg,#2b2750 0%,#24213f 55%,#2d2857 100%);color:#fff;border-color:#514a91;box-shadow:0 20px 36px #2822443d}
 .kpi-card--alert{--kpi-accent:#e0a13a}
 .kpi-card--alert.level-ok{--kpi-accent:#3fae86}
 .kpi-card--alert.level-critico{--kpi-accent:#e05a6c}
 .kpi-card--double{--kpi-accent:#6d5de8}
-.kpi-card--health{--kpi-accent:#d97b52}
+.kpi-card--keys{--kpi-accent:#d97b52}
 .kpi-head{display:flex;align-items:center;gap:9px}
 .kpi-icon{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:10px;background:#f1efff;color:#7364d4}
 .kpi-title{font-size:12px;font-weight:750;color:#4a4f66;letter-spacing:-.01em}
@@ -71,11 +73,12 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .kpi-sub>small{font-size:10px;color:#7b8095}
 .kpi-sub--highlight{background:#f4f2ff;border-color:#e4dfff}
 .kpi-sub--action{width:100%;text-align:left;font:inherit;white-space:normal;cursor:pointer;transition:border-color .16s,background .16s,transform .16s}
-.kpi-sub--action:hover{background:#f1efff;border-color:#cfc8f3;transform:translateY(-1px)}
+button.kpi-sub--action:hover:not(:disabled){background:#f1efff;border-color:#cfc8f3;transform:translateY(-1px)}
 .kpi-sub--action>strong{color:#5b4bc4}
 .kpi-foot{margin-top:auto;font-size:10.5px;line-height:1.45;color:#767b90}
+.kpi-foot--inline{margin-top:0;color:#767b90}
 .kpi-action{display:inline-flex;align-items:center;gap:6px;margin-top:auto;padding:9px 12px;border:1px solid #ddd7fa;border-radius:11px;background:#f4f1ff;color:#5b4bc4;font-size:11px;font-weight:800;white-space:normal;cursor:pointer;transition:background .16s,border-color .16s,transform .16s}
-.kpi-action:hover{background:#eae4ff;border-color:#c4b9f5;transform:translateY(-1px)}
+button.kpi-action:hover:not(:disabled){background:#eae4ff;border-color:#c4b9f5;transform:translateY(-1px)}
 .kpi-pills{display:flex;flex-wrap:wrap;gap:7px}
 .kpi-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #e7e5f6;border-radius:99px;background:#f7f6fd;font-size:10px;font-weight:700;color:#5d6279;white-space:nowrap}
 .kpi-pill strong{font-size:12px;color:#33344d}
@@ -93,6 +96,13 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .kpi-card--capacity .kpi-foot{color:#b6b0d6}
 .overview-widgets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
 .overview-widgets--base .insight-panel{min-height:0}
+/* Ranking por setor com rolagem própria para não esticar a altura da página */
+.insight-scroll{max-height:380px;margin-top:24px;padding:2px 7px 2px 0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c5bfe8 transparent}
+.insight-scroll .insight-bars{margin-top:0}
+.insight-scroll::-webkit-scrollbar{width:8px}
+.insight-scroll::-webkit-scrollbar-track{background:#f4f4f9;border-radius:99px}
+.insight-scroll::-webkit-scrollbar-thumb{background:#c5bfe8;border:2px solid transparent;border-radius:99px;background-clip:content-box}
+.insight-scroll::-webkit-scrollbar-thumb:hover{background:#a9a1dd;border:2px solid transparent;background-clip:content-box}
 .category-bars{display:grid;gap:16px;margin-top:24px}
 .category-row{display:grid;gap:7px}
 .category-row-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -103,9 +113,6 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .category-fill.fill-colaborador{background:#6d5de8}
 .category-fill.fill-promotor_fixo{background:#3fae86}
 .category-fill.fill-terceirizado{background:#e0a13a}
-.category-fill.fill-roteirista{background:#4aa3e0}
-.category-fill.fill-sem_vinculo{background:#9aa0b5}
-.category-fill.fill-sem_categoria{background:#e0757f}
 .insight-bar-row.anomaly>span{display:flex;align-items:center;gap:5px;color:#c0392f;font-weight:800}
 .insight-bar-row.anomaly .insight-track{background:#fdecea;border:1px solid #f3c4bf}
 .insight-bar-row.anomaly .insight-track button{background:#e05a4d}
@@ -124,11 +131,11 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .movement-stat>span:last-child{font-size:10.5px;font-weight:700;color:#6a6f85}
 .quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:24px}
 .quick-action{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;padding:14px;border:1px solid #e7e5f6;border-radius:13px;background:#f8f7ff;text-align:left;white-space:normal;cursor:pointer;transition:transform .16s,border-color .16s,background .16s}
-.quick-action:hover{background:#f1edff;border-color:#c9c1f2;transform:translateY(-2px)}
+button.quick-action:hover:not(:disabled){background:#f1edff;border-color:#c9c1f2;transform:translateY(-2px)}
 .quick-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#ece9ff;color:#5b4bc4}
 .quick-action strong{font-size:11.5px;color:#33344d;letter-spacing:-.01em}
 .quick-action small{font-size:10.5px;line-height:1.45;color:#6f748a}
 @media(max-width:1250px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:980px){.overview-widgets{grid-template-columns:1fr}}
 @media(max-width:640px){.kpi-grid,.quick-grid{grid-template-columns:1fr}.kpi-card{min-height:0}.kpi-subs{grid-template-columns:1fr}.movement-grid{grid-template-columns:1fr}}
-@media(prefers-reduced-motion:reduce){.kpi-card:hover,.kpi-sub--action:hover,.kpi-action:hover,.quick-action:hover{transform:none}}
+@media(prefers-reduced-motion:reduce){.kpi-card:hover,button.kpi-sub--action:hover:not(:disabled),button.kpi-action:hover:not(:disabled),button.quick-action:hover:not(:disabled){transform:none}}
