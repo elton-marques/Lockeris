@@ -15,7 +15,7 @@ O projeto é um monorepo com workspaces npm (`apps/*` e `packages/*`):
 | Pasta | Pacote | Descrição |
 | --- | --- | --- |
 | `apps/api` | `@armarios/api` | API Fastify: autenticação por cookie, operações com idempotência (`operationId`), importação de planilhas, pendências, OpenAPI em `/api/docs` e as migrations SQL em `apps/api/migrations`. |
-| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `locker-status.css`, `select.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
+| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação e design system em CSS (`design-system.css`, `operational-design.css`, `locker-status.css`, `select.css`, `theme.css`). |
 | `packages/contracts` | `@armarios/contracts` | Contratos e utilitários compartilhados entre API e web (esquemas, identificadores e formas de dados). |
 
 A build de produção compila os três pacotes na ordem contracts → api → web (`npm run build`). A checagem de tipos roda com `tsc -b` na raiz e cobre todos os pacotes.
@@ -46,8 +46,8 @@ No tema claro o card hero de **Capacidade e ocupação** mantém o gradiente esc
 Abaixo dos KPIs o painel abre dois widgets de análise e dois de operação:
 
 - **Ranking de ocupação por setor** — posições ocupadas por setor, ordenadas das mais demandantes às menos. A lista fica em um container com rolagem própria (`.insight-scroll`, `max-height` de 380px, `overflow-y:auto` e barra estilizada nos dois temas), para que setores extensos não estiquem a altura da página. A categoria **Sem setor** aparece como anomalia (barra avermelhada, ícone de aviso e chamada de conferência) para chamar a atenção da operação.
-- **Ocupação por vínculo** — apenas os três vínculos operacionais válidos: `Colaboradores FC`, `Promotores Fixos` e `Terceirizados`. O setor `PROMOTOR(A)` conta como Promotor Fixo (inclusive quando o cadastro veio migrado como roteirista) e empresas externas — por exemplo, Delta Climatização — contam como Terceirizado. Roteiristas não possuem armário fixo e não aparecem no painel.
-- **Movimentações e atividade** — contagem de atribuições, desocupações e trocas do período (7 ou 30 dias), derivada das alocações e transferências registradas. Em modo offline a cópia local não inclui movimentações e o painel explica a limitação.
+- **Pessoas por vínculo** — conta pessoas com categoria `Colaborador FC`, `Promotor Fixo`, `Terceirizado` ou `Vínculo não identificado`. Posições atribuídas diretamente a setores são exibidas separadamente. Pendências cadastrais vêm dos itens abertos em `pending_items`; registros rotativos encerrados continuam legíveis no histórico.
+- **Movimentações e atividade** — contagem de atribuições, desocupações e trocas do período (7 ou 30 dias), derivada das alocações e transferências registradas.
 - **Ações rápidas** — grade com `+ Atribuir / Desocupar Armário`, `Importar Planilha de Colaboradores`, `Ver Pendências Abertas` e `Consultar Histórico` (importação e histórico apenas para perfis administrativos).
 
 Cards, blocos e barras navegam para a lista de armários já filtrada. A tela respeita o tema claro/escuro e é responsiva — em telas estreitas os KPIs e os widgets viram uma única coluna.
@@ -91,7 +91,7 @@ O drawer respeita o tema escuro/claro, é responsivo (vira painel de largura tot
 
 - **Controles próprios em vez de `<select>` e `<datalist>` nativos:** os filtros e os campos de setor usam `Select`/`SelectField` (`apps/web/src/components/Select.tsx`, estilos em `select.css`), e a matrícula usa o autocompletar `RegistrationInput` (`apps/web/src/RegistrationInput.tsx`) com realce do trecho digitado. A lista de setores oficiais vem de `apps/web/src/sectors.ts` (departamentos de pessoas ativas, setores já registrados em armários e o valor atual). Os selects de ação e de formulário (situação por linha, perfil, modalidade, categoria do cadastro, prévia de importação) continuam nativos, mantendo `required` e a validação do navegador.
 - **Armário duplo só em Administração:** o atributo `is_double` é criado na carga inicial ou na tela Administração; nos cards de leitura e nos drawers operacionais ele aparece como *badge* e como campo fixo, sem controle editável.
-- **PWA e modo offline:** o `service worker` (`apps/web/public/sw.js`) faz o cache do *shell* e dos assets; a cópia de consulta fica no **IndexedDB** (`armarios-offline`) por até 24 horas e autoriza um navegador na tela Administração. Sem conexão, o sistema entra em modo somente consulta.
+- **Limpeza do antigo modo offline:** na inicialização, o navegador remove as chaves `device` e `copy` do IndexedDB e desregistra o antigo service worker, sem alterar as preferências do usuário.
 - **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
 - **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão.
 
@@ -113,7 +113,7 @@ npm run db:migrate
 
 ## Iniciar com Docker Compose
 
-Requer Docker Desktop em execução. Na raiz do projeto, crie `.env` a partir de `.env.example`. Defina uma senha forte em `POSTGRES_PASSWORD` e uma chave aleatória de pelo menos 32 caracteres em `DEVICE_SECRET_KEY`. Para testar em HTTP, use `COOKIE_SECURE=false`.
+Requer Docker Desktop em execução. Na raiz do projeto, crie `.env` a partir de `.env.example`. Defina uma senha forte em `POSTGRES_PASSWORD`. Para testar em HTTP, use `COOKIE_SECURE=false`.
 
 ```powershell
 Copy-Item .env.example .env
@@ -156,7 +156,6 @@ Com o PostgreSQL do Compose ativo:
 npm ci
 $env:DATABASE_URL = 'postgres://armarios:<senha-configurada>@localhost:5432/armarios'
 $env:COOKIE_SECURE = 'false'
-$env:DEVICE_SECRET_KEY = '<chave-aleatoria-de-32-caracteres-ou-mais>'
 npm run db:migrate
 npm run dev
 ```

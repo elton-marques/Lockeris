@@ -21,7 +21,7 @@ async function person(auth:Auth,branchId:string,name:string,registration:string)
 function form(fields:Record<string,string>,filename:string,content:string){const boundary='armarios-test-boundary';const pieces:string[]=[];for(const [key,value] of Object.entries(fields))pieces.push(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`);pieces.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: text/csv\r\n\r\n${content}\r\n--${boundary}--\r\n`);return {payload:pieces.join(''),headers:{'content-type':`multipart/form-data; boundary=${boundary}`}};}
 function binaryForm(fields:Record<string,string>,filename:string,content:Buffer){const boundary='armarios-binary-test';const parts:Buffer[]=[];for(const [key,value] of Object.entries(fields))parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n`),content,Buffer.from(`\r\n--${boundary}--\r\n`));return {payload:Buffer.concat(parts),headers:{'content-type':`multipart/form-data; boundary=${boundary}`}};}
 
-beforeAll(async()=>{if(!process.env.DATABASE_URL?.includes('armarios_test'))throw new Error('Use o banco armarios_test');process.env.DEVICE_SECRET_KEY='integration-device-key-with-over-thirty-two-characters';await app.ready();});
+beforeAll(async()=>{if(!process.env.DATABASE_URL?.includes('armarios_test'))throw new Error('Use o banco armarios_test');await app.ready();});
 beforeEach(async()=>{await pool.query('TRUNCATE branches,people,users CASCADE');await pool.query("INSERT INTO users(username,password_hash,role,must_change_password) VALUES($1,$2,'geral',false)",['test',await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);});
 afterAll(async()=>{await app.close();});
 
@@ -198,18 +198,16 @@ describe('regras transacionais',()=>{
     expect(results.filter(x=>x.statusCode===409)).toHaveLength(9);
     expect((await pool.query('SELECT id FROM allocations WHERE ended_at IS NULL')).rowCount).toBe(1);
   });
-  it('bloqueia filial alheia, escrita de consulta e dispositivo revogado',async()=>{
-    const {auth,branch}=await setup();
+  it('bloqueia filial alheia, escrita de consulta e rotas da filial arquivada',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
     const other=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Outra Filial',timezone:'America/Fortaleza'})).json();
     const readUser=(await pool.query<{id:string}>("INSERT INTO users(username,password_hash,role,branch_id,must_change_password) VALUES($1,$2,'consulta',$3,false) RETURNING id",['consulta',await argon2.hash('Consult-Password-123',{type:argon2.argon2id}),branch.id])).rows[0];
     const token=uuid(),csrf=uuid(),consult={cookie:`armarios_session=${token}`,csrf};
     await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),readUser.id,hash(csrf)]);
     const denied=await app.inject({method:'GET',url:`/api/branches/${other.id}/lockers`,headers:{cookie:consult.cookie}});expect(denied.statusCode).toBe(403);
     const write=await send(consult,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'Sem permissão',size:'padrao',capacity:1,modality:'fixo'});expect(write.statusCode).toBe(403);
-    const device=await send(auth,'POST',`/api/branches/${branch.id}/devices`,{operationId:uuid(),label:'PC teste'});expect(device.statusCode).toBe(200);
-    const snapshot=await app.inject({method:'GET',url:`/api/branches/${branch.id}/offline`,headers:{cookie:auth.cookie,'x-device-secret':device.json().secret}});expect(snapshot.statusCode).toBe(200);
-    const revoke=await send(auth,'POST',`/api/branches/${branch.id}/devices/${device.json().id}/revoke`,{operationId:uuid(),expectedVersion:1});expect(revoke.statusCode).toBe(200);
-    const rejected=await app.inject({method:'GET',url:`/api/branches/${branch.id}/offline`,headers:{cookie:auth.cookie,'x-device-secret':device.json().secret}});expect(rejected.statusCode).toBe(403);
+    const archived=await send(auth,'POST',`/api/branches/${other.id}/archive`,{operationId:uuid(),expectedVersion:other.version});expect(archived.statusCode).toBe(200);
+    const rejected=await app.inject({method:'GET',url:`/api/branches/${other.id}/lockers`,headers:{cookie:auth.cookie}});expect(rejected.statusCode).toBe(403);
   });
   it('importa uma única aba, liga matrícula existente e registra setor sem pessoa',async()=>{
     const {auth,branch}=await setupWithoutLogin();
@@ -332,7 +330,7 @@ describe('regras transacionais',()=>{
     expect((await pool.query("SELECT sector_occupant FROM lockers WHERE branch_id=$1 AND number='363'",[branch.id])).rows[0].sector_occupant).toBe('RESTAURANTE FC');
     expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='migracao_inconclusiva' AND state='aberta'",[branch.id])).rows[0].count).toBe('2');
     expect((await pool.query("SELECT migration_status,sector_occupant FROM lockers WHERE branch_id=$1 AND number='364'",[branch.id])).rows[0]).toMatchObject({migration_status:'conferido',sector_occupant:'PROMOTOR(A)'});
-    expect((await pool.query("SELECT m.category FROM memberships m JOIN people p ON p.id=m.person_id JOIN allocations a ON a.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.branch_id=$1 AND l.number='366' AND a.ended_at IS NULL",[branch.id])).rows[0].category).toBe('colaborador');
+    expect((await pool.query("SELECT m.category FROM memberships m JOIN people p ON p.id=m.person_id JOIN allocations a ON a.person_id=p.id JOIN lockers l ON l.id=a.locker_id WHERE l.branch_id=$1 AND l.number='366' AND a.ended_at IS NULL",[branch.id])).rows[0].category).toBe('vinculo_nao_identificado');
     const emptyDouble=(await pool.query<{id:string}>("SELECT id FROM lockers WHERE branch_id=$1 AND number='365'",[branch.id])).rows[0];
     const first=await person(auth,branch.id,'Dora Exemplo','0103'),second=await person(auth,branch.id,'Eva Exemplo','0104');
     expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:first.person_id,lockerId:emptyDouble.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
@@ -390,11 +388,37 @@ describe('regras transacionais',()=>{
     const manual=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{operationId:uuid(),
       expectedLockerVersion:third.version,isDouble:true,sectorOccupant:null,occupant:{allocationId:bia.allocationId,
         membershipId:bia.membershipId,expectedMembershipVersion:bia.membershipVersion,
-        name:'Pessoa conferida',registration:'9999',department:'Caixa',functionName:'Apoio'}});
+        name:'Pessoa conferida',registration:null,department:'Caixa',functionName:'Apoio'}});
     expect(manual.statusCode).toBe(200);
-    expect((await pool.query("SELECT p.name,m.registration FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id WHERE a.locker_id=$1 AND a.ended_at IS NULL ORDER BY m.registration",[cabinet.id])).rows)
-      .toEqual([{name:'Caio Oficial',registration:'0003'},{name:'Pessoa conferida',registration:'9999'}]);
-    expect((await pool.query("SELECT count(*) FROM pending_items WHERE kind='ausente_ti' AND state='aberta'")).rows[0].count).toBe('1');
+    expect((await pool.query("SELECT p.name,m.registration,m.category FROM allocations a JOIN people p ON p.id=a.person_id JOIN memberships m ON m.person_id=p.id WHERE a.locker_id=$1 AND a.ended_at IS NULL ORDER BY m.registration",[cabinet.id])).rows)
+      .toEqual([{name:'Caio Oficial',registration:'0003',category:'colaborador'},{name:'Pessoa conferida',registration:null,category:'vinculo_nao_identificado'}]);
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE kind='sem_matricula' AND state='aberta'")).rows[0].count).toBe('1');
+  });
+  it('impede arquivar filial ocupada e mantém o histórico rotativo legível',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'101');const member=await person(auth,branch.id,'Pessoa A','0001');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo'})).statusCode).toBe(200);
+    const blocked=await send(auth,'POST',`/api/branches/${branch.id}/archive`,{operationId:uuid(),expectedVersion:branch.version});
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.message).toBe('Não é possível arquivar uma filial com armários ocupados. Remaneje ou libere os armários antes.');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers`,{operationId:uuid(),number:'102',size:'padrao',capacity:1,modality:'rotativo'})).statusCode).toBe(422);
+    await pool.query("INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,ended_at) VALUES($1,$2,$3,'rotativo',now(),now())",[branch.id,cabinet.id,member.person_id]);
+    const history=await app.inject({method:'GET',url:`/api/branches/${branch.id}/allocations`,headers:{cookie:auth.cookie}});
+    expect(history.statusCode).toBe(200);
+    expect(JSON.stringify(history.json())).toContain('rotativo');
+  });
+  it('reclassifica a pessoa editada sem matrícula e abre pendência cadastral',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'101');const member=await person(auth,branch.id,'Pessoa A','0001');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo'})).statusCode).toBe(200);
+    const current=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/lockers`,headers:{cookie:auth.cookie}})).json()[0];
+    const occupant=current.occupants[0];
+    const revised=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/revise`,{operationId:uuid(),expectedLockerVersion:current.version,
+      isDouble:false,sectorOccupant:null,occupant:{allocationId:occupant.allocationId,membershipId:occupant.membershipId,
+        expectedMembershipVersion:occupant.membershipVersion,name:'Pessoa A',registration:null,department:null,functionName:null}});
+    expect(revised.statusCode).toBe(200);
+    expect((await pool.query('SELECT category,registration FROM memberships WHERE id=$1',[member.id])).rows[0]).toMatchObject({category:'vinculo_nao_identificado',registration:null});
+    expect((await pool.query("SELECT count(*) FROM pending_items WHERE branch_id=$1 AND kind='sem_matricula' AND state='aberta'",[branch.id])).rows[0].count).toBe('1');
   });
 });
 

@@ -4,6 +4,7 @@ export type InsightPending={kind:string;state:string;pending_locker_id:string|nu
 export type LockerPreset={status?:string;sector?:string;key?:string;pendingKind?:string;double?:boolean};
 
 export const pendingKindLabels:Record<string,string>={
+  sem_matricula:'Pessoa sem matrícula validada',
   ausente_ti:'Matrícula não encontrada na base atual',
   sem_armario:'Pessoa precisa de armário',
   atuacao_encerrada:'Cadastro encerrado com armário',
@@ -50,9 +51,10 @@ export function openPendingWithLocker(items:InsightPending[],kind:string){return
 export const categoryLabels:Record<string,string>={
   colaborador:'Colaboradores FC',
   promotor_fixo:'Promotores Fixos',
-  terceirizado:'Terceirizados'
+  terceirizado:'Terceirizados',
+  vinculo_nao_identificado:'Vínculo não identificado'
 };
-export const canonicalCategories=['colaborador','promotor_fixo','terceirizado'] as const;
+export const canonicalCategories=['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado'] as const;
 const externalCompanyKeywords=['delta','climatizacao','terceiriz'];
 export const missingSectorLabel='Sem setor';
 
@@ -87,23 +89,15 @@ function occupantLinkKey(person:LockerOccupant):string|null{
   const category=person.category?.trim();
   if(category==='promotor_fixo')return 'promotor_fixo';
   if(category==='terceirizado'||context.some(value=>mentionsSector(value,externalCompanyKeywords)))return 'terceirizado';
+  if(category==='vinculo_nao_identificado')return 'vinculo_nao_identificado';
   if(category==='colaborador')return 'colaborador';
-  return null;
-}
-function sectorLinkKey(sector:string):string|null{
-  if(mentionsSector(sector,['promotor']))return 'promotor_fixo';
-  if(mentionsSector(sector,externalCompanyKeywords))return 'terceirizado';
   return null;
 }
 export function occupancyByCategory(lockers:InsightLocker[]):CategoryShare[]{
   const counts=new Map<string,number>();
   canonicalCategories.forEach(key=>counts.set(key,0));
   for(const locker of lockers){
-    if(locker.sector_occupant){
-      const key=sectorLinkKey(locker.sector_occupant);
-      if(key)counts.set(key,(counts.get(key)??0)+effectiveCapacity(locker));
-      continue;
-    }
+    if(locker.sector_occupant)continue;
     for(const person of locker.occupants){
       const key=occupantLinkKey(person);
       if(key)counts.set(key,(counts.get(key)??0)+1);
@@ -114,6 +108,9 @@ export function occupancyByCategory(lockers:InsightLocker[]):CategoryShare[]{
     const count=counts.get(key)??0;
     return {key,label:categoryLabels[key],count,percent:total?Math.round((count/total)*100):0};
   });
+}
+export function sectorOccupiedPositions(lockers:InsightLocker[]):number{
+  return lockers.reduce((sum,locker)=>sum+(locker.sector_occupant?effectiveCapacity(locker):0),0);
 }
 
 export type SectorShare={name:string;count:number;anomaly:boolean};

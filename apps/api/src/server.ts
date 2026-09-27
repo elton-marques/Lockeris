@@ -41,7 +41,7 @@ await managementRoutes(app);
 
 const timer=setInterval(async()=>{
   try {
-    const {rows}=await pool.query<{id:string}>('SELECT id FROM branches');
+    const {rows}=await pool.query<{id:string}>("SELECT id FROM branches WHERE status='active'");
     for(const row of rows) await transaction(client=>refreshPending(client,row.id));
   } catch(error) { app.log.error({err:error},'Falha ao atualizar pendências'); }
 },60*60*1000);

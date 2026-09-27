@@ -26,7 +26,7 @@ const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=lockerSectors;
 
-export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
+export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
   const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false);
   const [view,setView]=useState<'cards'|'table'>('cards');
@@ -41,7 +41,6 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
   async function load(){
     setLoading(true);setLoadError('');
     try{
-    if(copy){setLockers(copy.lockers as Locker[]);setPeople(copy.people as Person[]);setPending(copy.pending as Pending[]);setRegistrations([]);return;}
     const [l,p,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<Person[]>(`/branches/${branchId}/people`),
       api<Pending[]>(`/branches/${branchId}/pending`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
@@ -49,7 +48,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}
     finally{setLoading(false);}
   }
-  useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
+  useEffect(()=>{load().catch(()=>{});},[branchId]);
   useEffect(()=>{setSelected(null);},[branchId]);
   useEffect(()=>{
     if(!selected)return;
@@ -112,7 +111,7 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
   const source=lockers.find(item=>item.occupants.some(occupant=>occupant.personId===personId));
   const sourceAllocation=source?.occupants.find(occupant=>occupant.personId===personId);
   const needsSharing=!!locker&&locker.occupants.length>0&&!locker.is_double;
-  const canEnter=!!locker&&!readonly&&availablePositions(locker)>0;
+  const canEnter=!!locker&&locker.modality==='fixo'&&!readonly&&availablePositions(locker)>0;
 
   function openLocker(item:Locker){
     setPersonQuery('');setPersonId('');setNote('');setTransferReason('');setSharingReason('');setSharingDue('');
@@ -161,9 +160,18 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
       tipoUsuario:'colaborador',possuiCopia:item.key_copy_available===true,filial:branchName});
     handlePrint();
   }
-  function saveLocker(event:React.FormEvent|undefined,scope:'attributes'|'occupant'='attributes'){
+  function saveLocker(event:React.FormEvent|undefined,scope:'attributes'|'occupant'='attributes',sectorConfirmed=false){
     event?.preventDefault();if(!locker||!admin)return;
     const withOccupant=scope==='occupant'&&!!occupantEdit&&!!(editingOccupant||creatingOccupant);
+    if(withOccupant&&editingOccupant&&!draft.name.trim()&&!draft.registration.trim()){
+      notice('Use “Desocupar armário” para remover o ocupante existente.');return;
+    }
+    if(withOccupant&&creatingOccupant&&!draft.name.trim()&&!draft.registration.trim()){
+      notice('Informe o nome ou uma matrícula da base oficial.');return;
+    }
+    if(!withOccupant&&!sectorConfirmed&&edit.sectorOccupant.trim()&&!locker.sector_occupant&&!locker.occupants.length){
+      void askConfirm(`Confirmar a ocupação do armário ${locker.number} pelo setor ${edit.sectorOccupant.trim()}?`).then(ok=>{if(ok)saveLocker(event,scope,true);});return;
+    }
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/lockers/${locker.id}/revise`,{operationId:op(),expectedLockerVersion:locker.version,
       isDouble:locker.is_double,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
       sectorOccupant:withOccupant&&creatingOccupant?null:edit.sectorOccupant.trim()||null,
@@ -375,7 +383,7 @@ type OccupantSlotProps={
   onRelease:(occupant:Occupant)=>void;
 };
 
-function OccupantSlot({slot,occupant,draft,editing,creating,busy,officialLocked,blocked=false,registrations,
+function OccupantSlot({slot,occupant,draft,editing,busy,officialLocked,blocked=false,registrations,
   onDraft,onRegistration,onEdit,onCancel,onSave,onAdd,onPrint,onRelease}:OccupantSlotProps){
   const number=slot+1;
   const head=(occupied:boolean)=><div className="occupant-slot-head">
@@ -396,7 +404,7 @@ function OccupantSlot({slot,occupant,draft,editing,creating,busy,officialLocked,
         onChange={event=>onDraft(current=>({...current,functionName:event.target.value}))}/></label>
       {officialLocked&&<p className="muted">Nome, setor e função vêm da base atual de colaboradores.</p>}
       <div className="row-actions occupant-actions">
-        <button className="primary" type="submit" disabled={busy||(creating&&!draft.name.trim()&&!draft.registration.trim())}>Salvar ocupante</button>
+        <button className="primary" type="submit" disabled={busy||(!draft.name.trim()&&!draft.registration.trim())}>Salvar ocupante</button>
         <button type="button" disabled={busy} onClick={onCancel}>Cancelar</button>
       </div>
     </form>

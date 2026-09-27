@@ -1,9 +1,10 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi, WifiOff} from 'lucide-react';
+import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
 import {api,post,type User} from './api';
-import {clearOffline,clearAuthorization,loadCopy,loadDevice,saveCopy,type OfflineCopy} from './offline';
+import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
 import {Select} from './components/Select';
+import {AboutModal} from './components/AboutModal';
 import {Dashboard} from './pages/Dashboard';
 import {Overview} from './pages/Overview';
 import type {LockerPreset} from './locker-insights';
@@ -15,8 +16,8 @@ import {History} from './pages/History';
 import {Admin} from './pages/Admin';
 
 export type NoticeAction={label:string;onClick:()=>void};
-export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;copy:OfflineCopy|null;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
-type Branch={id:string;name:string;timezone:string};
+export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
+type Branch={id:string;name:string;timezone:string;status:string;version:number};
 const tabs=[
   {key:'resumo',label:'Dashboard',icon:LayoutDashboard,group:'Operação'},
   {key:'painel',label:'Armários',icon:Boxes,group:'Operação'},
@@ -27,65 +28,48 @@ const tabs=[
   {key:'historico',label:'Histórico',icon:FileClock,group:'Gestão'},
   {key:'administracao',label:'Administração',icon:ShieldCheck,group:'Gestão'}
 ] as const;
-const pendingLogoutKey='armarios-pending-logout';
 type Theme='light'|'dark';
 type AppDialog={kind:'confirm';message:string;value:string;resolve:(value:boolean)=>void}|{kind:'prompt';message:string;value:string;resolve:(value:string|null)=>void};
 const themePreferenceKey='armarios-theme';
-async function finishQueuedLogout(){if(localStorage.getItem(pendingLogoutKey)!=='1')return;try{await post('/auth/logout',{});localStorage.removeItem(pendingLogoutKey);}catch(error){if(error instanceof Error&&'status' in error){localStorage.removeItem(pendingLogoutKey);}else throw error;}}
 
 export default function App(){
   const [theme,setTheme]=useState<Theme>(()=>document.documentElement.dataset.theme==='dark'?'dark':'light');
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
-  const [page,setPage]=useState<string>('painel'),[copy,setCopy]=useState<OfflineCopy|null>(null),[offline,setOffline]=useState(false);
+  const [page,setPage]=useState<string>('painel');
   const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
-  const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>(),[tick,setTick]=useState(0);
+  const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
-  const [offlineUnavailable,setOfflineUnavailable]=useState(false);
-  const refresh=()=>setTick(x=>x+1);
+  const [aboutOpen,setAboutOpen]=useState(false);
+  const refresh=()=>setBranches(current=>[...current]);
+  useEffect(()=>{void purgeOfflineCopy();},[]);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#2E1065');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
   const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
   useEffect(()=>{let active=true;(async()=>{
     try{
-      await finishQueuedLogout();
       const me=await api<{user:User}>('/auth/me');if(!active)return;
-      setUser(me.user);setOffline(false);
+      setUser(me.user);
       if(me.user.mustChangePassword)return;
       const list=await api<Branch[]>('/branches');if(!active)return;
-      setBranches(list);setBranchId(me.user.branchId??list[0]?.id??'');
+      setBranches(list);setBranchId(list.find(item=>item.id===me.user.branchId)?.id??list[0]?.id??'');
     }catch(error){
       if(!active)return;
-      if(error instanceof Error && 'status' in error){
-        await clearOffline();setUser(null);setCopy(null);
-      }else{
-        const local=await loadCopy();
-        if(local&&new Date(local.expiresAt).getTime()>Date.now()){
-          setCopy(local);setBranchId(local.branchId);setBranches([{id:local.branchId,name:local.branchName,timezone:''}]);setOffline(true);
-          setUser({id:local.userId,role:'consulta',branchId:local.branchId,mustChangePassword:false});
-        }else setOfflineUnavailable(true);
-      }
+      if(error instanceof Error && 'status' in error)setUser(null);
+      else setMessage('Não foi possível conectar ao servidor. Tente novamente.');
     }finally{if(active)setReady(true);}
   })();return()=>{active=false;};},[]);
-  useEffect(()=>{if(!user||!branchId||offline)return;let active=true;
-    (async()=>{const secret=await loadDevice();if(!secret)return;
-      try{const updated=await api<OfflineCopy>(`/branches/${branchId}/offline`,{headers:{'x-device-secret':secret}});if(active){await saveCopy(updated);setCopy(updated);}}
-      catch(error){if(error instanceof Error&&'status' in error&&Number((error as {status:number}).status)===403){await clearAuthorization();if(active)setCopy(null);}}
-    })();return()=>{active=false;};},[user,branchId,tick,offline]);
-  useEffect(()=>{const fn=async()=>{if(!navigator.onLine)return;try{await finishQueuedLogout();const me=await api<{user:User}>('/auth/me');setUser(me.user);setOffline(false);setOfflineUnavailable(false);const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(me.user.branchId??list[0]?.id??'');refresh();}catch(error){if(error instanceof Error&&'status' in error){await clearOffline();setCopy(null);setUser(null);setOffline(false);setOfflineUnavailable(false);}}};window.addEventListener('online',fn);return()=>window.removeEventListener('online',fn);},[]);
-  useEffect(()=>{const fn=async()=>{const local=await loadCopy();if(local&&new Date(local.expiresAt).getTime()>Date.now()){setCopy(local);setBranchId(local.branchId);setBranches([{id:local.branchId,name:local.branchName,timezone:''}]);setUser({id:local.userId,role:'consulta',branchId:local.branchId,mustChangePassword:false});setOffline(true);setPage('painel');}else{setCopy(null);setUser(null);setOffline(true);setOfflineUnavailable(true);}};window.addEventListener('offline',fn);return()=>window.removeEventListener('offline',fn);},[]);
   useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
-  async function logout(){try{if(offline)localStorage.setItem(pendingLogoutKey,'1');else await post('/auth/logout',{});}finally{await clearOffline();setUser(null);setCopy(null);setOffline(false);setOfflineUnavailable(offline);setBranchId('');}}
+  async function logout(){try{await post('/auth/logout',{});}finally{setUser(null);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
-  if(offlineUnavailable&&!user)return <main className="center"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={toggleTheme}/></div><section className="auth-card"><WifiOff size={28} aria-hidden="true"/><h1>Conecte-se para consultar os armários</h1><p>Este navegador não tem uma cópia local válida. Quando a conexão voltar, entre para atualizar os dados.</p></section></main>;
-  if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(result.user.branchId??list[0]?.id??'');}}/>;
-  if(user.mustChangePassword)return <Password theme={theme} onToggleTheme={toggleTheme} onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(user.branchId??list[0]?.id??'');}}/>;
+  if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===result.user.branchId)?.id??list[0]?.id??'');}}/>;
+  if(user.mustChangePassword)return <Password theme={theme} onToggleTheme={toggleTheme} onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===user.branchId)?.id??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
   const showNotice=(nextMessage:string,action?:NoticeAction)=>{setMessage(nextMessage);setNoticeAction(action);};
   const askConfirm=(dialogMessage:string)=>new Promise<boolean>(resolve=>setDialog({kind:'confirm',message:dialogMessage,value:'',resolve}));
   const askPrompt=(dialogMessage:string)=>new Promise<string|null>(resolve=>setDialog({kind:'prompt',message:dialogMessage,value:'',resolve}));
   const finishDialog=(value:boolean|string|null)=>{if(!dialog)return;if(dialog.kind==='confirm')dialog.resolve(value===true);else dialog.resolve(typeof value==='string'?value:null);setDialog(null);};
   const updateDialogValue=(value:string)=>setDialog(current=>current?{...current,value}:current);
-  const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:offline||user.role==='consulta',admin,copy:offline?copy:null,refresh,notice:showNotice,askConfirm,askPrompt};
-  const visibleTabs=tabs.filter(({key})=>offline?['resumo','painel','pessoas','pendencias'].includes(key):!['administracao','importacao','historico'].includes(key)||admin);
+  const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:user.role==='consulta',admin,refresh,notice:showNotice,askConfirm,askPrompt};
+  const visibleTabs=tabs.filter(({key})=>!['administracao','importacao','historico'].includes(key)||admin);
   const current=tabs.find(({key})=>key===page);
   function navigate(next:string){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}}
   function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
@@ -97,15 +81,18 @@ export default function App(){
       <nav aria-label="Navegação principal">{(['Operação','Gestão'] as const).map(group=>visibleTabs.some(item=>item.group===group)&&<div className="nav-group-wrap" key={group}><span className="nav-group">{group}</span>{visibleTabs.filter(item=>item.group===group).map(item=>{const Icon=item.icon;return <button key={item.key} className={page===item.key?'nav-item active':'nav-item'} aria-current={page===item.key?'page':undefined} onClick={()=>navigate(item.key)}><Icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span></button>;})}</div>)}</nav>
       <span className="nav-hint">Deslize para ver mais opções</span>
       <div className="sidebar-footer"><span>{roleName[user.role]}</span><button onClick={logout}><LogOut size={17} aria-hidden="true"/> Sair</button></div>
+      <div className="sidebar-signature">
+        <span>Desenvolvido por Elton Marques</span>
+        <button type="button" className="sidebar-signature-info" aria-label="Sobre o Lockeris" title="Sobre o Lockeris" onClick={()=>setAboutOpen(true)}><Info size={15} strokeWidth={2} aria-hidden="true"/></button>
+      </div>
     </aside>
     <div className="main-area">
-      <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button><span className="topbar-brand"><LockerisIcon size={28}/><strong>Lockeris<span className="brand-dot">*</span></strong></span>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários, acessos e consulta offline.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
+      <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button><span className="topbar-brand"><LockerisIcon size={28}/><strong>Lockeris<span className="brand-dot">*</span></strong></span>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários e acessos.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
         {branches.length>1?<div className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><Select className="branch-select-field" ariaLabel="Filial" value={branchId}
           onChange={value=>{setBranchId(value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
           options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
-        <span className={offline?'status offline':'status online'}>{offline?<WifiOff size={15} aria-hidden="true"/>:<Wifi size={15} aria-hidden="true"/>}{offline?'Sem conexão · apenas consulta':'Conectado'}</span>
+        <span className="status online"><Wifi size={15} aria-hidden="true"/>Conectado</span>
       </div></header>
-      {offline&&<div className="offline-banner" role="status"><strong>Dados locais para consulta.</strong> Atualizados em {copy?new Date(copy.issuedAt).toLocaleString('pt-BR'):'data desconhecida'}. Válidos até {copy?new Date(copy.expiresAt).toLocaleString('pt-BR'):'—'}.</div>}
       {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
         {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
           <div className="app-dialog-heading"><span className="eyebrow">Atualização</span><button type="button" className="app-dialog-close" onClick={()=>{setMessage('');setNoticeAction(undefined);}} aria-label="Fechar aviso">×</button></div>
@@ -122,6 +109,7 @@ export default function App(){
           page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Movements {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
+    {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
   </div>;
 }
 

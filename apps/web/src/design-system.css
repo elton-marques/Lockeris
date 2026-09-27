@@ -284,3 +284,38 @@ td small { color: var(--muted); }
   .locker-tile:hover:not(:disabled), button:active:not(:disabled) { transform: none; }
   .skeleton { animation: none; }
 }
+
+.sidebar-signature { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 6px 0; font-size: 11px; line-height: 1.35; color: #9CA3AF; text-transform: none; }
+.sidebar .sidebar-signature-info:not(:disabled) { display: inline-grid; place-items: center; flex: none; min-width: 32px; min-height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; }
+.sidebar .sidebar-signature-info:hover:not(:disabled) { background: #4C1D95; border-color: #6D28D9; color: #F5F3FF; box-shadow: none; }
+
+.about-dialog { width: min(560px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; outline: none; }
+.about-header { display: flex; align-items: center; gap: 14px; }
+.about-logo { display: grid; place-items: center; flex: none; width: 52px; height: 52px; overflow: hidden; border: 1px solid var(--border-divider); border-radius: 14px; background: var(--surface-subtle); }
+.about-logo img { display: block; width: 100%; height: 100%; }
+.about-header-copy { flex: 1; min-width: 0; }
+.about-header-copy .eyebrow { margin-bottom: 5px; }
+.about-dialog h2 { display: flex; align-items: center; gap: 8px; margin: 0; line-height: 1.25; }
+.about-dialog h2 svg { flex: none; color: var(--brand-accent); }
+.about-version { flex: none; border: 1px solid color-mix(in srgb, var(--brand-accent) 32%, var(--border-divider)); border-radius: 999px; background: var(--brand-surface); color: var(--brand-accent); font-size: .72rem; font-weight: 800; letter-spacing: .04em; padding: 5px 10px; }
+.about-author { display: flex; align-items: flex-start; gap: 11px; margin-top: 20px; padding: 15px; border: 1px solid var(--border-divider); border-radius: 13px; background: var(--surface-subtle); }
+.about-author svg { flex: none; margin-top: 2px; color: var(--brand-accent); }
+.about-author p { margin: 0; font-size: .9rem; line-height: 1.55; color: var(--text-secondary); }
+.about-author strong { color: var(--text-primary); }
+.about-stack { margin-top: 18px; }
+.about-stack-label { display: block; margin-bottom: 9px; color: var(--text-muted); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .095em; }
+.about-stack-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.about-stack-list li { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised); color: var(--text-secondary); font-size: .76rem; font-weight: 700; padding: 6px 11px; }
+.about-stack-list svg { flex: none; color: var(--brand-accent); }
+.about-versions-list { display: grid; grid-template-columns: 1fr; }
+.about-versions-list li { align-items: flex-start; border-radius: 12px; white-space: normal; line-height: 1.45; }
+.about-actions { margin-top: 22px; }
+.about-actions button { display: inline-flex; align-items: center; gap: 7px; }
+
+@media (max-width: 520px) {
+  .about-header { flex-wrap: wrap; }
+  .about-version { order: 3; }
+  .sidebar-signature { font-size: 11px; }
+}
+.admin-locker-table{max-height:480px;overflow-y:auto;overscroll-behavior:contain}
+.admin-locker-table thead th{position:sticky;top:0;z-index:1;background:var(--surface,#fff)}

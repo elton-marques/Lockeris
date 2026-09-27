@@ -134,7 +134,8 @@ export async function migrationRoutes(app:FastifyInstance):Promise<void>{
         if(!personId){
           personId=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.name||row.functionName||`Matrícula ${row.registration}`])).rows[0].id;
           const promoter=norm(row.functionName).includes('PROMOTOR');
-          const category=promoter?'roteirista':norm(row.functionName).includes('TERCEIRIZADO')?'terceirizado':'colaborador';
+          const partnerConfirmed=norm(row.department).includes('DELTA CLIMATIZACAO');
+          const category=promoter?'roteirista':row.registration?'colaborador':partnerConfirmed?'terceirizado':'vinculo_nao_identificado';
           membershipId=(await client.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)
             VALUES($1,$2,$3,'migracao',$4,$5,$6,$7,$8,$9) RETURNING id`,
             [personId,branchId,category,row.registration||null,row.department||null,row.functionName||null,category==='colaborador',

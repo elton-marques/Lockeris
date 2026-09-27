@@ -18,11 +18,11 @@ type Item={id:string;version:number;kind:string;subject_type:string;subject_id:s
   allocation_id:string|null;allocation_version:number|null;sharing_version:number|null;seasonal_version:number|null;
   reason:string|null;resolution:string|null;updated_at:string};
 type Person={person_id:string;department:string|null;status:string};
-const labels:Record<string,string>={ausente_ti:'Matrícula não encontrada na base atual',sem_armario:'Pessoa precisa de armário',
+const labels:Record<string,string>={sem_matricula:'Pessoa sem matrícula validada',ausente_ti:'Matrícula não encontrada na base atual',sem_armario:'Pessoa precisa de armário',
   atuacao_encerrada:'Cadastro encerrado com armário',sazonal_vencida:'Prazo de ocupação vencido',
   compartilhamento_vencido:'Prazo de compartilhamento vencido',migracao_inconclusiva:'Dados do armário a conferir',
   dados_alterados:'Dados cadastrais alterados',identificacao_conflitante:'Identificação conflitante'};
-const resolvedLabels:Record<string,string>={sem_armario:'Necessidade de armário encerrada',migracao_inconclusiva:'Conferência do armário concluída',
+const resolvedLabels:Record<string,string>={sem_matricula:'Identificação cadastral concluída',sem_armario:'Necessidade de armário encerrada',migracao_inconclusiva:'Conferência do armário concluída',
   ausente_ti:'Matrícula ausente: caso encerrado',atuacao_encerrada:'Ocupação de cadastro encerrado concluída'};
 const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const text=(value:string|null|undefined)=>value?.trim()||'Não informado';
@@ -35,6 +35,7 @@ const resolutionText=(item:Item)=>{
   return 'A condição que gerou esta pendência deixou de ocorrer.';
 };
 const originalReason=(item:Item)=>({sem_armario:'A pessoa estava ativa e precisava receber um armário.',
+  sem_matricula:'O vínculo da pessoa ainda não foi comprovado por matrícula da base oficial.',
   migracao_inconclusiva:'Os dados importados deste armário precisavam de conferência.',
   ausente_ti:'A matrícula do ocupante não constava na base atual de colaboradores.',
   atuacao_encerrada:'O cadastro do ocupante foi encerrado enquanto o armário ainda estava ocupado.',
@@ -47,7 +48,7 @@ const searchText=(item:Item)=>[item.locker_number,item.person_name,item.registra
   ...(item.occupants??[]).flatMap(person=>[person.name,person.registration,person.department])].join(' ').toLocaleLowerCase('pt-BR');
 const emptyEdit={condition:'disponivel',keyCopy:'sim',sectorOccupant:'',name:'',registration:'',department:'',functionName:''};
 
-export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:PageProps){
+export function Pending({branchId,readonly,refresh,notice,askConfirm,admin=false}:PageProps){
   const [items,setItems]=useState<Item[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),
     [people,setPeople]=useState<Person[]>([]),[stateFilter,setStateFilter]=useState('aberta'),[tab,setTab]=useState<'lockers'|'people'>('lockers');
   const [query,setQuery]=useState(''),[selectedId,setSelectedId]=useState<string|null>(null),[reviewed,setReviewed]=useState(false);
@@ -55,12 +56,12 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
   const [note,setNote]=useState(''),[due,setDue]=useState(''),[busy,setBusy]=useState(false),closeRef=useRef<HTMLButtonElement>(null);
   const [edit,setEdit]=useState(emptyEdit),[occupantId,setOccupantId]=useState(''),[createPerson,setCreatePerson]=useState(false),[lockerId,setLockerId]=useState(''),[keyCopy,setKeyCopy]=useState('');
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
-  async function load(){setLoading(true);setLoadError('');try{if(copy){setItems(copy.pending as Item[]);setLockers(copy.lockers as Locker[]);setRegistrations([]);setPeople(copy.people as Person[]);return;}
+  async function load(){setLoading(true);setLoadError('');try{
     const [pending,cabinets,roster,people]=await Promise.all([api<Item[]>(`/branches/${branchId}/pending`),api<Locker[]>(`/branches/${branchId}/lockers`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`),api<Person[]>(`/branches/${branchId}/people`)]);
     setItems(pending);setLockers(cabinets);setRegistrations(roster);setPeople(people);
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}finally{setLoading(false);}}
-  useEffect(()=>{load().catch(()=>{});},[branchId,copy]);
+  useEffect(()=>{load().catch(()=>{});},[branchId]);
   useEffect(()=>{if(!selectedId)return;const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
     document.body.style.overflow='hidden';closeRef.current?.focus();return()=>{document.body.style.overflow=overflow;previous?.focus();};},[selectedId]);
   const selected=items.find(item=>item.id===selectedId);
@@ -104,8 +105,12 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
       notice(`${result.succeeded} pendência(s) resolvida(s)${result.failed?`; ${result.failed} não puderam ser resolvidas`:'.'}`);
     }catch(error){notice(error instanceof Error?error.message:'Falha na resolução em lote');}finally{setBusy(false);}
   }
-  function saveReview(finalize=false){if(!selected||!selected.locker_number||!selected.locker_version||!reviewed)return;
+  async function saveReview(finalize=false){if(!selected||!selected.locker_number||!selected.locker_version||!reviewed)return;
     const occupant=selected.occupants?.find(person=>person.allocationId===occupantId);
+    if(occupant&&!edit.name.trim()&&!edit.registration.trim()){notice('Use a ação de desocupação para retirar a pessoa existente.');return;}
+    if(createPerson&&!edit.name.trim()&&!edit.registration.trim()){notice('Informe o nome ou uma matrícula da base oficial.');return;}
+    if(!occupant&&!createPerson&&edit.sectorOccupant.trim()&&!selected.sector_occupant&&
+      !await askConfirm(`Confirmar a ocupação do armário ${selected.locker_number} pelo setor ${edit.sectorOccupant.trim()}?`))return;
     act(()=>post<{officialName:string|null}>(`/branches/${branchId}/pending/${selected.id}/revise`,{
       operationId:op(),expectedVersion:selected.version,expectedLockerVersion:selected.locker_version,
       isDouble:!!selected.is_double,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
@@ -142,7 +147,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
     if(event.key!=='Tab')return;const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'));
     if(!elements.length)return;if(event.shiftKey&&document.activeElement===elements[0]){event.preventDefault();elements.at(-1)?.focus();}
     else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}}
-  const available=lockers.filter(item=>item.condition==='disponivel'&&item.migration_status==='conferido'&&!item.sector_occupant&&
+  const available=lockers.filter(item=>item.modality==='fixo'&&item.condition==='disponivel'&&item.migration_status==='conferido'&&!item.sector_occupant&&
     (item.occupants.length===0||item.is_double&&item.occupants.length<item.capacity)).sort((a,b)=>numeric.compare(a.number,b.number));
   const needsNote=selected&&['sem_armario','dados_alterados','identificacao_conflitante','sazonal_vencida','compartilhamento_vencido'].includes(selected.kind);
   const needsDue=selected&&['sazonal_vencida','compartilhamento_vencido'].includes(selected.kind);
@@ -199,6 +204,7 @@ export function Pending({branchId,readonly,copy,refresh,notice,admin=false}:Page
           <tbody>{selected.occupants.map(person=><tr key={person.allocationId}><td>{text(person.name)}</td><td>{text(person.registration)}</td>
             <td>{text(person.department)}</td><td>{text(person.functionName)}</td></tr>)}</tbody></table></div></div>}
         {selected.reason&&<p className="muted">Observação: {selected.reason}</p>}
+        {selected.kind==='sem_matricula'&&selected.state==='aberta'&&<p className="muted">Confira o vínculo na base oficial de colaboradores. Se a pessoa já tiver cadastro oficial, encerre o cadastro provisório após associar ou transferir sua ocupação.</p>}
         {selected.state==='resolvida'&&<p className="muted"><strong>Por que foi resolvida:</strong> {resolutionText(selected)} · {new Date(selected.updated_at).toLocaleDateString('pt-BR')}</p>}
         {admin&&!readonly&&selected.state==='aberta'&&selected.locker_number&&<div className="pending-editor">
           <h3>Corrigir dados nesta pendência</h3><p>Ao informar uma matrícula da base atual, nome, setor e função oficiais serão usados automaticamente.</p>

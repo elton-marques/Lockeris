@@ -100,6 +100,7 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       const source = lockers.get(initial.locker_id)!; const destination = lockers.get(body.destinationLockerId)!;
       if (source.version !== body.sourceVersion) fail(409,'VERSAO','Armário de origem alterado');
       const allocation = await one<Allocation & { modality: string; seasonal: boolean; due_at: string | null }>(client,'SELECT * FROM allocations WHERE id=$1 FOR UPDATE',[body.allocationId]);
+      if(allocation.modality!=='fixo')fail(409,'MODALIDADE','Transferências novas exigem ocupação fixa');
       if (allocation.ended_at || allocation.version !== body.expectedAllocationVersion) fail(409,'ALOCACAO','Alocação alterada ou já encerrada');
       const member = await one<{ status: string }>(client,'SELECT status FROM memberships WHERE branch_id=$1 AND person_id=$2',[branchId,allocation.person_id]);
       if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com atuação encerrada');

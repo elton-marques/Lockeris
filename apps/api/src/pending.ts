@@ -39,7 +39,7 @@ async function reconcileRolePlaceholders(client:Client,branchId:string):Promise<
   for(const row of rows.rows){
     const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[row.function_name])).rows[0];
     await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,needs_fixed,ti_present,status)
-      VALUES($1,$2,'colaborador','migracao',true,NULL,'ativo')`,[person.id,branchId]);
+      VALUES($1,$2,'vinculo_nao_identificado','migracao',true,NULL,'ativo')`,[person.id,branchId]);
     await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,original_start_unknown,migrated_at,reason)
       VALUES($1,$2,$3,'fixo',NULL,true,now(),'Carga inicial; função provisória')`,[branchId,row.locker_id,person.id]);
     await client.query("UPDATE lockers SET migration_status='conferido',version=version+1 WHERE id=$1",[row.locker_id]);
@@ -152,6 +152,10 @@ export async function refreshPending(client: Client, branchId: string): Promise<
   await reconcileNamePlaceholders(client,branchId);
   await autoReconcile(client,branchId);
   const desired = await client.query<{ kind: string; subject_type: string; subject_id: string }>(`
+    SELECT 'sem_matricula' kind,'membership' subject_type,m.id subject_id FROM memberships m
+      WHERE m.branch_id=$1 AND m.status='ativo' AND m.category='vinculo_nao_identificado'
+        AND NULLIF(trim(coalesce(m.registration,'')),'') IS NULL
+    UNION ALL
     SELECT 'ausente_ti' kind,'membership' subject_type,m.id subject_id FROM memberships m
       JOIN allocations a ON a.person_id=m.person_id AND a.ended_at IS NULL
       WHERE m.branch_id=$1 AND m.category='colaborador' AND m.ti_present=false
@@ -188,7 +192,7 @@ export async function refreshPending(client: Client, branchId: string): Promise<
     [branchId,row.kind,row.subject_type,row.subject_id]);
   }
   const open = await client.query<{ id: string; kind: string; subject_type: string; subject_id: string }>('SELECT * FROM pending_items WHERE branch_id=$1 AND state=$2', [branchId,'aberta']);
-  for (const row of open.rows) if (!keys.has(`${row.kind}:${row.subject_type}:${row.subject_id}`) && ['ausente_ti','sem_armario','atuacao_encerrada','sazonal_vencida','compartilhamento_vencido','migracao_inconclusiva'].includes(row.kind)) {
+  for (const row of open.rows) if (!keys.has(`${row.kind}:${row.subject_type}:${row.subject_id}`) && ['sem_matricula','ausente_ti','sem_armario','atuacao_encerrada','sazonal_vencida','compartilhamento_vencido','migracao_inconclusiva'].includes(row.kind)) {
     await client.query("UPDATE pending_items SET state='resolvida',resolution='Condição regularizada',updated_at=now(),version=version+1 WHERE id=$1", [row.id]);
   }
 }

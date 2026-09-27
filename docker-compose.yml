@@ -23,7 +23,6 @@ services:
       DATABASE_URL: postgres://armarios:${POSTGRES_PASSWORD:-armarios}@db:5432/armarios
       PORT: 3001
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      DEVICE_SECRET_KEY: ${DEVICE_SECRET_KEY:-}
     depends_on:
       db:
         condition: service_healthy

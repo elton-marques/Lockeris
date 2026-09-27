@@ -73,7 +73,7 @@ export function Imports({branchId,branchName,readonly,refresh,notice,askConfirm}
     <section className="card"><div className="section-head"><div><span className="eyebrow">Importação com conferência</span><h2>Base de colaboradores</h2>
       <p>Envie a planilha com a lista atual de colaboradores. Cada envio substitui a lista ativa pela nova lista de matrículas.</p></div></div>
       <ol className="workflow-steps" aria-label="Etapas da importação"><li className="current">1. Selecionar arquivo</li><li className={selected?'current':''}>2. Conferir colunas</li><li className={preview?'current':''}>3. Revisar consequências</li><li>4. Confirmar atualização</li></ol>
-      {readonly?<p>Importação indisponível para este perfil ou em modo offline.</p>:<div className="form-grid">
+      {readonly?<p>Importação indisponível para este perfil.</p>:<div className="form-grid">
         <label>Arquivo de colaboradores, XLSX ou CSV<input type="file" accept=".xlsx,.csv" onChange={event=>{setEmployeeFile(event.target.files?.[0]??null);setSheets([]);setPreview(null);}}/></label>
         <label>Data da extração<input type="date" value={extractedOn} onChange={event=>setExtractedOn(event.target.value)}/></label>
         <label>Codificação do CSV<select value={encoding} onChange={event=>setEncoding(event.target.value)}><option value="utf8">UTF-8</option><option value="win1252">Windows-1252</option><option value="latin1">Latin-1</option></select></label>

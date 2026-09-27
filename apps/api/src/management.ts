@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { createHmac } from 'node:crypto';
 import argon2 from 'argon2';
 import Papa from 'papaparse';
 import { z } from 'zod';
@@ -76,10 +75,15 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
       if(!lockerId)fail(409,'ARMARIO','Esta pendência não possui armário para revisar');
       const locker=await one<{id:string;version:number;number:string;modality:string;capacity:number;is_double:boolean;sector_occupant:string|null}>(client,
         'SELECT * FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[lockerId,branchId]);
+      if(body.occupant && locker.modality!=='fixo')fail(409,'MODALIDADE','Novas ocupações exigem armário fixo');
       if(locker.version!==body.expectedLockerVersion)fail(409,'VERSAO','Armário alterado; recarregue');
       const count=Number((await client.query<{count:string}>('SELECT count(*) FROM allocations WHERE locker_id=$1 AND ended_at IS NULL',[lockerId])).rows[0].count);
       if(count>(body.isDouble?2:1))fail(409,'OCUPACAO','Armário com duas pessoas deve continuar duplo');
       if(body.sectorOccupant&&(count||body.occupant))fail(409,'OCUPACAO','Um armário com pessoa não pode ser ocupado por setor');
+      if(body.occupant && !body.occupant.name && !body.occupant.registration && !body.occupant.allocationId && !body.sectorOccupant)
+        fail(422,'OCUPACAO','Informe nome, matrícula ou selecione um setor');
+      if(body.occupant?.allocationId && !body.occupant.name && !body.occupant.registration)
+        fail(422,'OCUPACAO','Use a ação de liberação para remover um ocupante existente');
       let officialName:string|null=null;
       if(body.occupant){
         const allocation=body.occupant.allocationId?await one<{person_id:string}>(client,'SELECT person_id FROM allocations WHERE id=$1 AND locker_id=$2 AND ended_at IS NULL FOR UPDATE',
@@ -113,6 +117,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
           if(member?.origin==='ti'&&registrationKey(member.registration??'')===registrationKey(body.occupant.registration??'')){
             // The current roster member stays authoritative while other locker fields are reviewed.
           }else{
+          if(body.occupant.registration)fail(422,'MATRICULA','Matrícula não encontrada na base oficial atual');
           if(!body.occupant.name)fail(422,'NOME','Informe o nome quando a matrícula não constar na base atual');
           const duplicate=body.occupant.registration?(await client.query<{registration:string}>(`SELECT registration FROM memberships
             WHERE branch_id=$1 AND ($2::uuid IS NULL OR id<>$2) AND registration IS NOT NULL`,[branchId,member?.id??null])).rows
@@ -120,13 +125,15 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
           if(duplicate)fail(409,'MATRICULA_DUPLICADA','Matrícula já usada em outro cadastro');
           if(member&&member.origin!=='ti'){
             await client.query('UPDATE people SET name=$2 WHERE id=$1',[member.person_id,body.occupant.name]);
-            await client.query(`UPDATE memberships SET registration=$2,department=$3,function_name=$4,version=version+1,updated_at=now()
+            await client.query(`UPDATE memberships SET registration=$2,department=$3,function_name=$4,
+              category=CASE WHEN $2::text IS NULL AND NULLIF(trim(coalesce(company,'')),'') IS NULL
+                THEN 'vinculo_nao_identificado' ELSE category END,version=version+1,updated_at=now()
               WHERE id=$1`,[member.id,body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null]);
           }else{
             const person=(await client.query<{id:string}>('INSERT INTO people(name) VALUES($1) RETURNING id',[body.occupant.name])).rows[0];
             const collaborator=!!body.occupant.registration;
             await client.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,function_name,needs_fixed,ti_present,status)
-              VALUES($1,$2,$3,'migracao',$4,$5,$6,true,$7,$8)`,[person.id,branchId,collaborator?'colaborador':'terceirizado',
+              VALUES($1,$2,$3,'migracao',$4,$5,$6,true,$7,$8)`,[person.id,branchId,collaborator?'colaborador':'vinculo_nao_identificado',
               body.occupant.registration||null,body.occupant.department||null,body.occupant.functionName||null,
               collaborator?false:null,collaborator?'encerrado':'ativo']);
             if(allocation)await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,version=version+1 WHERE id=$1',[body.occupant.allocationId,actor.id]);
@@ -155,7 +162,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
     return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
       const pending=await one<{kind:string;state:string;version:number}>(client,'SELECT * FROM pending_items WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
       if(pending.version!==body.expectedVersion||pending.state!=='aberta')fail(409,'VERSAO','Pendência alterada; recarregue');
-      if(['ausente_ti','sem_armario','atuacao_encerrada','sazonal_vencida','compartilhamento_vencido','migracao_inconclusiva'].includes(pending.kind)) fail(409,'CONDICAO','Regularize a condição antes de resolver');
+      if(['sem_matricula','ausente_ti','sem_armario','atuacao_encerrada','sazonal_vencida','compartilhamento_vencido','migracao_inconclusiva'].includes(pending.kind)) fail(409,'CONDICAO','Regularize a condição antes de resolver');
       const {rows}=await client.query("UPDATE pending_items SET state='resolvida',resolution=$2,resolved_by=$3,updated_at=now(),version=version+1 WHERE id=$1 RETURNING *",[itemId,body.resolution,actor.id]);
       await event(client,branchId,actor.id,'pendencia_resolvida','pending',itemId,{resolution:body.resolution});return rows[0];
     }));
@@ -252,52 +259,5 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
       if(body.active===false)await client.query('DELETE FROM sessions WHERE user_id=$1',[itemId]);
       await event(client,branchId,actor.id,'usuario_alterado','user',itemId,{before:old,after:rows[0]});return rows[0];
     }));
-  });
-  app.get('/api/branches/:branchId/devices',async request=>{
-    const actor=await authenticate(request),{branchId}=route.parse(request.params);adminAccess(actor,branchId);
-    return (await pool.query('SELECT id,label,revoked_at,version,created_at FROM authorized_devices WHERE branch_id=$1 ORDER BY created_at DESC',[branchId])).rows;
-  });
-  app.post('/api/branches/:branchId/devices',async request=>{
-    const actor=await authenticate(request),{branchId}=route.parse(request.params);adminAccess(actor,branchId);
-    const body=operation.extend({label:z.string().min(2).max(120)}).parse(request.body);
-    const key=process.env.DEVICE_SECRET_KEY;
-    if(!key||key.length<32)fail(503,'CONFIGURACAO','Chave de dispositivos não configurada');
-    const secret=createHmac('sha256',key).update(`${body.operationId}:${branchId}:${actor.id}`).digest('base64url');
-    const result=await transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
-      const {rows}=await client.query('INSERT INTO authorized_devices(branch_id,label,secret_hash,authorized_by) VALUES($1,$2,$3,$4) RETURNING id,label',[branchId,body.label,hash(secret),actor.id]);
-      await event(client,branchId,actor.id,'dispositivo_autorizado','device',rows[0].id);return rows[0] as {id:string;label:string};
-    }));
-    return {...result,secret};
-  });
-  app.post('/api/branches/:branchId/devices/:itemId/revoke',async request=>{
-    const actor=await authenticate(request),{branchId,itemId}=routeItem.parse(request.params);adminAccess(actor,branchId);
-    const body=operation.extend({expectedVersion:z.number().int().positive()}).parse(request.body);
-    return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
-      const device=await one<{version:number;revoked_at:string|null}>(client,'SELECT version,revoked_at FROM authorized_devices WHERE id=$1 AND branch_id=$2 FOR UPDATE',[itemId,branchId]);
-      if(device.version!==body.expectedVersion||device.revoked_at)fail(409,'VERSAO','Dispositivo alterado ou já revogado');
-      await client.query('UPDATE authorized_devices SET revoked_at=now(),version=version+1 WHERE id=$1',[itemId]);
-      await event(client,branchId,actor.id,'dispositivo_revogado','device',itemId);return {ok:true};
-    }));
-  });
-  app.get('/api/branches/:branchId/offline',async request=>{
-    const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    const secret=request.headers['x-device-secret'];if(typeof secret!=='string') fail(403,'DISPOSITIVO','Navegador não autorizado');
-    const device=await pool.query('SELECT id FROM authorized_devices WHERE branch_id=$1 AND secret_hash=$2 AND revoked_at IS NULL',[branchId,hash(secret)]);
-    if(!device.rows[0]) fail(403,'DISPOSITIVO','Navegador não autorizado ou revogado');
-    return transaction(async client=>{
-      await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const lockers=await client.query(`SELECT l.id,l.number,l.size,l.capacity,l.is_double,l.key_copy_available,l.modality,l.destination,l.condition,l.migration_status,l.sector_occupant,
-          coalesce(json_agg(json_build_object('name',p.name,'registration',m.registration,'department',m.department,'category',m.category)) FILTER (WHERE a.id IS NOT NULL),'[]') occupants
-          FROM lockers l LEFT JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
-          LEFT JOIN people p ON p.id=a.person_id LEFT JOIN memberships m ON m.person_id=p.id AND m.branch_id=l.branch_id WHERE l.branch_id=$1 GROUP BY l.id ORDER BY CASE WHEN l.number ~ '^[0-9]+$' THEN l.number::numeric END NULLS LAST,l.number`,[branchId]);
-      const people=await client.query(`SELECT m.id,m.person_id,p.name,m.registration,m.category,m.company,m.department,m.function_name,m.status,m.needs_fixed,
-        a.locker_id,l.number FROM memberships m JOIN people p ON p.id=m.person_id
-        LEFT JOIN allocations a ON a.person_id=p.id AND a.ended_at IS NULL LEFT JOIN lockers l ON l.id=a.locker_id
-        WHERE m.branch_id=$1 AND (a.id IS NOT NULL OR EXISTS(SELECT 1 FROM pending_items pend WHERE pend.branch_id=$1 AND pend.subject_type='membership' AND pend.subject_id=m.id AND pend.state='aberta'))`,[branchId]);
-      const pending=await client.query(pendingDetailsSql(true),[branchId]);
-      const branch=await client.query<{name:string}>('SELECT name FROM branches WHERE id=$1',[branchId]);
-      const session=await client.query<{expires_at:Date}>('SELECT expires_at FROM sessions WHERE id_hash=$1',[hash(request.cookies.armarios_session??'')]);
-      const issuedAt=new Date();return {issuedAt:issuedAt.toISOString(),expiresAt:session.rows[0].expires_at,branchId,branchName:branch.rows[0].name,userId:actor.id,deviceId:device.rows[0].id,lockers:lockers.rows,people:people.rows,pending:pending.rows};
-    });
   });
 }

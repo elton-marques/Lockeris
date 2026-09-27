@@ -20,7 +20,7 @@ const events:Record<string,string>={
   previsao_alterada:'Prazo da ocupação atualizado',sazonal_efetivada:'Ocupação mantida sem prazo',
   compartilhamento_renovado:'Prazo de compartilhamento atualizado'
 };
-const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Consulta offline',allocation:'Ocupação',sharing:'Compartilhamento'};
+const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Dispositivo legado',allocation:'Ocupação',sharing:'Compartilhamento'};
 export const eventLabel=(kind:string)=>events[kind]??'Evento registrado';
 const eventTone=(kind:string)=>kind.includes('pendencia')?'warning':kind.includes('encerrada')||kind.includes('removidos')?'neutral':'success';
 function summary(details:unknown):string{
@@ -33,14 +33,14 @@ function summary(details:unknown):string{
     if(typeof counts.current==='number')return `${counts.current} colaboradores na nova base.`;}
   return 'Alteração registrada.';
 }
-export function History({branchId,copy}:PageProps){
+export function History({branchId}:PageProps){
   const [records,setRecords]=useState<RecordItem[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   function load(){setLoading(true);setError('');api<RecordItem[]>(`/branches/${branchId}/history`).then(setRecords).catch(e=>setError(e instanceof Error?e.message:'Confira a conexão e tente novamente.')).finally(()=>setLoading(false));}
-  useEffect(()=>{if(copy){setLoading(false);return;}load();},[branchId,copy]);
-  return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div>{!copy&&<a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a>}</div>
-    {copy?<EmptyState title="Histórico indisponível sem conexão" description="A cópia local guarda armários, pessoas e pendências para consulta."/>:<><DataState loading={loading} error={error} onRetry={load}/>
+  useEffect(()=>{load();},[branchId]);
+  return <section className="card"><div className="section-head"><div><span className="eyebrow">Rastreabilidade</span><h2>Histórico de eventos</h2><p>Movimentações, cadastros, conferências e importações.</p></div><a className="button" href={`/api/branches/${branchId}/history/export`} download>Exportar registro CSV</a></div>
+    <DataState loading={loading} error={error} onRetry={load}/>
       {!loading&&!error&&(records.length?<ol className="timeline" aria-label="Linha do tempo de eventos">{records.map(item=><li className={`timeline-item timeline-item--${eventTone(item.kind)}`} key={item.id}>
         <span className="timeline-marker" aria-hidden="true"/><div className="timeline-event"><div className="timeline-event-head"><strong>{eventLabel(item.kind)}</strong><time dateTime={item.happened_at}>{new Date(item.happened_at).toLocaleString('pt-BR')}</time></div><div className="timeline-event-meta">{subjects[item.entity_type]??'Operação'}</div><p>{summary(item.details)}</p></div>
-      </li>)}</ol>:<EmptyState title="Nenhum evento registrado" description="As alterações desta filial aparecerão aqui depois da primeira operação."/>)}</>}
+      </li>)}</ol>:<EmptyState title="Nenhum evento registrado" description="As alterações desta filial aparecerão aqui depois da primeira operação."/>)}
   </section>;
 }

@@ -15,7 +15,7 @@ async function closeNotice(page:Page){
   await expect(noticeDialog(page)).toHaveCount(0);
 }
 
-test('login, painel, compartilhamento, promotor, TI, pendências e offline',async({page,context})=>{
+test('login, painel, compartilhamento, cadastro, TI, pendências e administração',async({page})=>{
   await mkdir('test-results/visual',{recursive:true});
   await page.goto('/');
   await expect(page).toHaveTitle('Lockeris — Plataforma Integrada de Alocação e Armários');
@@ -40,6 +40,7 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   const registrationForm=page.locator('form.form-grid');
   await registrationForm.getByLabel('Nome',{exact:true}).fill('Promotora Teste');
   await registrationForm.getByLabel('Categoria').selectOption({label:'Terceirizado'});
+  await registrationForm.getByLabel('Empresa / marca').fill('Delta Climatização');
   await registrationForm.getByLabel('Precisa de armário fixo').check();
   await page.getByLabel('Matrícula',{exact:true}).last().fill('0003');
   await page.getByRole('button',{name:'Salvar cadastro'}).click();
@@ -76,28 +77,17 @@ test('login, painel, compartilhamento, promotor, TI, pendências e offline',asyn
   await expectNotice(page,'Armário atribuído');
   await closeNotice(page);
   await page.getByRole('button',{name:'Administração'}).click();
-  await page.getByRole('button',{name:'Autorizar este navegador'}).click();
-  await expectNotice(page,'Este navegador foi autorizado');
-  await closeNotice(page);
-  await expect(page.getByRole('button',{name:'Revogar'})).toBeVisible();
-  await page.waitForFunction(async()=>{const request=indexedDB.open('armarios-offline',1);return new Promise(resolve=>{request.onsuccess=()=>{const tx=request.result.transaction('state','readonly'),get=tx.objectStore('state').get('copy');get.onsuccess=()=>resolve(!!get.result);};request.onerror=()=>resolve(false);});});
-  await page.evaluate(()=>navigator.serviceWorker.ready);
-  await page.reload();
-  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
-  await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);
-  await context.setOffline(true);
-  await page.reload();
-  await expect(page.getByText(/Sem conexão · apenas consulta/)).toBeVisible();
-  await expect(page.getByText(/Dados locais para consulta/)).toBeVisible();
-  await page.screenshot({path:'test-results/visual/07-offline.png'});
-  await page.setViewportSize({width:390,height:844});
-  await page.screenshot({path:'test-results/visual/08-offline-mobile.png',fullPage:true});
-  await page.getByRole('button',{name:'Abrir menu'}).click();
-  await page.getByRole('button',{name:'Sair'}).click();
-  await expect(page.getByRole('heading',{name:'Conecte-se para consultar os armários'})).toBeVisible();
-  expect(await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open('armarios-offline',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});return new Promise(resolve=>{const tx=db.transaction('state','readonly'),request=tx.objectStore('state').get('copy');request.onsuccess=()=>resolve(request.result);});})).toBeUndefined();
-  await context.setOffline(false);
-  await expect(page.getByRole('heading',{name:'Entrar'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+  await page.getByRole('searchbox',{name:'Buscar pelo número do armário'}).fill('101');
+  await expect(page.getByText('1 de 3 armários')).toBeVisible();
+  await page.locator('.admin-locker-table').focus();
+  await page.keyboard.press('ArrowDown');
+  await page.screenshot({path:'test-results/visual/07-admin-busca.png'});
+  await page.getByRole('button',{name:'Sobre o Lockeris'}).click();
+  await page.getByRole('button',{name:'Novidades e Versões'}).click();
+  await expect(page.getByRole('heading',{name:'Entregas do Lockeris'})).toBeVisible();
+  await expect(page.getByText('Ajustes de domínio e arquivamento')).toBeVisible();
+  await page.screenshot({path:'test-results/visual/08-novidades.png'});
 });
 
 test('operador vê histórico de trocas sem funções administrativas',async({page})=>{
@@ -152,7 +142,7 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.getByText('Armários sem setor ou matrícula')).toBeVisible();
   await expect(page.getByRole('button',{name:/^Armários com cópia/})).toBeVisible();
   await expect(page.getByRole('button',{name:'Ver armários duplos'})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Ocupação por vínculo'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Pessoas por vínculo'})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Movimentações e atividade'})).toBeVisible();
   await expect(page.getByRole('button',{name:/Importar Planilha de Colaboradores/})).toBeVisible();
   await expect(page.getByRole('button',{name:/Consultar Histórico/})).toBeVisible();
@@ -408,7 +398,7 @@ test('card troca matrícula e permite segundo ocupante em armário duplo',async(
   await expect(dialog.locator('.list-row')).toHaveCount(2);
   await page.screenshot({path:'test-results/visual/16-ocupantes-duplos.png'});
   await dialog.getByRole('button',{name:'Editar Dora Oficial'}).click();
-  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('9999');
+  await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('');
   await expect(dialog.getByLabel('Nome',{exact:true})).toBeEnabled();
   await dialog.getByLabel('Nome',{exact:true}).fill('Pessoa conferida');
   await dialog.getByRole('button',{name:'Salvar ocupante'}).click();
@@ -416,4 +406,49 @@ test('card troca matrícula e permite segundo ocupante em armário duplo',async(
   await page.getByRole('alertdialog').getByRole('button',{name:'Fechar',exact:true}).click();
   await expect(dialog.getByText('Pessoa conferida',{exact:true})).toBeVisible();
   await expect(dialog.getByText('Eva Oficial',{exact:true})).toBeVisible();
+});
+
+test('admin rola 477 armários e limpa somente a cópia legada',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,modality)
+      SELECT $1,number::text,'padrao',1,'fixo' FROM generate_series(1000,1476) number`,[branch.id]);
+    await createAdminAlias(pool,'e2e-scroll');
+    const user=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='e2e-scroll'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),user.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await page.getByRole('button',{name:'Administração'}).click();
+  const table=page.locator('.admin-locker-table');
+  await expect(table).toBeVisible();
+  expect(await table.evaluate(element=>element.scrollHeight>element.clientHeight&&getComputedStyle(element).maxHeight==='480px')).toBe(true);
+  await table.focus();await page.keyboard.press('ArrowDown');
+  expect(await table.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+  await page.getByRole('searchbox',{name:'Buscar pelo número do armário'}).fill('1476');
+  await expect(page.getByText(/1 de \d+ armários/)).toBeVisible();
+  await page.evaluate(async()=>{
+    localStorage.setItem('armarios-theme','dark');
+    await new Promise<void>((resolve,reject)=>{
+      const request=indexedDB.open('armarios-offline',1);
+      request.onupgradeneeded=()=>request.result.createObjectStore('state');
+      request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{const db=request.result,tx=db.transaction('state','readwrite');tx.objectStore('state').put('legado','device');tx.objectStore('state').put({legacy:true},'copy');tx.objectStore('state').put('preservar','other');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};
+    });
+  });
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  expect(await page.evaluate(async()=>{
+    const db=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open('armarios-offline',1);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+    return await new Promise(resolve=>{const tx=db.transaction('state','readonly'),store=tx.objectStore('state');const result:Record<string,unknown>={theme:localStorage.getItem('armarios-theme')};for(const key of ['device','copy','other']){const request=store.get(key);request.onsuccess=()=>{result[key]=request.result;};}tx.oncomplete=()=>{db.close();resolve(result);};});
+  })).toEqual({theme:'dark',device:undefined,copy:undefined,other:'preservar'});
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Abrir menu'}).click();
+  await page.getByRole('button',{name:'Administração'}).click();
+  await expect(page.locator('.admin-locker-table')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });

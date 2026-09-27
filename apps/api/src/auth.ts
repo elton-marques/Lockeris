@@ -16,6 +16,11 @@ export async function authenticate(request: FastifyRequest): Promise<Actor> {
   const { rows } = await pool.query<Actor>(`SELECT u.id,u.role,u.branch_id,u.must_change_password FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=$1 AND s.expires_at>now() AND u.active`, [hash(token)]);
   if (!rows[0]) fail(401, 'AUTENTICACAO', 'Sessão expirada');
   request.actor = rows[0];
+  const branchId = /^\/api\/branches\/([0-9a-f-]{36})(?:\/|$)/i.exec(request.url)?.[1];
+  if (branchId) {
+    const branch = await pool.query<{status:string}>('SELECT status FROM branches WHERE id=$1',[branchId]);
+    if (branch.rows[0]?.status !== 'active') fail(403,'FILIAL_INATIVA','Filial arquivada ou indisponível');
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const csrf = request.headers['x-csrf-token'];
     const { rows: sessions } = await pool.query<{ csrf_hash: string }>('SELECT csrf_hash FROM sessions WHERE id_hash=$1', [hash(token)]);

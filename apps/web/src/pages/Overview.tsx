@@ -3,7 +3,7 @@ import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,KeyRound,Pl
 import {api} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
-import {alertLevelLabels,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
+import {alertLevelLabels,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,sectorOccupiedPositions,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
 type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string)=>void};
 type AllocationRow={started_at:string|null;ended_at:string|null};
@@ -11,7 +11,7 @@ type TransferRow={happened_at:string};
 type Movements={allocations:AllocationRow[];transfers:TransferRow[]};
 const periods=[7,30] as const;
 
-export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onNavigate}:Props){
+export function Overview({branchId,branchName,admin=false,onOpenLockers,onNavigate}:Props){
   const [lockers,setLockers]=useState<InsightLocker[]>([]);
   const [pending,setPending]=useState<InsightPending[]>([]);
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -20,7 +20,6 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
 
   useEffect(()=>{let active=true;setLoading(true);setError('');
     (async()=>{try{
-      if(copy){if(active){setLockers(copy.lockers as InsightLocker[]);setPending(copy.pending as InsightPending[]);}return;}
       const [items,issues]=await Promise.all([
         api<InsightLocker[]>(`/branches/${branchId}/lockers`),
         api<InsightPending[]>(`/branches/${branchId}/pending`)
@@ -29,10 +28,9 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
     }catch(cause){if(active)setError(cause instanceof Error?cause.message:'Confira a conexão e tente novamente.');}
     finally{if(active)setLoading(false);}})();
     return()=>{active=false;};
-  },[branchId,copy,retry]);
+  },[branchId,retry]);
 
   useEffect(()=>{let active=true;
-    if(copy){setMovements(null);setMovementsError('');setMovementsLoading(false);return;}
     setMovementsLoading(true);setMovementsError('');
     (async()=>{try{
       const [allocations,transfers]=await Promise.all([
@@ -43,7 +41,7 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
     }catch(cause){if(active)setMovementsError(cause instanceof Error?cause.message:'Confira a conexão e tente novamente.');}
     finally{if(active)setMovementsLoading(false);}})();
     return()=>{active=false;};
-  },[branchId,copy]);
+  },[branchId]);
 
   const summary=useMemo(()=>occupancySummary(lockers),[lockers]);
   const doubles=useMemo(()=>doubleLockerBreakdown(lockers),[lockers]);
@@ -65,7 +63,7 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
     const ended=movements.allocations.filter(row=>row.ended_at&&new Date(row.ended_at).getTime()>=since).length;
     return {transfers,attributions:Math.max(0,started-transfers),releases:Math.max(0,ended-transfers)};
   },[movements,period]);
-  const canManage=admin&&!copy;
+  const canManage=admin;
 
   return <div className="overview-page">
     <div className="operational-intro"><div><h1>Painel da filial</h1><p>Centro de comando de prevenção de perdas e gestão de armários de {branchName}.</p></div><span>{lockers.length} armários físicos</span></div>
@@ -144,12 +142,12 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
         </section>
 
         <section className="insight-panel" aria-labelledby="category-widget-title">
-          <div className="insight-heading"><div><h2 id="category-widget-title">Ocupação por vínculo</h2><p>Colaboradores FC, Promotores Fixos e Terceirizados</p></div></div>
+          <div className="insight-heading"><div><h2 id="category-widget-title">Pessoas por vínculo</h2><p>Pessoas identificadas, separadas por categoria cadastral.</p></div></div>
           <div className="category-bars">{categories.map(item=><div className="category-row" key={item.key}>
             <div className="category-row-head"><span>{item.label}</span><strong>{item.count} <small>{item.percent}%</small></strong></div>
             <div className="insight-track"><span className={`category-fill fill-${item.key}`} style={{width:`${Math.max(item.count?3:0,item.percent)}%`}}/></div>
           </div>)}</div>
-          <p className="insight-note">A posição conta pelo vínculo operacional do ocupante: Colaboradores FC, Promotores Fixos e Terceirizados. O setor PROMOTOR(A) entra como Promotor Fixo e empresas externas (por exemplo, Delta Climatização) como Terceirizado; roteiristas não têm armário fixo e não aparecem aqui.</p>
+          <p className="insight-note">{sectorOccupiedPositions(lockers)} posições ocupadas diretamente por setor. {openPendings} pendências cadastrais e operacionais abertas, contadas pelos itens registrados.</p>
         </section>
       </div>
 
@@ -159,8 +157,7 @@ export function Overview({branchId,branchName,copy,admin=false,onOpenLockers,onN
             <div className="period-toggle" role="group" aria-label="Período das movimentações">
               {periods.map(value=><button key={value} type="button" className={period===value?'selected':''} aria-pressed={period===value} onClick={()=>setPeriod(value)}>{value} dias</button>)}
             </div></div>
-          {copy?<p className="insight-empty">A cópia offline guarda apenas armários, pessoas e pendências. Conecte-se para ver as movimentações do período.</p>
-            :movementsError?<p className="insight-empty">{movementsError}</p>
+          {movementsError?<p className="insight-empty">{movementsError}</p>
             :!movements||movementsLoading?<div className="movement-grid" aria-hidden="true">{Array.from({length:3},(_,index)=><Skeleton key={index} variant="card" label="Carregando movimentação"/>)}</div>
             :<div className="movement-grid">
               <div className="movement-stat"><span className="movement-icon"><UserPlus size={17} aria-hidden="true"/></span><strong>{movementCounts?.attributions??0}</strong><span>Atribuições</span></div>

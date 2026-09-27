@@ -13,7 +13,7 @@ const routeItem = z.object({ branchId: id, itemId: id });
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches', async request => {
     const actor = await authenticate(request);
-    const { rows } = await pool.query('SELECT id,name,timezone,version FROM branches WHERE $1::text=$2 OR id=$3 ORDER BY name', [actor.role,'geral',actor.branch_id]);
+    const { rows } = await pool.query("SELECT id,name,city,timezone,status,version FROM branches WHERE status='active' AND ($1::text=$2 OR id=$3) ORDER BY name", [actor.role,'geral',actor.branch_id]);
     return rows;
   });
   app.post('/api/branches', async request => {
@@ -21,8 +21,26 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     if (actor.role !== 'geral') fail(403,'PERMISSAO','Acesso negado');
     const body = branchInput.and(operation).parse(request.body);
     return transaction(client => idempotent(client,body.operationId,null,actor.id,body, async () => {
-      const { rows } = await client.query('INSERT INTO branches(name,timezone) VALUES($1,$2) RETURNING *',[body.name,body.timezone]);
+      const { rows } = await client.query('INSERT INTO branches(name,city) VALUES($1,$2) RETURNING *',[body.name,body.city??null]);
       await event(client,rows[0].id,actor.id,'filial_criada','branch',rows[0].id);
+      return rows[0];
+    }));
+  });
+  app.post('/api/branches/:branchId/archive', async request => {
+    const actor=await authenticate(request);const {branchId}=routeBranch.parse(request.params);
+    if(actor.role!=='geral')fail(403,'PERMISSAO','Acesso administrativo geral necessário');
+    const body=operation.extend({expectedVersion:z.number().int().positive()}).parse(request.body);
+    return transaction(client=>idempotent(client,body.operationId,branchId,actor.id,body,async()=>{
+      const branch=await one<{version:number;status:string}>(client,'SELECT version,status FROM branches WHERE id=$1 FOR UPDATE',[branchId]);
+      if(branch.version!==body.expectedVersion||branch.status!=='active')fail(409,'VERSAO','Filial alterada; recarregue');
+      await client.query('SELECT id FROM lockers WHERE branch_id=$1 ORDER BY id FOR UPDATE',[branchId]);
+      const occupied=await client.query(`SELECT 1 FROM lockers l WHERE l.branch_id=$1 AND
+        (l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) LIMIT 1`,[branchId]);
+      if(occupied.rowCount)fail(409,'FILIAL_OCUPADA','Não é possível arquivar uma filial com armários ocupados. Remaneje ou libere os armários antes.');
+      const pending=await client.query("SELECT 1 FROM pending_items WHERE branch_id=$1 AND state='aberta' LIMIT 1",[branchId]);
+      if(pending.rowCount)fail(409,'PENDENCIAS','Resolva as pendências da filial antes de arquivá-la');
+      const {rows}=await client.query("UPDATE branches SET status='inactive',version=version+1 WHERE id=$1 RETURNING *",[branchId]);
+      await event(client,branchId,actor.id,'filial_arquivada','branch',branchId);
       return rows[0];
     }));
   });
@@ -77,6 +95,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId,true);
     const body = personInput.safeExtend({ operationId: id, personId: id.optional() }).parse(request.body);
     if (body.category === 'roteirista') fail(422,'CATEGORIA','Promotor roteirista não é cadastrado como pessoa no sistema');
+    if (!body.registration && !body.company && body.category === 'terceirizado') body.category='vinculo_nao_identificado';
     if (body.origin !== 'manual') fail(403,'ORIGEM','Cadastro manual deve ter origem manual');
     if (body.personId && actor.role !== 'geral') fail(403,'VINCULO','Somente administrador geral pode vincular uma pessoa existente de outra filial');
     return transaction(client => idempotent(client,body.operationId,branchId,actor.id,body, async () => {
@@ -95,6 +114,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       const old = await one<{ person_id: string; version: number; category: string; name:string; registration:string|null; company:string|null; department:string|null; function_name:string|null; needs_fixed:boolean; origin:'manual'|'ti'|'migracao' }>(client,'SELECT m.*,p.name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.id=$1 AND m.branch_id=$2 FOR UPDATE OF m',[itemId,branchId]);
       if (old.version !== body.expectedVersion) fail(409,'VERSAO','Registro alterado; recarregue');
       const checked=personInput.parse({name:body.name??old.name,category:body.category??old.category,registration:body.registration===undefined?old.registration:body.registration,company:body.company===undefined?old.company:body.company,department:body.department===undefined?old.department:body.department,functionName:body.functionName===undefined?old.function_name:body.functionName,needsFixed:body.needsFixed??old.needs_fixed,origin:old.origin});
+      if(!checked.registration && !checked.company && checked.category==='terceirizado') checked.category='vinculo_nao_identificado';
       const { rows } = await client.query(`UPDATE memberships SET category=$2,registration=$3,company=$4,
         department=$5,function_name=$6,needs_fixed=$7,version=version+1,updated_at=now() WHERE id=$1 RETURNING *`,
         [itemId,checked.category,checked.registration,checked.company,checked.department,checked.functionName,checked.needsFixed]);

@@ -7,6 +7,7 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/auth\/login$/,schema:z.object({username:z.string(),password:z.string()}),summary:'Entrar'},
   {match:/^POST \/api\/auth\/password$/,schema:z.object({oldPassword:z.string(),newPassword:z.string().min(12)}),summary:'Trocar senha'},
   {match:/^POST \/api\/branches$/,schema:branchInput.and(operation),summary:'Criar filial'},
+  {match:/^POST \/api\/branches\/:branchId\/archive$/,schema:withOperation({expectedVersion:z.number().int().positive()}),summary:'Arquivar filial'},
   {match:/^POST \/api\/branches\/:branchId\/people$/,schema:personInput.safeExtend({operationId:id,personId:id.optional()}),summary:'Cadastrar pessoa'},
   {match:/^PATCH \/api\/branches\/:branchId\/people\/:itemId$/,schema:personUpdateInput,summary:'Alterar pessoa'},
   {match:/^POST \/api\/branches\/:branchId\/people\/:itemId\/status$/,schema:withOperation({expectedVersion:z.number().int().positive(),status:z.enum(['ativo','encerrado'])}),summary:'Encerrar ou reativar atuação'},
@@ -26,8 +27,6 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/branches\/:branchId\/imports\/migration\/:importId\/confirm$/,schema:withOperation({acknowledgeReviewed:z.literal(true)}),summary:'Confirmar carga inicial de armários'},
   {match:/^POST \/api\/branches\/:branchId\/users$/,schema:withOperation({username:z.string(),role:z.enum(['filial_admin','operador','consulta']),temporaryPassword:z.string()}),summary:'Criar usuário'},
   {match:/^POST \/api\/branches\/:branchId\/users\/:itemId\/reset$/,schema:withOperation({expectedVersion:z.number().int().positive(),temporaryPassword:z.string()}),summary:'Redefinir senha temporária'},
-  {match:/^POST \/api\/branches\/:branchId\/devices$/,schema:withOperation({label:z.string()}),summary:'Autorizar navegador offline'},
-  {match:/^POST \/api\/branches\/:branchId\/devices\/:itemId\/revoke$/,schema:withOperation({expectedVersion:z.number().int().positive()}),summary:'Revogar navegador offline'}
 ];
 export function documentRoute({schema,url,route}:{schema:FastifySchema;url:string;route:{method:string|string[]}}):{schema:FastifySchema;url:string}{
   const method=(Array.isArray(route.method)?route.method[0]:route.method).toUpperCase();
