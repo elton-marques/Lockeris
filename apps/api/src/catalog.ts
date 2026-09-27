@@ -118,7 +118,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/branches/:branchId/lockers', async request => {
     const actor = await authenticate(request); const { branchId } = routeBranch.parse(request.params); branchAccess(actor,branchId);
     const query = z.object({ q: z.string().optional(), condition: z.string().optional() }).parse(request.query);
-    return (await pool.query(`SELECT l.*,coalesce(json_agg(json_build_object('allocationId',a.id,'allocationVersion',a.version,'personId',a.person_id,'membershipId',m.id,'membershipVersion',m.version,'origin',m.origin,'name',p.name,'registration',m.registration,'department',m.department,'functionName',m.function_name,'dueAt',a.due_at)) FILTER (WHERE a.id IS NOT NULL),'[]') occupants
+    return (await pool.query(`SELECT l.*,coalesce(json_agg(json_build_object('allocationId',a.id,'allocationVersion',a.version,'personId',a.person_id,'membershipId',m.id,'membershipVersion',m.version,'origin',m.origin,'name',p.name,'registration',m.registration,'department',m.department,'functionName',m.function_name,'category',m.category,'dueAt',a.due_at)) FILTER (WHERE a.id IS NOT NULL),'[]') occupants
       FROM lockers l LEFT JOIN allocations a ON a.locker_id=l.id AND a.ended_at IS NULL
       LEFT JOIN people p ON p.id=a.person_id LEFT JOIN memberships m ON m.person_id=p.id AND m.branch_id=l.branch_id
       WHERE l.branch_id=$1 AND ($2::text IS NULL OR l.number ILIKE '%'||$2||'%') AND ($3::text IS NULL OR l.condition=$3)

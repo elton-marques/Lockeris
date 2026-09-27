@@ -26,6 +26,24 @@ Quando uma matrícula sai da nova planilha, seu cadastro deixa de aparecer na ba
 
 Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, preservando zeros à esquerda. Se a matrícula da planilha de armários existir na base de colaboradores, o sistema usa automaticamente o nome, setor e função oficiais, mesmo que o nome na carga inicial esteja vazio ou diferente. A tela Pendências separa armários e pessoas em abas; armários ficam em ordem numérica e pessoas em ordem alfabética. Cada registro abre uma conferência com os dados atuais e as linhas originais da planilha, quando houver. Em **Resolvidas**, cada registro mostra o motivo original e o que encerrou a pendência; uma pessoa que recebeu armário continua na aba Pessoas do histórico.
 
+## Dashboard: centro de comando operacional
+
+A tela **Dashboard** (`apps/web/src/pages/Overview.tsx`) é o centro de comando de prevenção de perdas e gestão de armários da filial. Os cálculos ficam em `apps/web/src/locker-insights.ts` (testes em `locker-insights.test.ts`) e a tela abre com quatro cards de KPI:
+
+1. **Capacidade e ocupação real** — percentual de ocupação total com barra de progresso, posições ocupadas / posições totais e **vagas livres imediatas**; o card inteiro abre a lista de armários com vaga.
+2. **Nível de alerta e pendências críticas** — total de pendências abertas com *badge* de severidade (verde para 0, âmbar para 1–10 e vermelho acima de 10), pessoas fora da base ativa que ainda têm armário, armários sem setor ou matrícula e o botão **Resolver Pendências**, que leva à tela de Pendências. O bloco *Com pendência* abre a lista de armários já filtrada.
+3. **Eficiência dos armários duplos** — taxa de utilização das vagas duplas preenchidas, com pílulas de `Total de Duplos`, `100% Ocupados (2/2)`, `Subutilizados (1/2)` e `Livres (0/2)` e atalho para a lista de duplos.
+4. **Saúde física e segurança de chaves** — armários com exceção (manutenção, bloqueio ou ausência de cópia da chave), com a quebra entre manutenção/bloqueio e pendências de cópia da chave.
+
+Abaixo dos KPIs o painel abre dois widgets de análise e dois de operação:
+
+- **Ranking de ocupação por setor** — posições ocupadas por setor, ordenadas das mais demandantes às menos. A categoria **Sem setor** aparece como anomalia (barra avermelhada, ícone de aviso e chamada de conferência) para chamar a atenção da operação.
+- **Ocupação por vínculo** — distribuição percentual por categoria de cadastro: `Colaborador FC`, `Promotor Fixo`, `Terceirizado` e `Roteirista`, além das ocupações por setor sem pessoa identificada e das posições sem categoria.
+- **Movimentações e atividade** — contagem de atribuições, desocupações e trocas do período (7 ou 30 dias), derivada das alocações e transferências registradas. Em modo offline a cópia local não inclui movimentações e o painel explica a limitação.
+- **Ações rápidas** — grade com `+ Atribuir / Desocupar Armário`, `Importar Planilha de Colaboradores`, `Ver Pendências Abertas` e `Consultar Histórico` (importação e histórico apenas para perfis administrativos).
+
+Cards, blocos e barras navegam para a lista de armários já filtrada. A tela respeita o tema claro/escuro e é responsiva — em telas estreitas os KPIs e os widgets viram uma única coluna.
+
 ## Tela de armários e drawer de detalhes
 
 A tela **Armários** mostra os registros em cards ou tabela. A visualização em cards usa a caixa `#f1f5f9` como segunda camada de fundo e cartões brancos com borda `#e2e8f0`, raio de 16px e elevação no hover. Cada cartão traz:
