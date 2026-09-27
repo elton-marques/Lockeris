@@ -9,7 +9,7 @@ O projeto é um monorepo com workspaces npm (`apps/*` e `packages/*`):
 | Pasta | Pacote | Descrição |
 | --- | --- | --- |
 | `apps/api` | `@armarios/api` | API Fastify: autenticação por cookie, operações com idempotência (`operationId`), importação de planilhas, pendências, OpenAPI em `/api/docs` e as migrations SQL em `apps/api/migrations`. |
-| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
+| `apps/web` | `@armarios/web` | SPA React + Vite: telas de operação, design system em CSS (`design-system.css`, `operational-design.css`, `locker-status.css`, `theme.css`) e PWA com cache de shell e cópia offline. |
 | `packages/contracts` | `@armarios/contracts` | Contratos e utilitários compartilhados entre API e web (esquemas, identificadores e formas de dados). |
 
 A build de produção compila os três pacotes na ordem contracts → api → web (`npm run build`). A checagem de tipos roda com `tsc -b` na raiz e cobre todos os pacotes.
@@ -28,7 +28,14 @@ Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, 
 
 ## Tela de armários e drawer de detalhes
 
-A tela **Armários** mostra os registros em cards ou tabela, com busca por número, nome ou matrícula, filtros de situação, setor, cópia da chave e "somente duplos", além dos atalhos rápidos:
+A tela **Armários** mostra os registros em cards ou tabela. A visualização em cards usa a caixa `#f1f5f9` como segunda camada de fundo e cartões brancos com borda `#e2e8f0`, raio de 16px e elevação no hover. Cada cartão traz:
+
+- barra de acento lateral esquerda com a cor do status (vermelho ocupado, verde livre, âmbar pendente, cinza indisponível) e um brilho suave no fundo na mesma tonalidade;
+- o número em destaque (`№ 12`, 27px/800) no canto superior esquerdo e o *badge* de status em pílula com ponto colorido no canto direito;
+- a linha de setor com ícone, os ocupantes com nome em destaque e a matrícula precedida de `#`, ou a mensagem `Sem ocupante`;
+- o rodapé com a situação (`Ocupado`, `Livre · 1 vaga disponível`) e os *chips* de duplo, pendência e ausência de cópia da chave.
+
+Os filtros ficam unificados em um único painel branco com borda e raio de 14px: busca com ícone de lupa embutido, os três seletores (situação, setor, cópia da chave) e a caixa **Somente duplos**, todos com altura de 44px e anel de foco na cor da marca. Os atalhos rápidos aparecem logo abaixo em um grupo de *chips* segmentados (container em pílula com os quatro atalhos), destacados com a cor da marca quando ativos:
 
 - **Com vaga** — apenas armários com pelo menos uma vaga livre;
 - **Livres** — sem ocupação e com vaga disponível;

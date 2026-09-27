@@ -31,8 +31,8 @@
 .locker-list-panel .locker-tile.has-pending{--tile-accent:#c79a56;--tile-glow:#d6a45924;background:linear-gradient(150deg,#fff 5%,#fffdfa 70%,#fcf3e6 100%)}
 .locker-list-panel .locker-tile.unavailable{--tile-accent:#8993a9;--tile-glow:#8993a91e;background:linear-gradient(150deg,#fff 5%,#f9fafc 70%,#eff1f5 100%)}
 .locker-list-panel .locker-tile::before{
-  content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:1;
-  background:linear-gradient(90deg,var(--tile-accent),transparent 82%);
+  content:'';position:absolute;left:0;top:0;bottom:0;width:5px;z-index:1;
+  background:linear-gradient(180deg,var(--tile-accent),color-mix(in srgb,var(--tile-accent) 30%,transparent));
 }
 .locker-list-panel .locker-tile::after{
   content:'';position:absolute;inset:1px;z-index:0;pointer-events:none;border-radius:inherit;
@@ -59,6 +59,7 @@
 
 :root[data-theme='dark']{
   color-scheme:dark;
+  --bg-app:#151726;--border:#3d4059;
   --surface-base:#151726;--surface-raised:#222537;--surface-subtle:#292c40;--surface-inverse:#10121f;
   --text-primary:#ececf8;--text-secondary:#bdc1d6;--text-muted:#a7adc6;--text-on-brand:#211b3a;
   --border-divider:#3d4059;--border-strong:#51556f;--brand-accent:#b2a5ff;--brand-accent-hover:#c7bcff;
@@ -90,8 +91,8 @@
 :root[data-theme='dark'] button.primary,
 :root[data-theme='dark'] .primary{background:#b2a5ff;border-color:#b2a5ff;color:#211b3a}
 :root[data-theme='dark'] button.primary:hover:not(:disabled){background:#c7bcff;border-color:#c7bcff;color:#211b3a}
-:root[data-theme='dark'] :where(button:not(.primary):not(.nav-item):not(.theme-switch):not(.availability-feature):not(.insight-metric):not(.locker-tile),a.button){background:#2d3045;color:#e6e7f4;border-color:#4a4e68}
-:root[data-theme='dark'] :where(button:not(.primary):not(.nav-item):not(.theme-switch):not(.availability-feature):not(.insight-metric):not(.locker-tile):hover:not(:disabled),a.button:hover){background:#383b55;border-color:#77729e}
+:root[data-theme='dark'] :where(button:not(.primary):not(.nav-item):not(.theme-switch):not(.availability-feature):not(.insight-metric):not(.locker-tile):not(.quick-filter),a.button){background:#2d3045;color:#e6e7f4;border-color:#4a4e68}
+:root[data-theme='dark'] :where(button:not(.primary):not(.nav-item):not(.theme-switch):not(.availability-feature):not(.insight-metric):not(.locker-tile):not(.quick-filter):hover:not(:disabled),a.button:hover){background:#383b55;border-color:#77729e}
 :root[data-theme='dark'] :where(input,select,textarea){background:#292c40;color:#f0f0fa;border-color:#51556f}
 :root[data-theme='dark'] input::placeholder,
 :root[data-theme='dark'] textarea::placeholder{color:#aab0c7}
@@ -169,6 +170,7 @@
 :root[data-theme='dark'] .locker-list-panel .locker-tile:is(.occupied,.free,.has-pending,.unavailable){
   border-color:#454963;background:linear-gradient(150deg,#30344b 0%,#272b40 70%,#232639 100%);
 }
+:root[data-theme='dark'] .locker-list-panel .locker-tile.occupied{--tile-accent:#fb7185;--tile-glow:rgb(251 113 133 / 22%)}
 :root[data-theme='dark'] .locker-list-panel .locker-tile.free{--tile-accent:#78d8b1;--tile-glow:#63d6ac24;background:linear-gradient(150deg,#2b3e42,#253338 72%,#202b33)}
 :root[data-theme='dark'] .locker-list-panel .locker-tile.has-pending{--tile-accent:#edc584;--tile-glow:#ecc17824;background:linear-gradient(150deg,#403a43,#332f3d 72%,#29283a)}
 :root[data-theme='dark'] .locker-list-panel .locker-tile.unavailable{--tile-accent:#a1aec8;--tile-glow:#a1aec820;background:linear-gradient(150deg,#343748,#2a2d3e 72%,#252839)}
@@ -180,7 +182,9 @@
 :root[data-theme='dark'] .locker-list-panel .tile-footer,
 :root[data-theme='dark'] .locker-list-panel .tile-key,
 :root[data-theme='dark'] .tile-people small{color:#c1c6db}
-:root[data-theme='dark'] .locker-list-panel .tile-pending{color:#f0ce96}
+:root[data-theme='dark'] .locker-list-panel .tile-pending{color:#f0ce96;background:#4a3d22}
+:root[data-theme='dark'] .locker-list-panel .tile-key{background:#2b3048}
+:root[data-theme='dark'] .locker-list-panel .tile-person-name{color:#f0f0fb}
 :root[data-theme='dark'] .locker-list-panel .badge{background:#3a3e58;border-color:#555a76;color:#e1e4f5}
 :root[data-theme='dark'] .locker-list-panel .free .badge{background:#23483d;border-color:#39735d;color:#a9edcf}
 :root[data-theme='dark'] .locker-list-panel .has-pending .badge{background:#544231;border-color:#806242;color:#f4d29f}

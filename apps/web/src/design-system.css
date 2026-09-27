@@ -1,8 +1,10 @@
 :root {
   color-scheme: light;
-  --surface-base: #f3f7f6;
+  --bg-app: #f1f5f9;
+  --border: #e2e8f0;
+  --surface-base: #f1f5f9;
   --surface-raised: #fff;
-  --surface-subtle: #f8fbfa;
+  --surface-subtle: #f8fafc;
   --surface-inverse: #122d38;
   --text-primary: #162a36;
   --text-secondary: #4b6270;
@@ -22,7 +24,7 @@
   --muted: #627784;
   --line: #d9e4e5;
   --surface: #fff;
-  --canvas: #f3f7f6;
+  --canvas: #f1f5f9;
   --brand: #086964;
   --brand-hover: #075550;
   --brand-soft: #e5f3ef;
@@ -30,7 +32,9 @@
   --radius-sm: 10px;
   --radius: 16px;
   --radius-lg: 22px;
-  --shadow: 0 16px 40px rgb(16 52 60 / 6%);
+  --shadow: 0 16px 40px rgb(15 23 42 / 7%);
+  --shadow-soft: 0 1px 2px rgb(15 23 42 / 5%), 0 12px 26px -18px rgb(15 23 42 / 35%);
+  --shadow-lift: 0 18px 32px -14px rgb(15 23 42 / 28%);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--ink);
   background: var(--surface-base);
@@ -58,7 +62,7 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .check { min-height: 32px; }
 .eyebrow { display: block; color: var(--brand); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .095em; margin-bottom: 7px; }
 .app-shell { min-height: 100dvh; }
-.sidebar { width: 245px; background: #122d38; color: #e7f1f0; padding: 24px 15px; }
+.sidebar { width: 245px; background: #122d38; color: #e7f1f0; padding: 24px 15px; border-right: 1px solid rgb(15 23 42 / 14%); box-shadow: 16px 0 36px rgb(15 23 42 / 8%); }
 .brand { gap: 11px; margin: 0 9px 33px; }
 .brand-icon { background: #d3eee6; color: #0c645f; border-radius: 13px; box-shadow: inset 0 0 0 1px #ffffff99; }
 .brand strong { color: #fff; font-size: 1.07rem; }
@@ -188,10 +192,13 @@ td small { color: var(--muted); }
 
 .loading-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 10px; }
 .loading-grid .skeleton { min-height: 142px; }
-.quick-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 14px 0 2px; }
-.quick-filters > span { color: var(--text-muted); font-size: .73rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-.quick-filter { min-height: 34px; padding: 6px 11px; border-radius: 999px; font-size: .77rem; font-weight: 750; }
-.quick-filter.active { border-color: var(--brand-accent); background: var(--brand-surface); color: var(--brand-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-accent) 15%, transparent); }
+.quick-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 16px 0 2px; }
+.quick-filters > span { color: var(--text-muted); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+.chip-group { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 999px; background: color-mix(in srgb, var(--surface-raised) 72%, var(--canvas)); box-shadow: inset 0 1px 2px rgb(15 23 42 / 4%); }
+.quick-filter { min-height: 34px; padding: 7px 15px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-secondary); font-size: .76rem; font-weight: 750; letter-spacing: .01em; }
+.quick-filter:hover:not(:disabled) { background: var(--surface-raised); border-color: var(--border); color: var(--text-primary); box-shadow: 0 3px 8px rgb(15 23 42 / 8%); }
+.quick-filter.active { border-color: var(--brand); background: var(--brand); color: var(--text-on-brand); box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--brand) 75%, transparent); }
+.quick-filter.active:hover:not(:disabled) { background: var(--brand-hover, var(--brand)); border-color: var(--brand-hover, var(--brand)); color: var(--text-on-brand); }
 .timeline { list-style: none; margin: 24px 0 0; padding: 0 0 4px 10px; }
 .timeline-item { position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 14px; min-height: 92px; }
 .timeline-item:not(:last-child)::before { content: ''; position: absolute; top: 18px; bottom: 0; left: 8px; border-left: 1px dashed var(--border-divider); }

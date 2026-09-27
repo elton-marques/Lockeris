@@ -218,7 +218,11 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
     <section className="card locker-list-panel" aria-label="Consulta de armários">
       <div className="locker-list-heading"><div><h2>Registros</h2><p>Busque por número, nome ou matrícula e combine os filtros.</p></div><div className="view-switch" role="group" aria-label="Modo de visualização"><button type="button" aria-pressed={view==='cards'} className={view==='cards'?'selected':''} onClick={()=>setView('cards')}><Grid2X2 size={17} aria-hidden="true"/> Cards</button><button type="button" aria-pressed={view==='table'} className={view==='table'?'selected':''} onClick={()=>setView('table')}><List size={17} aria-hidden="true"/> Tabela</button></div></div>
       <div className="filters locker-filters">
-        <label>Buscar armário, nome ou matrícula<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome ou matrícula"/></label>
+        <label className="filter-search">Buscar armário, nome ou matrícula
+          <span className="filter-input"><Search size={15} aria-hidden="true"/>
+            <input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Número, nome ou matrícula"/>
+          </span>
+        </label>
         <label>Situação<select value={statusFilter} onChange={event=>{setStatusFilter(event.target.value);if(event.target.value!=='pendente')setPendingKindFilter('');}}><option value="">Todas</option><option value="com_vaga">Com vaga</option><option value="livre">Livres</option>
           <option value="ocupado">Ocupados</option><option value="pendente">Com pendência</option><option value="indisponivel">Bloqueados / revisão</option></select></label>
         <label>Setor<select value={sectorFilter} onChange={event=>setSectorFilter(event.target.value)}><option value="">Todos</option>
@@ -227,17 +231,19 @@ export function Dashboard({branchId,branchName,readonly,copy,refresh,notice,askC
           <option value="sim">Com cópia</option><option value="nao">Sem cópia</option></select></label>
         <label className="check"><input type="checkbox" checked={doubleOnly} onChange={event=>setDoubleOnly(event.target.checked)}/>Somente duplos</label>
       </div>
-      <div className="quick-filters" aria-label="Filtros rápidos">
+      <div className="quick-filters">
         <span>Atalhos</span>
-        {quickFilters.map(filter=><button key={filter.label} type="button" className={filter.active?'quick-filter active':'quick-filter'} aria-pressed={filter.active} onClick={filter.apply}>{filter.label}</button>)}
+        <div className="chip-group" role="group" aria-label="Filtros rápidos">
+          {quickFilters.map(filter=><button key={filter.label} type="button" className={filter.active?'quick-filter active':'quick-filter'} aria-pressed={filter.active} onClick={filter.apply}>{filter.label}</button>)}
+        </div>
       </div>
       <div className="filter-summary"><div className="filter-summary-left"><SlidersHorizontal size={16} aria-hidden="true"/><strong aria-live="polite">{filtered.length} {filtered.length===1?'resultado':'resultados'}</strong>{activeFilters.length?<div className="active-filter-list">{activeFilters.map(item=><button key={item.label} type="button" onClick={item.clear} aria-label={`Remover filtro ${item.label}`}>{item.label}<X size={13} aria-hidden="true"/></button>)}</div>:<span>Todos os registros da filial</span>}</div>{activeFilters.length>0&&<button type="button" className="clear-filters" onClick={clearFilters}>Limpar filtros</button>}</div>
       {!filtered.length?<EmptyState title={lockers.length?'Nenhum armário encontrado':'Nenhum armário cadastrado'} description={lockers.length?'Revise a busca ou limpe os filtros para ver outros armários.':'Cadastre armários em Administração ou confira a carga inicial.'} action={activeFilters.length>0?<button type="button" onClick={clearFilters}>Limpar filtros</button>:undefined}/>:view==='cards'?<div className="locker-grid">{filtered.map(item=>{const itemState=state(item);
         return <button key={item.id} className={`locker-tile ${itemState==='pendente'?'has-pending':itemState==='ocupado'?'occupied':itemState==='livre'?'free':'unavailable'}`}
           onClick={()=>openLocker(item)} aria-haspopup="dialog" aria-label={`Abrir detalhes do armário ${item.number}`}>
-          <span className="tile-top"><strong>№ {item.number}</strong><span className="tile-badges">{item.is_double&&<span className="double-badge">Duplo</span>}<span className="badge">{stateLabels[itemState]}</span></span></span>
-          <span className="tile-meta">{item.is_double?'Duplo · ':''}{sectors(item).join(', ')||'Sem setor'}</span>
-          <span className="tile-people">{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):item.destination||'Sem ocupante'}</span>
+          <span className="tile-top"><strong className="tile-number">№ {item.number}</strong><span className="tile-badges">{item.is_double&&<span className="double-badge">Duplo</span>}<span className="badge">{stateLabels[itemState]}</span></span></span>
+          <span className="tile-meta"><Building2 size={12} aria-hidden="true"/><span>{item.is_double?'Duplo · ':''}{sectors(item).join(', ')||'Sem setor'}</span></span>
+          <span className="tile-people">{item.sector_occupant?item.sector_occupant:item.occupants.length?item.occupants.map(person=><span key={person.allocationId} className="tile-person"><span className="tile-person-name">{person.name}</span><small><Hash size={11} aria-hidden="true"/>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):<span className="tile-empty">{item.destination||'Sem ocupante'}</span>}</span>
           <span className="tile-footer">{showsLockerPositions(item)?`${occupiedPositions(item)}/${effectiveCapacity(item)} ${effectiveCapacity(item)===1?'posição ocupada':'posições ocupadas'}`:occupiedPositions(item)>0?'Ocupado':'Livre'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
           {item.key_copy_available===false&&<span className="tile-key"><KeyRound size={13} aria-hidden="true"/> Sem cópia da chave</span>}
           {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}

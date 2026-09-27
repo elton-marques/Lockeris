@@ -1,28 +1,227 @@
-.locker-tile.free {
-  border-color: #79baa4;
-  background: #edf8f2;
+/* =========================================================================
+   Redesign da tela de Armários (camada clara): cartões, filtros e chips.
+   O prefixo `:root` garante precedência sobre operational-design.css e
+   design-system.css; o bloco escuro equivalente de theme.css segue vencendo
+   por ordem de carregamento quando a especificidade empata.
+   ========================================================================= */
+
+/* --- Cartões: superfície branca com profundidade suave --- */
+:root .locker-list-panel .locker-tile{
+  --tile-accent:#94a3b8;
+  --tile-glow:rgb(148 163 184 / 20%);
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  min-height:210px;
+  gap:0;
+  display:flex;
+  align-items:stretch;
+  padding:18px 18px 16px 21px;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:linear-gradient(158deg,#fff 0%,#fff 58%,#f8fafc 100%);
+  color:var(--ink);
+  box-shadow:var(--shadow-soft);
+  transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease,border-color .22s ease,background .22s ease;
 }
-.locker-tile.free .badge {
-  background: #d3efe0;
-  color: #176847;
+:root .locker-list-panel .locker-tile.occupied{
+  --tile-accent:#e11d48;--tile-glow:rgb(225 29 72 / 16%);
+  border-color:var(--border);
+  background:linear-gradient(158deg,#fff 0%,#fff 56%,#fff1f2 100%);
 }
-.locker-tile.occupied {
-  border-color: #d98f8f;
-  background: #fff0ef;
+:root .locker-list-panel .locker-tile.free{
+  --tile-accent:#059669;--tile-glow:rgb(5 150 105 / 16%);
+  border-color:var(--border);
+  background:linear-gradient(158deg,#fff 0%,#fff 56%,#ecfdf5 100%);
 }
-.locker-tile.occupied .badge {
-  background: #f9d8d6;
-  color: #922f35;
+:root .locker-list-panel .locker-tile.has-pending{
+  --tile-accent:#d97706;--tile-glow:rgb(217 119 6 / 18%);
+  border-color:var(--border);
+  background:linear-gradient(158deg,#fff 0%,#fff 56%,#fffbeb 100%);
 }
-.locker-tile.has-pending {
-  border-color: #d9aa52;
-  background: #fff6e4;
+:root .locker-list-panel .locker-tile.unavailable{
+  --tile-accent:#64748b;--tile-glow:rgb(100 116 139 / 16%);
+  border-color:var(--border);
+  background:linear-gradient(158deg,#fff 0%,#fff 56%,#f1f5f9 100%);
 }
-.locker-tile.has-pending .badge {
-  background: #ffe6ac;
-  color: #805314;
+@media (hover:hover) and (pointer:fine){
+  :root .locker-list-panel .locker-tile:hover:not(:disabled){
+    border-color:color-mix(in srgb,var(--tile-accent) 60%,var(--border));
+    background:linear-gradient(158deg,#fff 0%,#fff 50%,color-mix(in srgb,var(--tile-accent) 9%,#fff) 100%);
+    box-shadow:var(--shadow-lift),0 0 0 4px var(--tile-glow);
+    transform:translateY(-3px);
+  }
 }
-.locker-tile.unavailable { background: #f1f2f4; border-color: #aab5c1; }
+
+/* --- Hierarquia interna: número em destaque, ocupante e metadados --- */
+:root .locker-list-panel .tile-top{align-items:flex-start}
+:root .locker-list-panel .tile-top .tile-number{
+  font-size:27px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:-.05em;
+  color:#0f172a;
+}
+:root .locker-list-panel .tile-badges{padding-top:2px}
+:root .locker-list-panel .tile-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:var(--muted);
+  font-size:11.5px;
+  font-weight:650;
+  letter-spacing:.01em;
+  margin:11px 0 14px;
+}
+:root .locker-list-panel .tile-meta svg{flex:none;color:var(--muted)}
+:root .locker-list-panel .tile-people{
+  display:block;
+  border-top:1px solid var(--border);
+  padding-top:12px;
+  color:var(--ink);
+  font-size:13.5px;
+  font-weight:700;
+  letter-spacing:-.01em;
+  line-height:1.35;
+  min-height:46px;
+}
+:root .locker-list-panel .tile-person{display:block;margin-bottom:9px}
+:root .locker-list-panel .tile-person:last-child{margin-bottom:0}
+:root .locker-list-panel .tile-person-name{display:block;font-size:13.5px;font-weight:700;color:inherit}
+:root .locker-list-panel .tile-person small,
+:root .locker-list-panel .tile-people small{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:550;
+  letter-spacing:0;
+}
+:root .locker-list-panel .tile-person small svg,
+:root .locker-list-panel .tile-people small svg{flex:none}
+:root .locker-list-panel .tile-empty{color:var(--muted);font-size:12.5px;font-weight:600}
+:root .locker-list-panel .tile-footer{
+  margin-top:auto;
+  padding-top:14px;
+  color:var(--muted);
+  font-size:11.5px;
+  line-height:1.45;
+}
+:root .locker-list-panel .tile-key,
+:root .locker-list-panel .tile-pending{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:10px;
+  padding:6px 9px;
+  border-radius:9px;
+  font-size:10.5px;
+  font-weight:750;
+  letter-spacing:.01em;
+}
+:root .locker-list-panel .tile-key{background:#f1f5f9;color:#64748b}
+:root .locker-list-panel .tile-pending{background:#fffbeb;color:#b45309}
+
+/* --- Badges de status em pill --- */
+:root .locker-list-panel .badge{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border:1px solid transparent;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.03em;
+  line-height:1;
+  white-space:nowrap;
+}
+:root .locker-list-panel .tile-badges .badge::before{
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:currentColor;
+  opacity:.8;
+}
+:root .locker-list-panel .free .badge,
+:root .locker-list-panel .state-livre{background:#ecfdf5;border-color:#a7f3d0;color:#047857}
+:root .locker-list-panel .locker-tile.occupied .badge,
+:root .locker-list-panel .state-ocupado{background:#fff1f2;border-color:#fecdd3;color:#be123c}
+:root .locker-list-panel .has-pending .badge,
+:root .locker-list-panel .state-pendente{background:#fffbeb;border-color:#fde68a;color:#b45309}
+:root .locker-list-panel .unavailable .badge,
+:root .locker-list-panel .state-indisponivel{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
+
+/* --- Filtros unificados --- */
+:root .locker-list-panel .locker-filters{
+  gap:14px;
+  margin:0;
+  padding:18px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:14px;
+  box-shadow:0 1px 2px rgb(15 23 42 / 4%);
+}
+:root .locker-list-panel .locker-filters label{
+  color:var(--ink-soft);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.02em;
+}
+:root .locker-list-panel .locker-filters input:not([type=checkbox]),
+:root .locker-list-panel .locker-filters select{
+  height:44px;
+  min-height:44px;
+  margin-top:7px;
+  padding:0 12px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface-raised);
+  color:var(--ink);
+  font-size:12.5px;
+  font-weight:550;
+  transition:border-color .16s ease,box-shadow .16s ease;
+}
+:root .locker-list-panel .locker-filters input:not([type=checkbox]):hover,
+:root .locker-list-panel .locker-filters select:hover{border-color:#b6c2d3}
+:root .locker-list-panel .locker-filters input:not([type=checkbox]):focus-visible,
+:root .locker-list-panel .locker-filters select:focus-visible{
+  border-color:var(--brand);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent);
+}
+:root .locker-list-panel .locker-filters input[type=checkbox]{accent-color:var(--brand)}
+:root .locker-list-panel .locker-filters label.check{
+  color:var(--ink-soft);
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0;
+}
+.filter-search{position:relative}
+.filter-input{position:relative;display:flex;align-items:center;margin-top:7px}
+.filter-input > svg{
+  position:absolute;
+  left:12px;
+  top:50%;
+  transform:translateY(-50%);
+  color:var(--muted);
+  pointer-events:none;
+}
+:root .locker-list-panel .filter-search .filter-input input{
+  margin-top:0;
+  padding-left:37px;
+  padding-right:12px;
+}
+:root .locker-list-panel .filter-search .filter-input input::placeholder{color:#94a3b8;opacity:1}
+
+@media (max-width:560px){
+  :root .locker-list-panel .locker-tile{min-height:190px;padding:15px 15px 14px 18px}
+  :root .locker-list-panel .tile-top .tile-number{font-size:23px}
+  :root .locker-list-panel .locker-filters{padding:14px;gap:12px}
+  .chip-group{border-radius:14px}
+}
 .locker-filters .check { flex: 0 0 auto; min-width: 150px; padding-bottom: 11px; }
 .locker-modal-backdrop { position: fixed; inset: 0; z-index: 200; background: #142337a8; display: grid; place-items: center; padding: 20px; }
 .locker-modal { width: min(720px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: #fff; border-radius: 16px; padding: 25px; box-shadow: 0 22px 70px #0d203455; }
