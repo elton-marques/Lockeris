@@ -1,10 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Lockeris: duas portas de armário">
-  <rect width="192" height="192" rx="38" fill="#2E1065"/>
-  <path d="M31 53 96 26l65 27-65 27z" fill="#7C3AED"/>
-  <path d="M31 53 96 80v83l-65-27z" fill="#FFFFFF"/>
-  <path d="M96 80 161 53v83l-65 27z" fill="#34D399"/>
-  <path d="m45 79 36 15v48l-36-15z" fill="#E9D5FF" stroke="#7C3AED" stroke-width="3" stroke-linejoin="round"/>
-  <path d="m111 94 36-15v48l-36 15z" fill="#2E1065" fill-opacity=".18" stroke="#2E1065" stroke-opacity=".38" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M31 53 96 80l65-27M96 80v83" fill="none" stroke="#2E1065" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="m72 105 5 2v17l-5-2zm43 2 5-2v17l-5 2z" fill="#2E1065"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lockeris: duas portas de armário">
+  <rect width="64" height="64" rx="10" fill="#7C3AED"/>
+  <rect x="12" y="12" width="18" height="40" rx="2" fill="#FFFFFF"/>
+  <rect x="34" y="12" width="18" height="40" rx="2" fill="#34D399"/>
+  <path d="M26 29v7m12-7v7" fill="none" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"/>
+  <rect x="42" y="18" width="6" height="2" rx="1" fill="#FFFFFF"/>
 </svg>

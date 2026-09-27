@@ -4,9 +4,9 @@
 
 **Slogan:** Plataforma Integrada de Alocação e Armários
 
-**Assinatura compacta na interface:** Plataforma Integrada de Armários
+**Assinatura compacta na barra lateral:** Gestão de Armários
 
-O símbolo representa duas portas de armário em perspectiva. O arquivo principal é `apps/web/public/icon.svg`, usado pelo manifesto PWA, pela navegação e pela tela de acesso.
+O símbolo 2D representa duas portas planas, branca e verde menta, sobre um quadrado violeta de cantos arredondados. O arquivo principal é `apps/web/public/icon.svg`, usado pelo manifesto PWA, pela navegação e pela tela de acesso.
 
 | Uso | Claro | Escuro |
 | --- | --- | --- |

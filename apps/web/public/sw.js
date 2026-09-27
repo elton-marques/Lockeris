@@ -1,4 +1,4 @@
-const CACHE='lockeris-shell-v2';
+const CACHE='lockeris-shell-v3';
 self.addEventListener('install',event=>{event.waitUntil((async()=>{const cache=await caches.open(CACHE);const response=await fetch('/');const html=await response.clone().text();const assets=[...html.matchAll(/(?:src|href)="(\/[^\"]+)"/g)].map(match=>match[1]);await cache.addAll([...new Set(['/',...assets,'/manifest.webmanifest','/icon.svg'])]);})());self.skipWaiting();});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))));self.clients.claim();});
 self.addEventListener('fetch',event=>{
