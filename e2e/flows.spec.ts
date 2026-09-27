@@ -118,6 +118,7 @@ test('operador vê histórico de trocas sem funções administrativas',async({pa
 });
 
 test('painel distingue livre, ocupado e pendente',async({page})=>{
+  await mkdir('test-results/visual',{recursive:true});
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
   try{
     await pool.query("UPDATE lockers SET migration_status='inconclusivo' WHERE number='101'");
@@ -143,23 +144,27 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 12','№ 101','№ 102','№ 103','№ 104']);
   await page.getByRole('button',{name:'Dashboard',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Painel da filial'})).toBeVisible();
-  await expect(page.locator('.kpi-grid .kpi-card')).toHaveCount(3);
-  await expect(page.getByRole('heading',{name:'Armários duplos'})).toBeHidden();
-  await page.screenshot({path:'test-results/visual/09-dashboard-resumido.png',animations:'disabled'});
+  await expect(page.locator('.kpi-grid .kpi-card')).toHaveCount(4);
+  await expect(page.getByRole('button',{name:/^Pessoas fora da base ativa com armário/})).toBeVisible();
+  await expect(page.getByText('Armários sem setor ou matrícula')).toBeVisible();
+  await expect(page.getByRole('button',{name:/^Armários com cópia/})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Ver armários duplos'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Ocupação por vínculo'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Movimentações e atividade'})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Importar Planilha de Colaboradores/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Consultar Histórico/})).toBeVisible();
+  await page.setViewportSize({width:1920,height:934});
+  await page.screenshot({path:'test-results/visual/09-dashboard-completo.png',animations:'disabled'});
   await page.getByRole('switch',{name:'Modo escuro'}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
-  await page.screenshot({path:'test-results/visual/10-dashboard-escuro.png',animations:'disabled'});
+  await page.screenshot({path:'test-results/visual/10-dashboard-completo-escuro.png',animations:'disabled'});
   await page.setViewportSize({width:390,height:844});
   await expect(page.locator('.sidebar')).toHaveCSS('visibility','hidden');
-  await page.screenshot({path:'test-results/visual/11-dashboard-mobile.png',fullPage:true,animations:'disabled'});
+  await page.screenshot({path:'test-results/visual/11-dashboard-completo-mobile.png',fullPage:true,animations:'disabled'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole('switch',{name:'Modo escuro'}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
-  await page.getByText('Mais análises').click();
-  await expect(page.getByRole('heading',{name:'Armários duplos'})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Ocupação por vínculo'})).toBeVisible();
-  await page.screenshot({path:'test-results/visual/12-dashboard-analises.png',fullPage:true,animations:'disabled'});
   await expect(page.getByRole('button',{name:/3 vagas disponíveis/})).toBeVisible();
   await page.getByRole('button',{name:/3 vagas disponíveis/}).click();
   await expect(page.locator('.locker-tile')).toHaveCount(2);
