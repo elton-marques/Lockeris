@@ -45,19 +45,6 @@
 .locker-card .locker-detail-summary .detail-availability { flex: 1 1 100%; }
 .locker-card .form-grid { max-width: none; margin-top: 4px; }
 .locker-card .warning { margin: 13px 0 0; }
-.locker-sector-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 13px 0 0;
-  padding: 10px 12px;
-  border: 1px dashed var(--border-divider);
-  border-radius: 11px;
-  background: var(--surface-raised);
-  font-size: .82rem;
-  color: var(--text-secondary);
-}
-.locker-sector-note svg { flex: none; color: var(--brand-accent); }
 .locker-card-note { margin: -4px 0 13px; color: var(--muted); font-size: .8rem; }
 
 /* ---------- Ocupantes ---------- */

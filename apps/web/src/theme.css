@@ -208,8 +208,7 @@
 :root[data-theme='dark'] .locker-card{background:#292c40;border-color:#41455d;box-shadow:0 8px 22px #080a1766}
 :root[data-theme='dark'] .locker-card .list-row,
 :root[data-theme='dark'] .control-cell,
-:root[data-theme='dark'] .locker-empty,
-:root[data-theme='dark'] .locker-sector-note{background:#222537;border-color:#41455d}
+:root[data-theme='dark'] .locker-empty{background:#222537;border-color:#41455d}
 :root[data-theme='dark'] .control-cell .segmented,
 :root[data-theme='dark'] .segmented{background:#1d2032;border-color:#41455d}
 :root[data-theme='dark'] .segmented-option.selected{background:#b2a5ff;color:#211b3a}

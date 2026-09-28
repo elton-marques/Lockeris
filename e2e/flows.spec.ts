@@ -74,7 +74,7 @@ test('login, painel, compartilhamento, cadastro, TI, pendências e administraç�
   await page.getByRole('dialog').getByLabel('Cópia da chave').selectOption('sim');
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Atribuir armário'}).click();
-  await expectNotice(page,'Armário atribuído');
+  await expectNotice(page,'atribuído a');
   await closeNotice(page);
   await page.getByRole('button',{name:'Administração'}).click();
   await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
@@ -288,10 +288,10 @@ test('armário 477 abre no ponto atual e o aviso fica visível',async({page})=>{
   await expect(dialog.getByLabel('Existe cópia da chave?')).toBeChecked();
   await page.screenshot({path:'test-results/visual/11-edicao-armario.png'});
   await expect(dialog.getByLabel('Armário duplo')).toHaveCount(0);
-  await expect(dialog.locator('.static-value')).toContainText('Duplo');
+  await expect(dialog.locator('.static-value').first()).toContainText('Duplo');
   await dialog.getByLabel('Existe cópia da chave?').uncheck();
   await dialog.getByRole('button',{name:'Salvar dados do armário'}).click();
-  await expectNotice(page,'atualizados');
+  await expectNotice(page,'Informações do armário');
   const bounds=await noticeDialog(page).evaluate(element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom};});
   expect(bounds.top).toBeGreaterThanOrEqual(0);
   expect(bounds.bottom).toBeLessThanOrEqual(900);
@@ -334,13 +334,13 @@ test('pendências de armários seguem ordem numérica e abrem conferência',asyn
   await dialog.getByRole('combobox',{name:'Setor ocupante',exact:true}).click();
   await dialog.locator('.select-menu .select-option',{hasText:'Restaurante FC revisado'}).click();
   await dialog.getByRole('button',{name:'Salvar correções'}).click();
-  await expectNotice(page,'Correções salvas');
+  await expectNotice(page,'Informações do armário');
   await closeNotice(page);
   await page.locator('.pending-item').first().getByRole('button',{name:'Conferir dados'}).click();
   await expect(page.getByRole('dialog').getByRole('combobox',{name:'Setor ocupante',exact:true})).toContainText('Restaurante FC revisado');
   await page.getByRole('dialog').getByLabel('Conferi os dados acima').check();
   await page.getByRole('dialog').getByRole('button',{name:'Concluir conferência'}).click();
-  await expectNotice(page,'conferência concluída');
+  await expectNotice(page,'concluída com sucesso');
   await closeNotice(page);
   await page.getByRole('combobox',{name:'Exibir',exact:true}).click();
   await page.locator('.select-menu').getByRole('option',{name:'Resolvidas',exact:true}).click();
@@ -400,7 +400,7 @@ test('card troca matrícula e permite segundo ocupante em armário duplo',async(
   await expect(dialog.getByLabel('Nome',{exact:true})).toBeEnabled();
   await dialog.getByLabel('Nome',{exact:true}).fill('Pessoa conferida');
   await dialog.getByRole('button',{name:'Salvar ocupante'}).click();
-  await expect(page.getByRole('alertdialog').getByRole('heading',{name:'Dados do armário atualizados.'})).toBeVisible();
+  await expect(page.getByRole('alertdialog').getByRole('heading',{name:'Informações do armário'})).toBeVisible();
   await page.getByRole('alertdialog').getByRole('button',{name:'Fechar',exact:true}).click();
   await expect(dialog.getByText('Pessoa conferida',{exact:true})).toBeVisible();
   await expect(dialog.getByText('Eva Oficial',{exact:true})).toBeVisible();

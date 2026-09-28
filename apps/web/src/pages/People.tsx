@@ -60,7 +60,8 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
           note:assignmentNote.trim()||null,keyCopyAvailable:keyCopy==='sim'});
       }else await post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:found.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,
         modality:cabinet.modality,seasonal:false,note:assignmentNote.trim()||null,keyCopyAvailable:keyCopy==='sim'});
-      await afterMutation(`${found.name} ${source?'foi transferido para':'recebeu'} o armário ${cabinet.number}.`);
+      await afterMutation(source?`Armário #${cabinet.number} transferido para ${found.name} com sucesso.`
+        :`Armário #${cabinet.number} atribuído a ${found.name} com sucesso!`);
       setRegistration('');setFound(null);setLockerId('');setKeyCopy('sim');setTransferReason('');setAssignmentNote('');
     }catch(error){notice(error instanceof Error?error.message:'Falha na atribuição');}finally{setBusy(false);}
   }

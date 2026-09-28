@@ -111,24 +111,27 @@ export function Pending({branchId,readonly,refresh,notice,askConfirm,admin=false
     if(createPerson&&!edit.name.trim()&&!edit.registration.trim()){notice('Informe o nome ou uma matrícula da base oficial.');return;}
     if(!occupant&&!createPerson&&edit.sectorOccupant.trim()&&!selected.sector_occupant&&
       !await askConfirm(`Confirmar a ocupação do armário ${selected.locker_number} pelo setor ${edit.sectorOccupant.trim()}?`))return;
-    act(()=>post<{officialName:string|null}>(`/branches/${branchId}/pending/${selected.id}/revise`,{
+    act(()=>post(`/branches/${branchId}/pending/${selected.id}/revise`,{
       operationId:op(),expectedVersion:selected.version,expectedLockerVersion:selected.locker_version,
       isDouble:!!selected.is_double,condition:edit.condition,keyCopyAvailable:edit.keyCopy==='sim',
       sectorOccupant:createPerson?null:edit.sectorOccupant.trim()||null,finalize,
       occupant:occupant||createPerson?{allocationId:occupant?.allocationId,membershipId:occupant?.membershipId,expectedMembershipVersion:occupant?.membershipVersion,
         name:edit.name.trim(),registration:edit.registration.trim()||null,department:edit.department.trim()||null,functionName:edit.functionName.trim()||null}:null}),
-    result=>`${finalize?'Dados salvos e conferência concluída.':'Correções salvas.'}${result.officialName?` Dados oficiais de ${result.officialName} aplicados.`:''}`);}
+    finalize?`Conferência do armário #${selected.locker_number} concluída com sucesso.`
+      :`Informações do armário #${selected.locker_number} salvas.`);}
   function assignFromPending(){if(!selected?.person_id||!lockerId||!keyCopy||!reviewed)return;
     const locker=lockers.find(item=>item.id===lockerId);if(!locker)return;
     act(()=>post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:selected.person_id,lockerId:locker.id,
-      expectedVersion:locker.version,modality:locker.modality,seasonal:false,note:null,keyCopyAvailable:keyCopy==='sim'}),'Armário atribuído e pendência resolvida.');}
+      expectedVersion:locker.version,modality:locker.modality,seasonal:false,note:null,keyCopyAvailable:keyCopy==='sim'}),
+      `Armário #${locker.number} atribuído a ${selected.person_name??'colaborador'} com sucesso!`);}
   function savePerson(){if(!selected||!selected.membership_version||selected.origin==='ti'||!reviewed||!edit.name.trim())return;
     act(()=>patch(`/branches/${branchId}/people/${selected.subject_id}`,{operationId:op(),expectedVersion:selected.membership_version,
       name:edit.name.trim(),registration:edit.registration.trim()||null,department:edit.department.trim()||null,
       functionName:edit.functionName.trim()||null}),'Dados da pessoa atualizados.');}
   function run(item:Item){if(!reviewed||busy)return;
     if(['ausente_ti','atuacao_encerrada'].includes(item.kind)&&item.allocation_id&&item.allocation_version)
-      return act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.allocation_id,expectedVersion:item.allocation_version}),'Armário desocupado.');
+      return act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.allocation_id,expectedVersion:item.allocation_version}),
+        item.locker_number?`Ocupação do armário #${item.locker_number} encerrada com sucesso.`:'Ocupação encerrada com sucesso.');
     if(item.kind==='migracao_inconclusiva'&&item.locker_version)return saveReview(true);
     if(item.kind==='sem_armario'&&item.membership_version&&note.trim().length>=3)
       return act(()=>post(`/branches/${branchId}/people/${item.subject_id}/exception`,{operationId:op(),expectedVersion:item.membership_version,reason:note.trim()}),'Dispensa de armário registrada.');
