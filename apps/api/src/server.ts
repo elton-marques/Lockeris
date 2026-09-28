@@ -12,6 +12,8 @@ import { movementRoutes } from './movements.js';
 import { importRoutes } from './imports.js';
 import { managementRoutes } from './management.js';
 import { migrationRoutes } from './migration.js';
+import { notificationRoutes } from './notifications.js';
+import { sanitationRoutes } from './sanitation.js';
 import { refreshPending } from './pending.js';
 import { documentRoute } from './openapi.js';
 
@@ -38,6 +40,8 @@ await movementRoutes(app);
 await importRoutes(app);
 await migrationRoutes(app);
 await managementRoutes(app);
+await notificationRoutes(app);
+await sanitationRoutes(app);
 
 const timer=setInterval(async()=>{
   try {

@@ -8,7 +8,7 @@ import type {RegistrationOption} from '../RegistrationInput';
 import {TermoResponsabilidade} from '../components/TermoResponsabilidade';
 import {FieldIcon,ToggleSwitch} from '../components/LockerControls';
 import {SelectField} from '../components/Select';
-import {availablePositions,effectiveCapacity,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,showsLockerPositions,type LockerPreset} from '../locker-insights';
+import {availablePositions,effectiveCapacity,hasExclusiveDoubleRule,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,showsLockerPositions,type LockerPreset} from '../locker-insights';
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
@@ -27,7 +27,7 @@ const sectors=lockerSectors;
 
 export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
   const [lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
-  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false);
+  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false),[doublePartial,setDoublePartial]=useState(preset?.doublePartial??false);
   const [view,setView]=useState<'cards'|'table'>('cards');
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
   const [keyCopy,setKeyCopy]=useState('');
@@ -74,28 +74,31 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
     if(statusFilter==='pendente'&&!pendingIds.has(locker.id)&&locker.migration_status!=='inconclusivo')return false;
     if(statusFilter==='indisponivel'&&!requiresReview(locker))return false;
     if(doubleOnly&&!locker.is_double)return false;
+    if(doublePartial&&!(locker.is_double&&locker.occupants.length===1&&!locker.sector_occupant&&!hasExclusiveDoubleRule(locker)))return false;
     if(sectorFilter==='__none__'&&sectors(locker).length>0)return false;
     if(sectorFilter&&sectorFilter!=='__none__'&&!sectors(locker).includes(sectorFilter))return false;
     if(keyFilter==='sim'&&locker.key_copy_available!==true)return false;
     if(keyFilter==='nao'&&locker.key_copy_available!==false)return false;
     if(pendingKindFilter&&!pending.some(item=>item.state==='aberta'&&item.pending_locker_id===locker.id&&item.kind===pendingKindFilter))return false;
     return !query||[locker.number,...sectors(locker),...locker.occupants.flatMap(item=>[item.name,item.registration??''])].some(value=>lower(value).includes(lower(query)));
-  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,pendingKindFilter,doubleOnly]);
+  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,pendingKindFilter,doubleOnly,doublePartial]);
   const activeFilters=[
     query&&{label:`Busca: ${query}`,clear:()=>setQuery('')},
     statusFilter&&{label:`Situação: ${statusFilter==='com_vaga'?'Com vaga':statusFilter==='ocupado'?'Ocupados':statusFilter==='livre'?'Livres':statusFilter==='pendente'?'Com pendência':'Bloqueados / revisão'}`,clear:()=>{setStatusFilter('');setPendingKindFilter('');}},
     sectorFilter&&{label:`Setor: ${sectorFilter==='__none__'?'Sem setor':sectorFilter}`,clear:()=>setSectorFilter('')},
     keyFilter&&{label:`Cópia da chave: ${keyFilter==='sim'?'Sim':'Não'}`,clear:()=>setKeyFilter('')},
     pendingKindFilter&&{label:`Motivo: ${pendingKindLabels[pendingKindFilter]??'Conferência necessária'}`,clear:()=>setPendingKindFilter('')},
-    doubleOnly&&{label:'Duplos',clear:()=>setDoubleOnly(false)}
+    doubleOnly&&{label:'Duplos',clear:()=>setDoubleOnly(false)},
+    doublePartial&&{label:'Duplos parciais',clear:()=>setDoublePartial(false)}
   ].filter((item):item is {label:string;clear:()=>void}=>!!item);
   const quickFilters=[
     {label:'Com vaga',active:statusFilter==='com_vaga',apply:()=>{setStatusFilter(statusFilter==='com_vaga'?'':'com_vaga');setPendingKindFilter('');}},
     {label:'Livres',active:statusFilter==='livre',apply:()=>{setStatusFilter(statusFilter==='livre'?'':'livre');setPendingKindFilter('');}},
     {label:'Pendentes',active:statusFilter==='pendente',apply:()=>setStatusFilter(statusFilter==='pendente'?'':'pendente')},
-    {label:'Duplos',active:doubleOnly,apply:()=>setDoubleOnly(current=>!current)}
+    {label:'Duplos',active:doubleOnly,apply:()=>{setDoubleOnly(current=>!current);setDoublePartial(false);}},
+    {label:'Duplos parciais',active:doublePartial,apply:()=>{setDoublePartial(current=>!current);setDoubleOnly(false);}}
   ];
-  function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);}
+  function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);setDoublePartial(false);}
   const locker=lockers.find(item=>item.id===selected);
   const editingOccupant=occupantEdit&&occupantEdit.allocationId&&locker?locker.occupants.find(item=>item.allocationId===occupantEdit.allocationId):undefined;
   const creatingOccupant=!!occupantEdit&&!editingOccupant;

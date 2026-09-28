@@ -587,3 +587,91 @@ test('seleção em lote alterna marcações e alinha verticalmente as células d
   }
   expect(alignment.some(row=>row.checkbox!==null)).toBe(true);
 });
+
+test('central de alertas no cabeçalho abre as listas correspondentes',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    const alertPerson=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Alerta Sem Armário') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed)
+      VALUES($1,$2,'promotor_fixo','manual','0110',true)`,[alertPerson.id,branch.id]);
+    const admin=(await pool.query<{id:string}>("SELECT id FROM users WHERE lower(username)='e2e'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),admin.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+
+  const bell=page.getByRole('button',{name:'Alertas da filial'});
+  await expect(bell.locator('.notification-badge')).toBeVisible();
+  await bell.click();
+  const menu=page.getByRole('menu',{name:'Central de alertas'});
+  await expect(menu).toBeVisible();
+  const withoutLocker=menu.getByRole('menuitem',{name:'Colaboradores sem armário'});
+  const registrationPending=menu.getByRole('menuitem',{name:'Pendências cadastrais'});
+  const underusedDoubles=menu.getByRole('menuitem',{name:'Duplos subutilizados'});
+  await expect(withoutLocker).toBeVisible();
+  await expect(registrationPending).toBeVisible();
+  await expect(underusedDoubles).toBeVisible();
+  await expect(withoutLocker).toContainText('sem armário');
+  expect(Number(await withoutLocker.locator('.notification-count').innerText())).toBeGreaterThan(0);
+  await page.screenshot({path:'test-results/visual/50-central-alertas.png'});
+
+  await withoutLocker.click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Colaboradores',level:1})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Sem armário',exact:true})).toHaveAttribute('aria-pressed','true');
+
+  await bell.click();
+  await menu.getByRole('menuitem',{name:'Pendências cadastrais'}).click();
+  await expect(page.getByRole('heading',{name:'Pendências',level:1})).toBeVisible();
+
+  await bell.click();
+  await menu.getByRole('menuitem',{name:'Duplos subutilizados'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Duplos parciais',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('.notification-popover')).toHaveCount(0);
+});
+
+test('admin higieniza a base excluindo cadastros obsoletos',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    const obsolete=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Cadastro Obsoleto E2E') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed,created_at)
+      VALUES($1,$2,'colaborador','manual','0111',true,now()-interval '14 months')`,[obsolete.id,branch.id]);
+    const admin=(await pool.query<{id:string}>("SELECT id FROM users WHERE lower(username)='e2e'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),admin.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.getByRole('button',{name:'Administração'}).click();
+  await expect(page.getByRole('heading',{name:'Higienização de base'})).toBeVisible();
+
+  const obsoleteRow=page.getByLabel('Selecionar Cadastro Obsoleto E2E');
+  await expect(obsoleteRow).toBeVisible();
+  await expect(page.getByLabel('Inatividade mínima (dias)')).toHaveValue('90');
+  await page.screenshot({path:'test-results/visual/51-higienizacao-base.png'});
+  await page.getByRole('button',{name:'Analisar cadastros'}).click();
+  await expect(obsoleteRow).toBeVisible();
+  await obsoleteRow.check();
+  await expect(page.getByRole('status').filter({hasText:'cadastro(s) selecionado(s)'})).toContainText('1 de');
+  const purgeButton=page.getByRole('button',{name:'Excluir cadastros selecionados'});
+  await expect(purgeButton).toBeEnabled();
+  await purgeButton.click();
+  const confirmation=page.getByRole('alertdialog');
+  await expect(confirmation).toContainText('Excluir 1 cadastro(s) da base?');
+  await confirmation.getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'cadastro(s) excluído(s) da base');
+  await closeNotice(page);
+  await expect(page.getByLabel('Selecionar Cadastro Obsoleto E2E')).toHaveCount(0);
+  await expect(page.getByText('Nenhum cadastro obsoleto',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Excluir cadastros selecionados'})).toHaveCount(0);
+});

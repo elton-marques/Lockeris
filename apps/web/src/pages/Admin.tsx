@@ -2,16 +2,21 @@ import {useEffect,useState} from 'react';
 import {api,del,op,post,patch} from '../api';
 import type {PageProps} from '../App';
 import {conditionName,DataState,EmptyState,roleName} from '../ui';
+import {categoryLabels} from '../locker-insights';
 import {SelectField} from '../components/Select';
 import {sectorSelectOptions} from '../sectors';
 type Person={department:string|null;status:string};
+type StaleRow={membership_id:string;person_id:string;name:string;registration:string|null;department:string|null;function_name:string|null;category:string;last_activity:string};
 type Locker={id:string;number:string;sector_occupant:string|null;size:string;capacity:number;is_double:boolean;condition:string;modality:string;destination:string|null;version:number;occupants:unknown[];migration_status:string};
 type User={id:string;username:string;role:string;active:boolean;must_change_password:boolean;version:number};
 type Branch={id:string;name:string;version:number};
-export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false}:PageProps&{general?:boolean}){
+export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false,admin=false}:PageProps&{general?:boolean}){
   const [lockers,setLockers]=useState<Locker[]>([]),[users,setUsers]=useState<User[]>([]),
     [people,setPeople]=useState<Person[]>([]),[branches,setBranches]=useState<Branch[]>([]);
   const [branchName,setBranchName]=useState(''),[lockerSearch,setLockerSearch]=useState('');
+  const [staleDays,setStaleDays]=useState('90'),[stale,setStale]=useState<StaleRow[]|null>(null),
+    [staleLoading,setStaleLoading]=useState(false),[staleError,setStaleError]=useState(''),
+    [selected,setSelected]=useState<Set<string>>(new Set()),[purging,setPurging]=useState(false);
   const [locker,setLocker]=useState({number:'',size:'padrao',capacity:1,isDouble:false,modality:'fixo',destination:'',sectorOccupant:'',condition:'disponivel'});
   const [username,setUsername]=useState(''),[role,setRole]=useState('operador'),[temporaryPassword,setTemporaryPassword]=useState('');
   const [resetEditor,setResetEditor]=useState<string|null>(null),[resetValue,setResetValue]=useState('');
@@ -20,6 +25,25 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
     catch(e){setLoadError(e instanceof Error?e.message:'Confira a conexão e tente novamente.');throw e;}finally{setLoading(false);}}
   useEffect(()=>{if(!readonly)load().catch(()=>{});},[branchId,readonly]);
   useEffect(()=>{if(!general)return;api<Branch[]>('/branches').then(setBranches).catch(()=>{});},[general]);
+  async function loadStale(){
+    const days=Math.min(3650,Math.max(30,Math.trunc(Number(staleDays))||90));
+    setStaleLoading(true);setStaleError('');setSelected(new Set());
+    try{setStale(await api<StaleRow[]>(`/branches/${branchId}/people/stale?inactiveDays=${days}`));}
+    catch(e){setStale(null);setStaleError(e instanceof Error?e.message:'Confira a conexão e tente novamente.');}
+    finally{setStaleLoading(false);}
+  }
+  useEffect(()=>{setStale(null);setSelected(new Set());if(admin&&!readonly&&branchId)loadStale().catch(()=>{});},[branchId,admin,readonly]);
+  async function purge(){
+    if(!selected.size)return;
+    if(!await askConfirm(`Excluir ${selected.size} cadastro(s) da base? Esta ação não pode ser desfeita.`))return;
+    setPurging(true);
+    try{
+      const result=await post<{purged:number;people:number}>('/people/bulk-purge',{operationId:op(),branchId,membershipIds:[...selected]});
+      notice(`${result.purged} cadastro(s) excluído(s) da base${result.people?` e ${result.people} registro(s) de pessoa removido(s)`:''}.`);
+      await loadStale();refresh();
+    }catch(e){notice(e instanceof Error?e.message:'Não foi possível concluir a exclusão.');await loadStale();}
+    finally{setPurging(false);}
+  }
   async function act(fn:()=>Promise<unknown>,message:string){try{await fn();try{await load();refresh();notice(message);}catch{notice('A alteração foi concluída, mas a lista não foi atualizada. Recarregue antes de agir novamente.');}return true;}
     catch(e){notice(e instanceof Error?e.message:'Não foi possível concluir a alteração.');return false;}}
   async function createBranch(event:React.FormEvent){event.preventDefault();try{await post('/branches',{operationId:op(),name:branchName});window.location.reload();}catch(e){notice(e instanceof Error?e.message:'Falha');}}
@@ -63,6 +87,40 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
           onChange={value=>setLocker({...locker,sectorOccupant:value})} options={sectorSelectOptions(people,lockers,locker.sectorOccupant)}/></div><button className="primary">Cadastrar armário</button></form></section>
       <section className="card"><span className="eyebrow">Permissões</span><h2>Acessos</h2><div className="list">{users.map(x=><div className="list-row" key={x.id}><div><strong>{x.username}</strong><small>{roleName[x.role]??'Perfil de acesso'} · {x.active?'ativo':'inativo'}{x.must_change_password?' · troca de senha pendente':''}</small></div><div className="user-actions"><div className="row-actions"><label className="inline-control">Perfil<select aria-label={`Perfil de ${x.username}`} value={x.role} onChange={event=>changeRole(x,event.target.value)}>{x.role==='geral'&&<option value="geral" disabled>Administração geral</option>}<option value="filial_admin">Administração da filial</option><option value="operador">Operação</option><option value="consulta">Consulta</option></select></label><button onClick={()=>toggleUser(x)}>{x.active?'Desativar':'Ativar'}</button><button onClick={()=>{setResetEditor(resetEditor===x.id?null:x.id);setResetValue('');}}>Redefinir senha</button><button onClick={()=>{removeUser(x).catch(()=>{});}}>Excluir</button></div>
         {resetEditor===x.id&&<form className="inline-edit" onSubmit={event=>reset(event,x)}><label>Nova senha temporária para {x.username}<input type="password" autoComplete="new-password" required minLength={12} value={resetValue} onChange={event=>setResetValue(event.target.value)}/></label><p>A troca será exigida no próximo acesso.</p><button className="primary">Salvar nova senha</button><button type="button" onClick={()=>setResetEditor(null)}>Cancelar</button></form>}</div></div>)}</div><h3 className="subsection-title">Novo usuário</h3><form className="form-grid" onSubmit={createUser}><label>Nome de usuário<input required minLength={3} pattern="[a-zA-Z0-9._-]+" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Perfil<select value={role} onChange={e=>setRole(e.target.value)}><option value="filial_admin">Administração da filial</option><option value="operador">Operação</option><option value="consulta">Consulta</option></select></label><label>Senha temporária<input type="password" minLength={12} required value={temporaryPassword} onChange={e=>setTemporaryPassword(e.target.value)}/></label><button className="primary">Criar usuário</button></form></section>
+      {admin&&<section className="card sanitation-card" id="sanitation" aria-labelledby="sanitation-title">
+        <span className="eyebrow">Manutenção da base</span><h2 id="sanitation-title">Higienização de base</h2>
+        <p>Exclua em lote cadastros ativos que estão sem armário e sem movimentação dentro da janela informada. Cadastros com armário vinculado são bloqueados até a ocupação ser encerrada.</p>
+        <div className="sanitation-toolbar">
+          <label>Inatividade mínima (dias)<input type="number" inputMode="numeric" min={30} max={3650} value={staleDays} disabled={staleLoading||purging}
+            onChange={event=>setStaleDays(event.target.value)} onBlur={()=>{if(stale)loadStale().catch(()=>{});}}/></label>
+          <button type="button" disabled={staleLoading||purging||!branchId} onClick={()=>{loadStale().catch(()=>{});}}>{staleLoading?'Analisando…':'Analisar cadastros'}</button>
+        </div>
+        {staleError&&<p className="warning" role="alert">{staleError}</p>}
+        {!staleError&&staleLoading&&<p role="status">Analisando cadastros da filial…</p>}
+        {!staleError&&!staleLoading&&stale&&<>
+          {!stale.length?<EmptyState title="Nenhum cadastro obsoleto" description={`Nenhum cadastro ativo e sem armário está parado há mais de ${staleDays} dias nesta filial.`}/>
+          :<>
+            <div className="table-wrap sanitation-table" tabIndex={0} aria-label="Cadastros obsoletos; use as setas para rolar"><table>
+              <thead><tr><th className="sanitation-check-cell">Selecionar</th>
+                <th>Nome</th><th>Matrícula</th><th>Setor</th><th>Última movimentação</th></tr></thead>
+              <tbody>{stale.map(row=><tr key={row.membership_id}>
+                <td className="sanitation-check-cell" data-label="Selecionar"><input type="checkbox" aria-label={`Selecionar ${row.name}`} checked={selected.has(row.membership_id)} disabled={purging}
+                  onChange={event=>setSelected(current=>{const next=new Set(current);if(event.target.checked)next.add(row.membership_id);else next.delete(row.membership_id);return next;})}/></td>
+                <td data-label="Nome"><strong>{row.name}</strong><small>{categoryLabels[row.category]??row.category}</small></td>
+                <td data-label="Matrícula">{row.registration??'Sem matrícula'}</td>
+                <td data-label="Setor">{row.department??'Sem setor'}</td>
+                <td data-label="Última movimentação">{new Date(row.last_activity).toLocaleDateString('pt-BR')}</td>
+              </tr>)}</tbody></table></div>
+            <div className="sanitation-actions">
+              <label className="check"><input type="checkbox" checked={selected.size===stale.length} disabled={purging}
+                aria-label="Selecionar todos os cadastros"
+                onChange={event=>setSelected(event.target.checked?new Set(stale.map(row=>row.membership_id)):new Set())}/>Selecionar todos</label>
+              <strong aria-live="polite" role="status">{selected.size} de {stale.length} cadastro(s) selecionado(s)</strong>
+              <button className="primary" type="button" disabled={!selected.size||purging} onClick={()=>{purge().catch(()=>{});}}>{purging?'Excluindo…':'Excluir cadastros selecionados'}</button>
+            </div>
+          </>}
+        </>}
+      </section>}
       </>}
     </>}
   </div>;

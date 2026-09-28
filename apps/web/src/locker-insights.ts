@@ -1,7 +1,7 @@
 export type LockerOccupant={name:string;registration:string|null;department:string|null;functionName?:string|null;category?:string|null};
 export type InsightLocker={id:string;number:string;capacity:number;is_double:boolean;sector_occupant:string|null;condition:string;migration_status:string;key_copy_available:boolean|null;occupants:LockerOccupant[]};
 export type InsightPending={kind:string;state:string;pending_locker_id:string|null};
-export type LockerPreset={status?:string;sector?:string;key?:string;pendingKind?:string;double?:boolean};
+export type LockerPreset={status?:string;sector?:string;key?:string;pendingKind?:string;double?:boolean;doublePartial?:boolean};
 
 export const pendingKindLabels:Record<string,string>={
   sem_matricula:'Pessoa sem matrícula validada',

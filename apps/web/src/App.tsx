@@ -1,9 +1,9 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ChevronDown, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
+import {ArrowLeftRight, Boxes, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, ShieldCheck, Upload, UsersRound} from 'lucide-react';
 import {api,post,type User} from './api';
 import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
-import {Select} from './components/Select';
+import {Header,ThemeSwitch,type NotificationKey} from './components/Header';
 import {AboutModal} from './components/AboutModal';
 import {ChangePasswordModal} from './components/ChangePasswordModal';
 import {Dashboard} from './pages/Dashboard';
@@ -42,7 +42,7 @@ export default function App(){
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [aboutOpen,setAboutOpen]=useState(false);
-  const [passwordOpen,setPasswordOpen]=useState(false),[userMenu,setUserMenu]=useState(false);
+  const [passwordOpen,setPasswordOpen]=useState(false);
   const refresh=()=>{setBranches(current=>[...current]);void api<Branch[]>('/branches').then(list=>{setBranches(list);setBranchId(current=>list.some(branch=>branch.id===current)?current:list[0]?.id??'');}).catch(()=>{});};
   useEffect(()=>{void purgeOfflineCopy();},[]);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#2E1065');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
@@ -60,13 +60,7 @@ export default function App(){
       else setMessage('Não foi possível conectar ao servidor. Tente novamente.');
     }finally{if(active)setReady(true);}
   })();return()=>{active=false;};},[]);
-  useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setMobileMenu(false);setUserMenu(false);}};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
-  useEffect(()=>{
-    if(!userMenu)return;
-    const onPointerDown=(event:MouseEvent)=>{if(!(event.target instanceof Element)||!event.target.closest('.user-menu'))setUserMenu(false);};
-    document.addEventListener('mousedown',onPointerDown);
-    return()=>document.removeEventListener('mousedown',onPointerDown);
-  },[userMenu]);
+  useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
   async function logout(){try{await post('/auth/logout',{});}finally{setUser(null);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
   if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===result.user.branchId)?.id??list[0]?.id??'');}}/>;
@@ -79,9 +73,13 @@ export default function App(){
   const updateDialogValue=(value:string)=>setDialog(current=>current?{...current,value}:current);
   const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:user.role==='consulta',admin,refresh,notice:showNotice,askConfirm,askPrompt};
   const visibleTabs=tabs.filter(({key})=>!['administracao','importacao','historico'].includes(key)||admin);
-  const current=tabs.find(({key})=>key===page);
   function navigate(next:string,preset?:PeoplePreset){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}if(next==='pessoas')setPeoplePreset(preset);}
   function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
+  function openAlert(key:NotificationKey){
+    if(key==='withoutLocker')navigate('pessoas',{withoutLocker:true});
+    else if(key==='registrationPending')navigate('pendencias');
+    else openLockers({doublePartial:true});
+  }
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
     {mobileMenu&&<button type="button" className="mobile-scrim" aria-label="Fechar menu" onClick={()=>setMobileMenu(false)}/>}
@@ -96,20 +94,10 @@ export default function App(){
       </div>
     </aside>
     <div className="main-area">
-      <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button><span className="topbar-brand"><LockerisIcon size={28}/><strong>Lockeris<span className="brand-dot">*</span></strong></span>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários e acessos.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
-        {branches.length>1?<div className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><Select className="branch-select-field" ariaLabel="Filial" value={branchId}
-          onChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
-          options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
-        <span className="status online"><Wifi size={15} aria-hidden="true"/>Conectado</span>
-        <div className="user-menu">
-          <button type="button" className="user-menu-toggle" aria-label={`Conta de ${user.username}`} aria-haspopup="menu" aria-expanded={userMenu} onClick={()=>setUserMenu(open=>!open)}>
-            <UsersRound size={16} aria-hidden="true"/><span>{user.username}</span><ChevronDown size={14} aria-hidden="true"/>
-          </button>
-          {userMenu&&<div className="user-menu-popover" role="menu">
-            <button type="button" role="menuitem" onClick={()=>{setUserMenu(false);setPasswordOpen(true);}}>Alterar senha</button>
-          </div>}
-        </div>
-      </div></header>
+      <Header page={page} tabs={tabs} theme={theme} onToggleTheme={toggleTheme} branches={branches} branchId={branchId}
+        mobileMenu={mobileMenu} onToggleMobileMenu={()=>setMobileMenu(open=>!open)} user={user} onChangePassword={()=>setPasswordOpen(true)}
+        onAlert={openAlert}
+        onBranchChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}/>
       {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
         {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
           <div className="app-dialog-heading"><span className="eyebrow">Atualização</span><button type="button" className="app-dialog-close" onClick={()=>{setMessage('');setNoticeAction(undefined);}} aria-label="Fechar aviso">×</button></div>
@@ -131,9 +119,6 @@ export default function App(){
   </div>;
 }
 
-function ThemeSwitch({theme,onToggle}:{theme:Theme;onToggle:()=>void}){
-  return <button type="button" className="theme-switch" role="switch" aria-label="Modo escuro" aria-checked={theme==='dark'} title={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'} onClick={onToggle}><Sun size={15} aria-hidden="true"/><span className="theme-switch-thumb" aria-hidden="true"/><Moon size={15} aria-hidden="true"/></button>;
-}
 function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void;theme:Theme;onToggleTheme:()=>void}){
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [revealPassword,setRevealPassword]=useState(false);

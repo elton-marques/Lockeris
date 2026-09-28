@@ -141,6 +141,23 @@ A aba **Transferências** (`apps/web/src/pages/Transfers.tsx`) recebeu o subtít
 - **Dark mode:** o atributo `data-theme="dark"` em `<html>` troca as variáveis do `theme.css`; o controle fica no canto da tela de acesso e no topo do painel.
 - **Impressão de termos em CSS:** o Termo de Responsabilidade (`apps/web/src/components/TermoResponsabilidade.tsx`) é renderizado junto ao drawer e impresso só com CSS (`termo-print.css`), sem PDF nem dependência externa — a página esconde a interface, força fundo branco e sai do modo escuro durante a impressão. A folha é fixada em `@page { size: A4 portrait; margin: 10mm }` e o container recebe `page-break-inside: avoid` / `break-inside: avoid`, ocupando a largura útil total da página (190mm com `box-sizing: border-box`) e cerca de 85% da altura útil: as células do formulário e das colunas usam `padding: 8px 12px`, o corpo do texto sai em `14px` com `line-height: 1.4`, a lista de regras em `0.85rem` com `line-height: 1.35` e a área de assinatura ganhou `height: 120px` + `margin-top: 2rem` para respiro do *Ass. Colaborador*. O resultado segue cabendo em exatamente **1 página A4** sem ficar miniaturizado, e o rodapé `FOR.PRP.0020` (Controle de Revisão) não vaza para a segunda folha.
 
+## Central de alertas
+
+O topo da aplicação ganhou o sino de alertas, ao lado do seletor de filial (`NotificationCenter` em `apps/web/src/components/Header.tsx`, estilos `.notification-*` em `design-system.css`). `GET /api/branches/:id/notifications` (`apps/api/src/notifications.ts`) devolve a data da checagem e três entradas que ficam sempre visíveis no menu, com contagem zero quando não há nada pendente:
+
+- **Colaboradores sem armário** — vínculos ativos sem ocupação aberta; o item abre `Colaboradores` com o filtro *Sem armário* ligado.
+- **Pendências cadastrais** — pendências abertas dos tipos `sem_matricula`, `ausente_ti`, `dados_alterados` e `identificacao_conflitante`; leva para a aba `Pendências`.
+- **Duplos subutilizados** — armários duplos com exatamente uma ocupação, sem setor ocupante e fora dos setores exclusivos (transporte pesado, conservação, limpeza e manutenção); abre o painel de armários com o filtro *Duplos parciais*.
+
+A contagem total vira badge (`.notification-badge`) apenas quando há alertas, o menu abre com `role="menu"` e fecha no clique fora, em `Esc` ou ao escolher um item, e a lista é recarregada a cada minuto. Os estilos usam as variáveis de tema, cobrindo o modo escuro sem regras separadas.
+
+## Higienização de base
+
+A seção **Higienização de base** (`#sanitation` em `apps/web/src/pages/Admin.tsx`) lista os cadastros ativos, sem armário e sem movimentação dentro da janela escolhida (30 a 3650 dias, padrão 90), com seleção individual ou total antes da exclusão:
+
+- `GET /api/branches/:id/people/stale` devolve até 500 linhas com pessoa, matrícula, setor e última movimentação (`staleRows` em `apps/api/src/sanitation.ts`).
+- `POST /api/people/bulk-purge` recebe a seleção de vínculos e trava cada vínculo na transação (a mesma trava usada pela ocupação). Quem tiver armário aberto é recusado com `409 ARMARIO_VINCULADO` e o nome de quem bloqueia; depois são removidas as exceções, as pendências e os vínculos, e a pessoa é apagada quando não resta nenhum vínculo.
+- A operação gera o evento `cadastros_purgados` no Histórico, exige perfil de administração da filial nas duas rotas e passa por confirmação em `alertdialog` antes de excluir.
 ## Trilha de auditoria (Histórico)
 
 A tela **Histórico** (`apps/web/src/pages/History.tsx`) lê `GET /api/branches/:id/history`, que devolve cada evento da tabela `events` já com o contexto da operação gravado no momento da escrita (`event()` em `apps/api/src/operations.ts`):

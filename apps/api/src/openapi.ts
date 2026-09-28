@@ -15,6 +15,7 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/branches\/:branchId\/people\/:itemId\/status$/,schema:withOperation({expectedVersion:z.number().int().positive(),status:z.enum(['ativo','encerrado'])}),summary:'Excluir ou reativar cadastro'},
   {match:/^POST \/api\/branches\/:branchId\/people\/:itemId\/exception$/,schema:withOperation({expectedVersion:z.number().int().positive(),reason:z.string()}),summary:'Justificar exceção de armário'},
   {match:/^POST \/api\/branches\/:branchId\/people\/archive$/,schema:withOperation({all:z.boolean(),membershipIds:z.array(id)}),summary:'Excluir colaboradores da base ativa'},
+  {match:/^POST \/api\/people\/bulk-purge$/,schema:withOperation({branchId:id,membershipIds:z.array(id)}),summary:'Excluir cadastros obsoletos em lote'},
   {match:/^POST \/api\/branches\/:branchId\/lockers$/,schema:lockerInput.and(operation),summary:'Criar armário'},
   {match:/^PATCH \/api\/branches\/:branchId\/lockers\/:itemId$/,schema:lockerInput.omit({number:true}).partial().and(operation).and(z.object({expectedVersion:z.number().int().positive()})),summary:'Alterar armário'},
   {match:/^POST \/api\/branches\/:branchId\/allocations\/occupy$/,schema:occupyInput,summary:'Registrar ocupação'},
