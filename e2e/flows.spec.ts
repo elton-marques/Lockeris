@@ -383,7 +383,7 @@ test('card troca matrícula e permite segundo ocupante em armário duplo',async(
   await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Dora Oficial');
   await page.screenshot({path:'test-results/visual/13-edicao-matricula.png'});
   await dialog.getByRole('button',{name:'Salvar ocupante'}).click();
-  await expect(page.getByRole('alertdialog').getByRole('heading',{name:/Dora Oficial/})).toBeVisible();
+  await expect(page.getByRole('alertdialog').getByRole('heading',{name:'Informações do armário'})).toBeVisible();
   await page.getByRole('alertdialog').getByRole('button',{name:'Fechar',exact:true}).click();
   await expect(dialog.locator('.occupant-slot').filter({hasText:'Dora Oficial'})).toBeVisible();
   await expect(dialog.getByRole('button',{name:'Adicionar 2º ocupante'})).toBeVisible();
@@ -391,7 +391,7 @@ test('card troca matrícula e permite segundo ocupante em armário duplo',async(
   await dialog.getByRole('combobox',{name:'Matrícula',exact:true}).fill('0005');
   await expect(dialog.getByLabel('Nome',{exact:true})).toHaveValue('Eva Oficial');
   await dialog.getByRole('button',{name:'Salvar ocupante'}).click();
-  await expect(page.getByRole('alertdialog').getByRole('heading',{name:/Eva Oficial/})).toBeVisible();
+  await expect(page.getByRole('alertdialog').getByRole('heading',{name:'Informações do armário'})).toBeVisible();
   await page.getByRole('alertdialog').getByRole('button',{name:'Fechar',exact:true}).click();
   await expect(dialog.locator('.list-row')).toHaveCount(2);
   await page.screenshot({path:'test-results/visual/16-ocupantes-duplos.png'});
