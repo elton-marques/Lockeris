@@ -98,7 +98,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         WHERE id=ANY($1::uuid[])`,[selected]);
       if (selected.length) await client.query('UPDATE branches SET ti_revision=ti_revision+1,version=version+1 WHERE id=$1',[branchId]);
       await refreshPending(client,branchId);
-      await event(client,branchId,actor.id,'colaboradores_removidos_da_base','membership',null,{count:selected.length,ids:selected},{description:'Colaboradores removidos da base ativa'});
+      await event(client,branchId,actor.id,'colaboradores_removidos_da_base','membership',null,{count:selected.length,ids:selected},{description:'Cadastros excluídos da base ativa'});
       return {removed:selected.length};
     }));
   });
@@ -159,7 +159,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       const { rows } = await client.query('UPDATE memberships SET status=$2,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[itemId,body.status]);
       await event(client,branchId,actor.id,body.status==='encerrado'?'atuacao_encerrada':'atuacao_reativada','membership',itemId,{},
         {lockerNumber:old.locker_number,personName:old.person_name,personRegistration:old.registration,
-          description:body.status==='encerrado'?'Atuação encerrada':'Atuação reativada'});
+          description:body.status==='encerrado'?'Cadastro excluído':'Cadastro reativado'});
       await refreshPending(client,branchId); return rows[0];
     }));
   });

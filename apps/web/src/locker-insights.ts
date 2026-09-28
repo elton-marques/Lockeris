@@ -7,7 +7,7 @@ export const pendingKindLabels:Record<string,string>={
   sem_matricula:'Pessoa sem matrícula validada',
   ausente_ti:'Matrícula não encontrada na base atual',
   sem_armario:'Pessoa precisa de armário',
-  atuacao_encerrada:'Cadastro encerrado com armário',
+  atuacao_encerrada:'Cadastro excluído com armário',
   sazonal_vencida:'Prazo de ocupação vencido',
   compartilhamento_vencido:'Prazo de compartilhamento vencido',
   migracao_inconclusiva:'Dados do armário a conferir',

@@ -167,9 +167,9 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
         department:draft.department.trim()||null,functionName:draft.functionName.trim()||null}:null}),
     `Informações do armário #${locker.number} salvas.`,scope==='attributes',cancelOccupantEdit);}
   async function release(occupant:Occupant){
-    if(!locker||!await askConfirm(`Desocupar o armário ${locker.number} e encerrar a ocupação de ${occupant.name}?`))return;
+    if(!locker||!await askConfirm(`Desocupar o armário ${locker.number} e remover o ocupante ${occupant.name}?`))return;
     act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:occupant.allocationId,
-      expectedVersion:occupant.allocationVersion}),`Ocupação do armário #${locker.number} encerrada com sucesso.`);
+      expectedVersion:occupant.allocationVersion}),`Armário #${locker.number} desocupado com sucesso.`);
   }
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
     if(event.key==='Escape'){event.preventDefault();setSelected(null);return;}

@@ -187,7 +187,7 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
           <div className="insight-heading"><div><h2 id="quick-widget-title">Ações rápidas</h2><p>Atalhos para a rotina do dia</p></div></div>
           <div className="quick-grid">
             <button type="button" className="quick-action" onClick={()=>onOpenLockers({status:'com_vaga'})}>
-              <span className="quick-icon"><Plus size={17} aria-hidden="true"/></span><strong>+ Atribuir / Desocupar Armário</strong><small>Abra a lista de armários com vaga para cadastrar ou encerrar uma ocupação.</small></button>
+              <span className="quick-icon"><Plus size={17} aria-hidden="true"/></span><strong>+ Atribuir / Desocupar Armário</strong><small>Abra a lista de armários com vaga para cadastrar ou desocupar um armário.</small></button>
             {canManage&&<button type="button" className="quick-action" onClick={()=>onNavigate('importacao')}>
               <span className="quick-icon"><Upload size={17} aria-hidden="true"/></span><strong>Importar Planilha de Colaboradores</strong><small>Envie a base mensal e confira inclusões, alterações e ausências.</small></button>}
             <button type="button" className="quick-action" onClick={()=>onNavigate('pendencias')}>

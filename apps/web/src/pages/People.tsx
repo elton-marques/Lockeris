@@ -10,7 +10,7 @@ type Person={id:string;person_id:string;name:string;registration:string|null;cat
 type Locker={id:string;number:string;version:number;modality:'fixo'|'rotativo';condition:string;migration_status:string;sector_occupant:string|null;
   occupants:{allocationId:string;allocationVersion:number;personId:string}[];capacity:number;is_double:boolean};
 const empty={name:'',registration:'',category:'vinculo_nao_identificado',company:'',department:'',functionName:'',needsFixed:true};
-const labels:Record<string,string>={colaborador:'Colaborador',promotor_fixo:'Promotor(a)',roteirista:'Roteirista',terceirizado:'Terceirizado',vinculo_nao_identificado:'Vínculo não identificado'};
+const labels:Record<string,string>={colaborador:'Colaborador',promotor_fixo:'Promotor(a)',roteirista:'Roteirista',terceirizado:'Terceirizado',vinculo_nao_identificado:'Pendência Cadastral'};
 export function People({branchId,branchName,readonly,refresh,notice,askConfirm,askPrompt,admin=false,preset}:PageProps&{preset?:PeoplePreset}){
   const [people,setPeople]=useState<Person[]>([]),[lockers,setLockers]=useState<Locker[]>([]),[q,setQ]=useState(''),[category,setCategory]=useState('');
   const [onlyWithoutLocker,setOnlyWithoutLocker]=useState(preset?.withoutLocker??false);
@@ -53,7 +53,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
     (locker.occupants.length===0||locker.is_double&&locker.occupants.length<locker.capacity));
   function startEdit(person:Person){setEditing(person);setForm({name:person.name,registration:person.registration??'',category:person.category,company:person.company??'',department:person.department??'',functionName:person.function_name??'',needsFixed:person.needs_fixed});}
   async function save(event:React.FormEvent){event.preventDefault();setBusy(true);try{
-    if(form.category==='terceirizado'&&!form.company.trim())throw new Error('Informe a empresa parceira confirmada ou selecione Vínculo não identificado.');
+    if(form.category==='terceirizado'&&!form.company.trim())throw new Error('Informe a empresa parceira confirmada ou selecione Pendência Cadastral.');
     if(form.category==='vinculo_nao_identificado'&&form.registration.trim())throw new Error('Valide a matrícula e escolha a categoria correspondente.');
     const payload={...form,registration:form.registration||null,company:form.company||null,department:form.department||null,functionName:form.functionName||null,operationId:op()};
     if(editing)await patch(`/branches/${branchId}/people/${editing.id}`,{...payload,expectedVersion:editing.version});
@@ -61,9 +61,12 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
     setForm(empty);setEditing(null);await afterMutation('Cadastro salvo.');
   }catch(error){notice(error instanceof Error?error.message:'Falha ao salvar');}finally{setBusy(false);}}
   async function status(person:Person){const next=person.status==='ativo'?'encerrado':'ativo';
-    if(!await askConfirm(`${next==='encerrado'?'Encerrar atuação':'Reativar'} de ${person.name}? Ocupação atual permanece até liberação explícita.`))return;
+    const question=next==='encerrado'
+      ?`Tem certeza que deseja excluir o colaborador ${person.name} da base? A ocupação atual permanece até a desocupação explícita.`
+      :`Reativar o cadastro de ${person.name} na base?`;
+    if(!await askConfirm(question))return;
     try{await post(`/branches/${branchId}/people/${person.id}/status`,{operationId:op(),expectedVersion:person.version,status:next});
-      setDetails(null);await afterMutation('Situação atualizada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
+      setDetails(null);await afterMutation(next==='encerrado'?'Cadastro excluído.':'Cadastro reativado.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
   async function exception(person:Person){const reason=await askPrompt(`Por que ${person.name} não precisa de armário?`);if(!reason)return;
     try{await post(`/branches/${branchId}/people/${person.id}/exception`,{operationId:op(),expectedVersion:person.version,reason});
       setDetails(null);await afterMutation('Dispensa de armário registrada.');}catch(error){notice(error instanceof Error?error.message:'Falha');}}
@@ -71,7 +74,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
     const person=details;if(!person)return;
     const cabinet=available.find(item=>item.id===lockerId),source=lockers.find(item=>item.id===person.locker_id);
     if(!cabinet||!keyCopy||source?.id===cabinet.id||source&&!transferReason.trim())return;setBusy(true);
-    if(!await askConfirm(`${source?`Transferir ${person.name} do armário ${source.number} para o ${cabinet.number}`:`Atribuir o armário ${cabinet.number} a ${person.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`)){setBusy(false);return;}
+    if(!await askConfirm(`${source?`Transferir ${person.name} do armário ${source.number} para o ${cabinet.number}`:`Atribuir o armário ${cabinet.number} a ${person.name}`} na filial ${branchName}?${source?' O armário anterior ficará desocupado.':''}`)){setBusy(false);return;}
     try{
       if(source){const allocation=source.occupants.find(item=>item.personId===person.person_id);if(!allocation)throw new Error('Ocupação atual não encontrada; recarregue a página');
         await post(`/branches/${branchId}/allocations/transfer`,{operationId:op(),allocationId:allocation.allocationId,expectedAllocationVersion:allocation.allocationVersion,
@@ -86,12 +89,12 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
   }
   async function archive(all=false){
     if(!all&&!selected.length)return;
-    const count=all?'todos os colaboradores ativos':`${selected.length} colaborador(es)`;
-    if(!await askConfirm(`Remover ${count} da base ativa? Armários ainda ocupados ficarão pendentes de conferência.`))return;
+    const count=all?'toda a base de colaboradores':`${selected.length} cadastro(s)`;
+    if(!await askConfirm(`Excluir ${count} da base ativa? Armários ainda ocupados ficarão pendentes de conferência.`))return;
     setBusy(true);
     try{const result=await post<{removed:number}>(`/branches/${branchId}/people/archive`,{operationId:op(),all,membershipIds:all?[]:selected});
-      setSelected([]);await afterMutation(`${result.removed} colaborador(es) removido(s) da base ativa.`);
-    }catch(error){notice(error instanceof Error?error.message:'Falha ao remover');}finally{setBusy(false);}
+      setSelected([]);await afterMutation(`${result.removed} cadastro(s) excluído(s) da base ativa.`);
+    }catch(error){notice(error instanceof Error?error.message:'Falha ao excluir');}finally{setBusy(false);}
   }
   return <>
     <DataState loading={loading} error={loadError} onRetry={()=>{load().catch(()=>{});}}/>
@@ -109,8 +112,8 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
       </div>
       {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={visibleCollaborators.length>0&&visibleCollaborators.every(person=>selected.includes(person.id))}
         onChange={event=>setSelected(event.target.checked?[...new Set([...selected,...visibleCollaborators.map(person=>person.id)])]:selected.filter(id=>!visibleCollaborators.some(person=>person.id===id)))}/>
-        Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Remover selecionados ({selected.length})</button>
-        <button disabled={busy} onClick={()=>archive(true)}>Limpar toda a base de colaboradores</button></div>}
+        Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Excluir selecionados ({selected.length})</button>
+        <button disabled={busy} onClick={()=>archive(true)}>Excluir toda a base de colaboradores</button></div>}
       {!filtered.length?<EmptyState title={people.length?'Nenhuma pessoa encontrada':'Nenhuma pessoa na base ativa'} description={people.length?'Revise a busca, a categoria ou o filtro de armários.':'Confira a importação de colaboradores ou cadastre uma pessoa externa.'}/>:<div className="table-wrap people-table"><table><thead><tr>{admin&&!readonly&&<th>Selecionar</th>}<th>Pessoa</th><th>Categoria</th><th>Setor / função</th><th>Situação</th><th>Armário</th><th>Ações</th></tr></thead>
         <tbody>{filtered.map(person=><tr key={person.id} className="people-row" onClick={()=>setDetails(person)}>{admin&&!readonly&&<td data-label="Selecionar" onClick={event=>event.stopPropagation()}>{person.category==='colaborador'&&<input type="checkbox" aria-label={`Selecionar ${person.name}`}
           checked={selected.includes(person.id)} onChange={event=>setSelected(event.target.checked?[...selected,person.id]:selected.filter(id=>id!==person.id))}/>}</td>}
@@ -123,7 +126,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
       <p>Colaboradores da filial vêm da planilha de matrículas. Cadastre aqui pessoas externas ou com vínculo ainda não confirmado.</p></div>{editing&&<button onClick={()=>{setEditing(null);setForm(empty);}}>Cancelar edição</button>}</div>
       <form className="form-grid" onSubmit={save}><label>Nome<input required minLength={2} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label>
         <label>Categoria<select value={form.category} onChange={event=>setForm({...form,category:event.target.value,needsFixed:event.target.value==='promotor_fixo'})}>
-          <option value="vinculo_nao_identificado">Vínculo não identificado</option><option value="promotor_fixo">Promotor(a)</option><option value="terceirizado">Terceirizado</option></select></label>
+          <option value="vinculo_nao_identificado">Pendência Cadastral</option><option value="promotor_fixo">Promotor(a)</option><option value="terceirizado">Terceirizado</option></select></label>
         <label>Matrícula<input required={form.category==='promotor_fixo'} value={form.registration} onChange={event=>setForm({...form,registration:event.target.value})}/></label>
         <label>Empresa / marca<input value={form.company} onChange={event=>setForm({...form,company:event.target.value})}/></label>
         <label>Setor<input value={form.department} onChange={event=>setForm({...form,department:event.target.value})}/></label>
@@ -137,7 +140,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
           <h2 id="person-dialog-title">{details.name}</h2>
           <div className="locker-title-badges"><span className="badge">{labels[details.category]??'Outra categoria'}</span>
             <span className="badge">{details.registration?`Matrícula ${details.registration}`:'Sem matrícula'}</span></div>
-          <p className="locker-title-sub">{details.status==='ativo'?'Ativa na filial':'Atuação encerrada'} · {details.number?`armário ${details.number}`:'sem armário'}</p></div>
+          <p className="locker-title-sub">{details.status==='ativo'?'Ativa na filial':'Cadastro excluído'} · {details.number?`armário ${details.number}`:'sem armário'}</p></div>
           <div className="row-actions"><button ref={closeRef} type="button" onClick={()=>setDetails(null)}>Fechar</button></div></div>
         <section className="locker-card" aria-labelledby="person-data-title">
           <div className="locker-card-head"><h3 id="person-data-title"><span className="card-icon"><User size={16} aria-hidden="true"/></span>Cadastro</h3>
@@ -172,7 +175,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
         </section>}
         {!readonly&&<div className="row-actions">
           {details.category!=='colaborador'&&<button type="button" onClick={editFromDetails}>Editar cadastro</button>}
-          {details.category!=='colaborador'&&<button type="button" onClick={()=>status(details)}>{details.status==='ativo'?'Encerrar atuação':'Reativar atuação'}</button>}
+          {details.category!=='colaborador'&&<button type="button" onClick={()=>status(details)}>{details.status==='ativo'?'Excluir cadastro':'Reativar cadastro'}</button>}
           {details.category!=='colaborador'&&details.needs_fixed&&!details.locker_id&&<button type="button" onClick={()=>exception(details)}>Exceção</button>}
           <button type="button" onClick={()=>setDetails(null)}>Fechar</button>
         </div>}

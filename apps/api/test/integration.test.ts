@@ -446,7 +446,7 @@ describe('regras transacionais',()=>{
     expect(history.statusCode).toBe(200);
     const ended=(history.json() as {kind:string;locker_number:string|null;person_name:string|null;person_registration:string|null;description:string|null}[])
       .find(item=>item.kind==='ocupacao_encerrada');
-    expect(ended).toMatchObject({locker_number:'102',person_name:'Carlos Souza',person_registration:'10452',description:'Ocupação encerrada'});
+    expect(ended).toMatchObject({locker_number:'102',person_name:'Carlos Souza',person_registration:'10452',description:'Armário desocupado'});
     const branches=await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}});
     expect(JSON.stringify(branches.json())).not.toContain('"city"');
   });

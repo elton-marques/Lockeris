@@ -14,12 +14,12 @@ export function Transfers({branchId}:PageProps){
     catch(e){setError(e instanceof Error?e.message:'Confira a conexão e tente novamente.');throw e;}finally{setLoading(false);}}
   useEffect(()=>{load().catch(()=>{});},[branchId]);
   const shown=items.filter(x=>filter==='todas'||(filter==='ativas'?x.ended_at===null:x.ended_at!==null));
-  return <><DataState loading={loading} error={error} onRetry={()=>{load().catch(()=>{});}}/>{!loading&&!error&&<><section className="card"><div className="section-head"><div><span className="eyebrow">Ocupações</span><h2>Histórico de Ocupações e Transferências</h2><p>Acompanhe as ocupações registradas e as trocas de armário da filial.</p></div><SelectField label="Exibir" value={filter} onChange={value=>setFilter(value as Filter)} options={[{value:'ativas',label:'Ativas'},{value:'encerradas',label:'Encerradas'},{value:'todas',label:'Todas'}]}/></div>
+  return <><DataState loading={loading} error={error} onRetry={()=>{load().catch(()=>{});}}/>{!loading&&!error&&<><section className="card"><div className="section-head"><div><span className="eyebrow">Ocupações</span><h2>Histórico de Ocupações e Transferências</h2><p>Acompanhe as ocupações registradas e as trocas de armário da filial.</p></div><SelectField label="Exibir" value={filter} onChange={value=>setFilter(value as Filter)} options={[{value:'ativas',label:'Ativas'},{value:'encerradas',label:'Desocupadas'},{value:'todas',label:'Todas'}]}/></div>
       {shown.length?<div className="table-wrap movement-table"><table><thead><tr><th>PESSOA / SETOR</th><th>ARMÁRIO</th><th>ENTRADA</th><th>SITUAÇÃO</th></tr></thead><tbody>{shown.map(x=><tr key={x.id}>
         <td data-label="Pessoa / Setor"><strong>{x.name}</strong>{x.sector&&<small>{x.sector}</small>}</td>
         <td data-label="Armário">№ {x.number}</td>
         <td data-label="Entrada">{stamp(x.started_at)}</td>
-        <td data-label="Situação"><span className={`status-badge ${x.ended_at?'status-badge--closed':'status-badge--active'}`}>{x.ended_at?'Encerrada':'Ativa'}</span></td>
+        <td data-label="Situação"><span className={`status-badge ${x.ended_at?'status-badge--closed':'status-badge--active'}`}>{x.ended_at?'Desocupada':'Ativa'}</span></td>
       </tr>)}</tbody></table></div>:<EmptyState title="Nenhuma ocupação neste filtro" description="Altere o filtro para consultar outros registros."/>}</section>
     <section className="card"><h2>Histórico de trocas de armário</h2><p>Transferências registradas com pessoa, armário anterior, novo armário e motivo.</p>
       <div className="table-wrap history-table"><table><thead><tr><th>DATA</th><th>PESSOA</th><th>DE</th><th>PARA</th><th>MOTIVO</th></tr></thead>

@@ -71,7 +71,7 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       const locker = (await lockedLockers(client,branchId,[body.lockerId])).get(body.lockerId)!;
       const member = await one<{ status: string; person_id: string; registration: string | null; person_name: string }>(client,
         'SELECT m.status,m.person_id,m.registration,p.name person_name FROM memberships m JOIN people p ON p.id=m.person_id WHERE m.person_id=$1 AND m.branch_id=$2 FOR UPDATE OF m',[body.personId,branchId]);
-      if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com atuação encerrada');
+      if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com cadastro excluído');
       if (locker.modality !== body.modality) fail(409,'MODALIDADE','Modalidade incompatível com o armário');
       await checkDestination(client,branchId,locker,body.expectedVersion,body.sharingReason,body.sharingDueAt);
       const { rows } = await client.query(`INSERT INTO allocations(branch_id,locker_id,person_id,modality,seasonal,started_at,due_at,reason,note,started_by)
@@ -92,12 +92,12 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
         WHERE a.id=$1 AND a.branch_id=$2`,[body.allocationId,branchId]);
       const releaseLocker = (await lockedLockers(client,branchId,[initial.locker_id])).get(initial.locker_id)!;
       const allocation = await one<Allocation>(client,'SELECT * FROM allocations WHERE id=$1 AND branch_id=$2 FOR UPDATE',[body.allocationId,branchId]);
-      if (allocation.ended_at || allocation.version !== body.expectedVersion) fail(409,'ALOCACAO','Alocação alterada ou já encerrada');
+      if (allocation.ended_at || allocation.version !== body.expectedVersion) fail(409,'ALOCACAO','Alocação alterada ou já desocupada');
       const { rows } = await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,note=COALESCE($3,note),version=version+1 WHERE id=$1 RETURNING *',[body.allocationId,actor.id,body.note]);
       await client.query('UPDATE lockers SET version=version+1 WHERE id=$1',[allocation.locker_id]);
       await endSharingIfSolo(client,branchId,allocation.locker_id,actor.id);
       await event(client,branchId,actor.id,'ocupacao_encerrada','allocation',allocation.id,{ lockerId: allocation.locker_id, personId: allocation.person_id },
-        { lockerNumber: releaseLocker.number, personName: initial.person_name ?? null, personRegistration: initial.registration ?? null, description: 'Ocupação encerrada' });
+        { lockerNumber: releaseLocker.number, personName: initial.person_name ?? null, personRegistration: initial.registration ?? null, description: 'Armário desocupado' });
       await refreshPending(client,branchId); return rows[0];
     }));
   });
@@ -117,9 +117,9 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
          LEFT JOIN memberships m ON m.person_id=a.person_id AND m.branch_id=a.branch_id
          WHERE a.id=$1 FOR UPDATE OF a`,[body.allocationId]);
       if(allocation.modality!=='fixo')fail(409,'MODALIDADE','Transferências novas exigem ocupação fixa');
-      if (allocation.ended_at || allocation.version !== body.expectedAllocationVersion) fail(409,'ALOCACAO','Alocação alterada ou já encerrada');
+      if (allocation.ended_at || allocation.version !== body.expectedAllocationVersion) fail(409,'ALOCACAO','Alocação alterada ou já desocupada');
       const member = await one<{ status: string }>(client,'SELECT status FROM memberships WHERE branch_id=$1 AND person_id=$2',[branchId,allocation.person_id]);
-      if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com atuação encerrada');
+      if (member.status !== 'ativo') fail(409,'ATUACAO','Pessoa com cadastro excluído');
       if (destination.modality !== allocation.modality) fail(409,'MODALIDADE','Modalidade incompatível');
       await checkDestination(client,branchId,destination,body.destinationVersion,body.sharingReason,body.sharingDueAt);
       await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,version=version+1 WHERE id=$1',[allocation.id,actor.id]);

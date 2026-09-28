@@ -6,9 +6,9 @@ import {DataState,EmptyState} from '../ui';
 type RecordItem={id:number;kind:string;entity_type:string;details:unknown;happened_at:string;
   locker_number:string|null;person_name:string|null;person_registration:string|null;sector_name:string|null;description:string|null};
 const events:Record<string,string>={
-  filial_criada:'Filial criada',colaboradores_removidos_da_base:'Colaboradores removidos da base ativa',
+  filial_criada:'Filial criada',colaboradores_removidos_da_base:'Cadastros excluídos da base ativa',
   pessoa_cadastrada:'Pessoa cadastrada',pessoa_alterada:'Cadastro de pessoa atualizado',
-  atuacao_encerrada:'Atuação encerrada',atuacao_reativada:'Atuação reativada',
+  atuacao_encerrada:'Cadastro excluído',atuacao_reativada:'Cadastro reativado',
   armario_criado:'Armário cadastrado',armario_alterado:'Dados do armário atualizados',armario_revisado:'Armário conferido',
   copia_chave_atualizada:'Cópia da chave atualizada',dados_ti_alterados:'Dados oficiais atualizados',
   pessoa_ti_incluida:'Colaborador incluído na base ativa',lote_ti_aplicado:'Base de colaboradores atualizada',
@@ -18,7 +18,7 @@ const events:Record<string,string>={
   senha_redefinida:'Senha redefinida',dispositivo_autorizado:'Navegador autorizado para consulta',
   dispositivo_revogado:'Autorização de consulta revogada',armarios_importados:'Armários importados',
   compartilhamento_autorizado:'Compartilhamento autorizado',compartilhamento_encerrado:'Compartilhamento encerrado',
-  ocupacao_iniciada:'Armário atribuído',ocupacao_encerrada:'Ocupação encerrada',ocupacao_transferida:'Armário transferido',
+  ocupacao_iniciada:'Armário atribuído',ocupacao_encerrada:'Armário desocupado',ocupacao_transferida:'Armário transferido',
   previsao_alterada:'Prazo da ocupação atualizado',sazonal_efetivada:'Ocupação mantida sem prazo',
   compartilhamento_renovado:'Prazo de compartilhamento atualizado',
   ocupacao_provisoria_reconhecida:'Ocupação provisória reconhecida',

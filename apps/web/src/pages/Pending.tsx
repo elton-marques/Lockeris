@@ -19,11 +19,11 @@ type Item={id:string;version:number;kind:string;subject_type:string;subject_id:s
   reason:string|null;resolution:string|null;updated_at:string};
 type Person={person_id:string;department:string|null;status:string};
 const labels:Record<string,string>={sem_matricula:'Pessoa sem matrícula validada',ausente_ti:'Matrícula não encontrada na base atual',sem_armario:'Pessoa precisa de armário',
-  atuacao_encerrada:'Cadastro encerrado com armário',sazonal_vencida:'Prazo de ocupação vencido',
+  atuacao_encerrada:'Cadastro excluído com armário',sazonal_vencida:'Prazo de ocupação vencido',
   compartilhamento_vencido:'Prazo de compartilhamento vencido',migracao_inconclusiva:'Dados do armário a conferir',
   dados_alterados:'Dados cadastrais alterados',identificacao_conflitante:'Identificação conflitante'};
-const resolvedLabels:Record<string,string>={sem_matricula:'Identificação cadastral concluída',sem_armario:'Necessidade de armário encerrada',migracao_inconclusiva:'Conferência do armário concluída',
-  ausente_ti:'Matrícula ausente: caso encerrado',atuacao_encerrada:'Ocupação de cadastro encerrado concluída'};
+const resolvedLabels:Record<string,string>={sem_matricula:'Identificação cadastral concluída',sem_armario:'Necessidade de armário resolvida',migracao_inconclusiva:'Conferência do armário concluída',
+  ausente_ti:'Matrícula ausente: caso resolvido',atuacao_encerrada:'Ocupação liberada após exclusão do cadastro'};
 const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const text=(value:string|null|undefined)=>value?.trim()||'Não informado';
 const lockerItem=(item:Item)=>item.kind!=='sem_armario'&&!!item.locker_number;
@@ -38,7 +38,7 @@ const originalReason=(item:Item)=>({sem_armario:'A pessoa estava ativa e precisa
   sem_matricula:'O vínculo da pessoa ainda não foi comprovado por matrícula da base oficial.',
   migracao_inconclusiva:'Os dados importados deste armário precisavam de conferência.',
   ausente_ti:'A matrícula do ocupante não constava na base atual de colaboradores.',
-  atuacao_encerrada:'O cadastro do ocupante foi encerrado enquanto o armário ainda estava ocupado.',
+  atuacao_encerrada:'O cadastro do ocupante foi excluído enquanto o armário ainda estava ocupado.',
   sazonal_vencida:'A data prevista para a ocupação terminou.',
   compartilhamento_vencido:'A data prevista para o compartilhamento terminou.',
   dados_alterados:'Os dados da pessoa mudaram na base atual.',
@@ -131,7 +131,7 @@ export function Pending({branchId,readonly,refresh,notice,askConfirm,admin=false
   function run(item:Item){if(!reviewed||busy)return;
     if(['ausente_ti','atuacao_encerrada'].includes(item.kind)&&item.allocation_id&&item.allocation_version)
       return act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:item.allocation_id,expectedVersion:item.allocation_version}),
-        item.locker_number?`Ocupação do armário #${item.locker_number} encerrada com sucesso.`:'Ocupação encerrada com sucesso.');
+        item.locker_number?`Armário #${item.locker_number} desocupado com sucesso.`:'Armário desocupado com sucesso.');
     if(item.kind==='migracao_inconclusiva'&&item.locker_version)return saveReview(true);
     if(item.kind==='sem_armario'&&item.membership_version&&note.trim().length>=3)
       return act(()=>post(`/branches/${branchId}/people/${item.subject_id}/exception`,{operationId:op(),expectedVersion:item.membership_version,reason:note.trim()}),'Dispensa de armário registrada.');
@@ -207,7 +207,7 @@ export function Pending({branchId,readonly,refresh,notice,askConfirm,admin=false
           <tbody>{selected.occupants.map(person=><tr key={person.allocationId}><td>{text(person.name)}</td><td>{text(person.registration)}</td>
             <td>{text(person.department)}</td><td>{text(person.functionName)}</td></tr>)}</tbody></table></div></div>}
         {selected.reason&&<p className="muted">Observação: {selected.reason}</p>}
-        {selected.kind==='sem_matricula'&&selected.state==='aberta'&&<p className="muted">Confira o vínculo na base oficial de colaboradores. Se a pessoa já tiver cadastro oficial, encerre o cadastro provisório após associar ou transferir sua ocupação.</p>}
+        {selected.kind==='sem_matricula'&&selected.state==='aberta'&&<p className="muted">Confira o vínculo na base oficial de colaboradores. Se a pessoa já tiver cadastro oficial, exclua o cadastro provisório após associar ou transferir sua ocupação.</p>}
         {selected.state==='resolvida'&&<p className="muted"><strong>Por que foi resolvida:</strong> {resolutionText(selected)} · {new Date(selected.updated_at).toLocaleDateString('pt-BR')}</p>}
         {admin&&!readonly&&selected.state==='aberta'&&selected.locker_number&&<div className="pending-editor">
           <h3>Corrigir dados nesta pendência</h3><p>Ao informar uma matrícula da base atual, nome, setor e função oficiais serão usados automaticamente.</p>
