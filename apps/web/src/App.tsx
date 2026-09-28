@@ -121,7 +121,7 @@ function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void
   const [revealPassword,setRevealPassword]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
   return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div>
-    <div className="auth-intro"><span className="brand-icon"><LockerisIcon size={52}/></span><span className="eyebrow">Lockeris</span>
+    <div className="auth-intro"><span className="brand-icon"><LockerisIcon size={56}/></span><span className="auth-brand">LOCKERIS</span>
       <h2>Gestão Integrada e Controle de Armários</h2>
       <p>Sistema de controle operacional de armários e rastreabilidade para Prevenção de Perdas.</p></div>
     <form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p>
@@ -132,7 +132,7 @@ function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void
           <button type="button" className="password-toggle" aria-pressed={revealPassword} title={revealPassword?'Ocultar senha':'Mostrar senha'}
             onClick={()=>setRevealPassword(current=>!current)}>
             <span className="sr-only">{revealPassword?'Ocultar senha':'Mostrar senha'}</span>
-            {revealPassword?<EyeOff size={16} aria-hidden="true"/>:<Eye size={16} aria-hidden="true"/>}
+            <span className="password-toggle-icon">{revealPassword?<EyeOff size={20} strokeWidth={2} aria-hidden="true"/>:<Eye size={20} strokeWidth={2} aria-hidden="true"/>}</span>
           </button>
         </span>
       </label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form>

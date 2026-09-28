@@ -19,7 +19,7 @@ test('login, painel, compartilhamento, cadastro, TI, pendências e administraç�
   await mkdir('test-results/visual',{recursive:true});
   await page.goto('/');
   await expect(page).toHaveTitle('Lockeris — Plataforma Integrada de Alocação e Armários');
-  await expect(page.getByText('Lockeris',{exact:true})).toBeVisible();
+  await expect(page.getByText('LOCKERIS',{exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Entrar'})).toBeVisible();
   await page.screenshot({path:'test-results/visual/01-login.png'});
   await page.getByLabel('Nome de usuário').fill('e2e');
