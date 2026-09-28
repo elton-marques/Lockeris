@@ -256,6 +256,9 @@ td small { color: var(--muted); }
 .auth-card .password-toggle-icon svg { display: block; width: 20px; height: 20px; }
 .auth-card .password-toggle:hover:not(:disabled) { background: var(--brand-surface); border-color: transparent; box-shadow: none; }
 .center .auth-card { width: min(480px, calc(100vw - 30px)); }
+.auth-page--center { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: clamp(24px, 6vw, 96px); }
+.auth-page--center .auth-intro { flex: 0 1 590px; }
+.auth-page--center .auth-card { flex: 0 1 490px; justify-self: center; }
 @supports not (backdrop-filter: blur(8px)) { .auth-card, .stat { background: #fff; } }
 @media (prefers-reduced-transparency: reduce) { .auth-card, .stat { background: #fff; backdrop-filter: none; } }
 @media (max-width: 900px) { .sidebar { width: 205px; } .topbar, .content { padding-left: 20px; padding-right: 20px; } .auth-page { grid-template-columns: 1fr; gap: 20px; } .auth-intro { display: none; } .auth-card { justify-self: center; } }

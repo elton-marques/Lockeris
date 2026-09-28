@@ -140,6 +140,32 @@ function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void
 }
 function Password({onDone,theme,onToggleTheme}:{onDone:()=>void;theme:Theme;onToggleTheme:()=>void}){
   const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [revealOld,setRevealOld]=useState(false),[revealNew,setRevealNew]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await post('/auth/password',{oldPassword,newPassword});onDone();}catch(e){setError(e instanceof Error?e.message:'Não foi possível atualizar a senha.');}finally{setBusy(false);}}
-  return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Segurança de acesso</span><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p><label>Senha temporária<input type="password" autoComplete="current-password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/></label><label>Nova senha (12 caracteres ou mais)<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar nova senha'}</button></form></main>;
+  return <main className="auth-page auth-page--center"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div>
+    <div className="auth-intro"><span className="brand-icon"><LockerisIcon size={56}/></span><span className="auth-brand">LOCKERIS</span>
+      <h2>Atualização de Credenciais</h2>
+      <p>Uma senha exclusiva protege a operação da filial e a Prevenção de Perdas.</p></div>
+    <form className="auth-card" onSubmit={submit}><span className="eyebrow">Segurança de acesso</span><h1>Troque sua senha</h1><p>A senha temporária precisa ser substituída antes de continuar.</p>
+      <label className="password-field">Senha temporária
+        <span className="password-control">
+          <input type={revealOld?'text':'password'} autoComplete="current-password" value={oldPassword} onChange={e=>setOld(e.target.value)} required/>
+          <button type="button" className="password-toggle" aria-pressed={revealOld} title={revealOld?'Ocultar senha temporária':'Mostrar senha temporária'}
+            onClick={()=>setRevealOld(current=>!current)}>
+            <span className="sr-only">{revealOld?'Ocultar senha temporária':'Mostrar senha temporária'}</span>
+            <span className="password-toggle-icon">{revealOld?<EyeOff size={20} strokeWidth={2} aria-hidden="true"/>:<Eye size={20} strokeWidth={2} aria-hidden="true"/>}</span>
+          </button>
+        </span>
+      </label>
+      <label className="password-field">Nova senha (12 caracteres ou mais)
+        <span className="password-control">
+          <input type={revealNew?'text':'password'} autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNew(e.target.value)} required/>
+          <button type="button" className="password-toggle" aria-pressed={revealNew} title={revealNew?'Ocultar nova senha':'Mostrar nova senha'}
+            onClick={()=>setRevealNew(current=>!current)}>
+            <span className="sr-only">{revealNew?'Ocultar nova senha':'Mostrar nova senha'}</span>
+            <span className="password-toggle-icon">{revealNew?<EyeOff size={20} strokeWidth={2} aria-hidden="true"/>:<Eye size={20} strokeWidth={2} aria-hidden="true"/>}</span>
+          </button>
+        </span>
+      </label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Salvando…':'Salvar nova senha'}</button></form>
+  </main>;
 }
