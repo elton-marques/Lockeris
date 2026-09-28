@@ -18,6 +18,7 @@ import {Admin} from './pages/Admin';
 
 export type NoticeAction={label:string;onClick:()=>void};
 export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
+export type PeoplePreset={withoutLocker?:boolean};
 type Branch={id:string;name:string;timezone:string;status:string;version:number};
 const tabs=[
   {key:'resumo',label:'Dashboard',icon:LayoutDashboard,group:'Operação'},
@@ -37,7 +38,7 @@ export default function App(){
   const [theme,setTheme]=useState<Theme>(()=>document.documentElement.dataset.theme==='dark'?'dark':'light');
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
   const [page,setPage]=useState<string>('painel');
-  const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
+  const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[peoplePreset,setPeoplePreset]=useState<PeoplePreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [aboutOpen,setAboutOpen]=useState(false);
@@ -79,7 +80,7 @@ export default function App(){
   const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:user.role==='consulta',admin,refresh,notice:showNotice,askConfirm,askPrompt};
   const visibleTabs=tabs.filter(({key})=>!['administracao','importacao','historico'].includes(key)||admin);
   const current=tabs.find(({key})=>key===page);
-  function navigate(next:string){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}}
+  function navigate(next:string,preset?:PeoplePreset){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}if(next==='pessoas')setPeoplePreset(preset);}
   function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
@@ -97,7 +98,7 @@ export default function App(){
     <div className="main-area">
       <header className={`topbar hide-on-print ${page==='resumo'||page==='painel'?'topbar-compact':''}`}><div className="topbar-main"><button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={()=>setMobileMenu(!mobileMenu)}><Menu size={20} aria-hidden="true"/></button><span className="topbar-brand"><LockerisIcon size={28}/><strong>Lockeris<span className="brand-dot">*</span></strong></span>{page==='resumo'||page==='painel'?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>:<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{page==='pessoas'?'Encontre pessoas, atribua ou transfira armários.':page==='pendencias'?'Confira situações que precisam de decisão.':page==='movimentacoes'?'Acompanhe ocupações e trocas registradas.':page==='importacao'?'Valide as planilhas antes de atualizar os dados.':page==='historico'?'Consulte eventos registrados na filial.':'Gerencie armários e acessos.'}</p></div>}</div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={toggleTheme}/>
         {branches.length>1?<div className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><Select className="branch-select-field" ariaLabel="Filial" value={branchId}
-          onChange={value=>{setBranchId(value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
+          onChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
           options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className="status online"><Wifi size={15} aria-hidden="true"/>Conectado</span>
         <div className="user-menu">
@@ -122,7 +123,7 @@ export default function App(){
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
-          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
+          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
     {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}

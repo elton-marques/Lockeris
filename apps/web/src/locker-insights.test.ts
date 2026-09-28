@@ -106,8 +106,9 @@ describe('indicadores executivos do painel',()=>{
   it('conta a totalidade dos promotores da filial no card de vínculos, sem limite de exibição',()=>{
     const rows=categoryShares({colaborador:20,promotor_fixo:54,terceirizado:8,vinculo_nao_identificado:6,total:88});
     expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado']);
-    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({label:'Promotores Fixos',count:54,percent:61});
-    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({count:20,percent:23});
+    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({label:'Promotor(a)',count:54,percent:61});
+    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({label:'Colaborador',count:20,percent:23});
+    expect(rows.find(row=>row.key==='vinculo_nao_identificado')).toMatchObject({label:'Pendência Cadastral',count:6,percent:7});
     expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(88);
   });
 

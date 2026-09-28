@@ -119,6 +119,10 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
       SELECT id,'103','padrao',1,'fixo' FROM branches WHERE name='Caruaru Demonstração'`);
     await pool.query(`INSERT INTO lockers(branch_id,number,size,capacity,is_double,modality)
       SELECT id,'104','padrao',2,true,'fixo' FROM branches WHERE name='Caruaru Demonstração'`);
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    const semArmario=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Promotora Sem Armário') RETURNING id")).rows[0];
+    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed)
+      VALUES($1,$2,'promotor_fixo','manual','0099',true)`,[semArmario.id,branch.id]);
     await createAdminAlias(pool,'e2e-status');
   }finally{await pool.end();}
   await page.goto('/');
@@ -137,11 +141,15 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 12','№ 101','№ 102','№ 103','№ 104']);
   await page.getByRole('button',{name:'Dashboard',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Painel da filial'})).toBeVisible();
-  await expect(page.locator('.kpi-grid .kpi-card')).toHaveCount(4);
+  await expect(page.locator('.kpi-grid .kpi-card')).toHaveCount(5);
   await expect(page.getByRole('button',{name:/^Pessoas fora da base ativa com armário/})).toBeVisible();
   await expect(page.getByText('Armários sem setor ou matrícula')).toBeVisible();
   await expect(page.getByRole('button',{name:/^Armários com cópia/})).toBeVisible();
   await expect(page.getByRole('button',{name:'Ver armários duplos'})).toBeVisible();
+  await expect(page.locator('.kpi-card--unassigned')).toContainText('Colaboradores sem Armário');
+  await expect(page.locator('.kpi-card--unassigned .kpi-value')).toHaveText('1');
+  await expect(page.locator('.kpi-card--unassigned')).toContainText('pessoa ativa sem armário vinculado');
+  await expect(page.locator('.kpi-card--unassigned').getByRole('button',{name:/Ver colaboradores sem armário/})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Pessoas por vínculo'})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Movimentações e atividade'})).toBeVisible();
   await expect(page.getByRole('button',{name:/Importar Planilha de Colaboradores/})).toBeVisible();
@@ -172,7 +180,20 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
   await expect(page.locator('.locker-tile .tile-top strong')).toHaveText(['№ 103','№ 104']);
   await page.getByRole('combobox',{name:'Situação',exact:true}).click();
   await page.locator('.select-menu').getByRole('option',{name:'Todas',exact:true}).click();
-  await page.getByRole('button',{name:'Colaboradores'}).click();
+  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
+  await expect(page.locator('.kpi-card--unassigned')).toBeVisible();
+  await page.getByRole('button',{name:'Ver colaboradores sem armário'}).click();
+  await expect(page.getByRole('heading',{name:'Colaboradores e outras pessoas'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Sem armário',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('.people-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('.people-table tbody tr')).toContainText('Promotora Sem Armário');
+  await expect(page.locator('.people-table .status-badge--warning').first()).toHaveText('Sem armário');
+  await page.locator('.people-table tbody tr').click();
+  await expect(page.getByRole('dialog').getByRole('heading',{name:'Promotora Sem Armário'})).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('Sem armário',{exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button',{name:'Colaboradores',exact:true}).click();
   await page.locator('#people-assignment').getByLabel('Matrícula',{exact:true}).fill('0001');
   await page.getByRole('button',{name:'Buscar matrícula'}).click();
   await page.locator('#people-assignment').getByLabel('Armário de destino').selectOption({label:'Armário 103'});

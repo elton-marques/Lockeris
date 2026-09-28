@@ -105,6 +105,8 @@
 :root[data-theme='dark'] :is(.movement-table,.history-table) :is(td,th){border-color:#3d4159}
 :root[data-theme='dark'] .status-badge--active{background:#23483d;color:#a9edcf}
 :root[data-theme='dark'] .status-badge--closed{background:#3a3e58;color:#c9cee4}
+:root[data-theme='dark'] .status-badge.status-badge--warning,
+:root[data-theme='dark'] .status-badge.warning{background:#453726;color:#f5dbad}
 :root[data-theme='dark'] .section-head p,
 :root[data-theme='dark'] .operational-intro p,
 :root[data-theme='dark'] .locker-list-heading p{color:#b9bed2}
@@ -147,7 +149,9 @@
 :root[data-theme='dark'] .filter-summary-left>span{border-color:#464960}
 :root[data-theme='dark'] .active-filter-list button{background:#393252;border-color:#655a91;color:#e0d7ff}
 :root[data-theme='dark'] .clear-filters,
-:root[data-theme='dark'] .locker-table .table-detail{background:transparent;color:#c9baff;border-color:transparent}
+:root[data-theme='dark'] .locker-table .table-detail,
+:root[data-theme='dark'] .people-table .table-detail{background:transparent;color:#c9baff;border-color:transparent}
+:root[data-theme='dark'] .people-table .people-row:hover{background:#292d42}
 :root[data-theme='dark'] .locker-table{border-color:#44475e}
 :root[data-theme='dark'] .locker-table th{background:#292d42;color:#c6cadf}
 :root[data-theme='dark'] .locker-table td,

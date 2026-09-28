@@ -1,15 +1,15 @@
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,KeyRound,Plus,ShieldAlert,TriangleAlert,Undo2,Upload,UserPlus} from 'lucide-react';
+import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,KeyRound,Plus,ShieldAlert,TriangleAlert,Undo2,Upload,UserPlus,UserX} from 'lucide-react';
 import {api} from '../api';
-import type {PageProps} from '../App';
+import type {PageProps,PeoplePreset} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
 import {alertLevelLabels,categoryShares,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,sectorOccupiedPositions,type CategoryLinks,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
-type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string)=>void};
+type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string,preset?:PeoplePreset)=>void};
 type AllocationRow={started_at:string|null;ended_at:string|null};
 type TransferRow={happened_at:string};
 type Movements={allocations:AllocationRow[];transfers:TransferRow[]};
-type DashboardStats={links:CategoryLinks};
+type DashboardStats={links:CategoryLinks;people:{total:string};withoutLocker:{total:number}};
 const periods=[7,30] as const;
 
 export function Overview({branchId,branchName,admin=false,onOpenLockers,onNavigate}:Props){
@@ -57,6 +57,9 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
   const pendingLockers=lockers.filter(item=>pendingIds.has(item.id)||item.migration_status==='inconclusivo').length;
   const outsideBase=openPendingWithLocker(pending,'ausente_ti');
   const untracked=lockersWithoutSectorOrRegistration(lockers);
+  const withoutLocker=stats?.withoutLocker.total??0;
+  const activePeople=Number(stats?.people.total??0);
+  const withLocker=Math.max(0,activePeople-withoutLocker);
   const missingSector=sectors.find(item=>item.anomaly);
   const movementCounts=useMemo(()=>{
     if(!movements)return null;
@@ -129,6 +132,16 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
           </span>
           <button type="button" className="kpi-action" onClick={()=>onOpenLockers({key:'nao'})}>Ver armários sem cópia <ArrowRight size={15} aria-hidden="true"/></button>
         </section>
+
+        <section className={`kpi-card kpi-card--unassigned${withoutLocker===0?' level-ok':''}`} aria-labelledby="kpi-unassigned-title">
+          <span className="kpi-head"><span className="kpi-icon"><UserX size={18} aria-hidden="true"/></span><span className="kpi-title" id="kpi-unassigned-title">Colaboradores sem Armário</span></span>
+          <span className="kpi-value-row"><strong className="kpi-value">{withoutLocker}</strong><span className="kpi-value-label">{withoutLocker===1?'pessoa ativa sem armário vinculado':'pessoas ativas sem armário vinculado'}</span></span>
+          <span className="kpi-subs">
+            <span className="kpi-sub"><span>Com armário vinculado</span><strong>{withLocker}</strong></span>
+            <span className="kpi-sub kpi-sub--highlight"><span>Base ativa da filial</span><strong>{activePeople}</strong></span>
+          </span>
+          <button type="button" className="kpi-action" onClick={()=>onNavigate('pessoas',{withoutLocker:true})}>Ver colaboradores sem armário <ArrowRight size={15} aria-hidden="true"/></button>
+        </section>
       </section>
 
       <div className="overview-widgets">
@@ -150,7 +163,7 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
             <div className="category-row-head"><span>{item.label}</span><strong>{item.count} <small>{item.percent}%</small></strong></div>
             <div className="insight-track"><span className={`category-fill fill-${item.key}`} style={{width:`${Math.max(item.count?3:0,item.percent)}%`}}/></div>
           </div>)}</div>
-          <p className="insight-note">Contagem sem limite de exibição: todos os promotores ativos da filial entram em Promotores Fixos, mesmo sem armário. {sectorOccupiedPositions(lockers)} posições ocupadas diretamente por setor. {openPendings} pendências cadastrais e operacionais abertas, contadas pelos itens registrados.</p>
+          <p className="insight-note">Contagem sem limite de exibição: todos os promotores ativos da filial entram em Promotor(a), mesmo sem armário, e quem está sem setor, sem cargo e sem empresa entra em Pendência Cadastral. Jovens aprendizes contam em Colaborador. {sectorOccupiedPositions(lockers)} posições ocupadas diretamente por setor. {openPendings} pendências cadastrais e operacionais abertas, contadas pelos itens registrados.</p>
         </section>
       </div>
 

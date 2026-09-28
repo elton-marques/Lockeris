@@ -65,6 +65,15 @@ button.kpi-card--capacity:hover:not(:disabled){background:linear-gradient(155deg
 .kpi-card--alert.level-critico{--kpi-accent:#e05a6c}
 .kpi-card--double{--kpi-accent:#6d5de8}
 .kpi-card--keys{--kpi-accent:#d97b52}
+/* 5º indicador: colaboradores sem armário vinculado, em faixa de largura total */
+.kpi-card--unassigned{--kpi-accent:#e0a13a;grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:13px 22px;min-height:0}
+.kpi-card--unassigned.level-ok{--kpi-accent:#3fae86}
+.kpi-card--unassigned .kpi-head{flex:1 1 220px;min-width:0}
+.kpi-card--unassigned .kpi-value-row{flex:0 0 auto;align-items:baseline;gap:10px}
+.kpi-card--unassigned .kpi-value{font-size:clamp(28px,2.2vw,36px)}
+.kpi-card--unassigned .kpi-subs{flex:1 1 300px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.kpi-card--unassigned .kpi-action{margin-top:0;flex:0 0 auto}
+@media(max-width:640px){.kpi-card--unassigned{flex-direction:column;align-items:stretch;justify-content:flex-start}.kpi-card--unassigned .kpi-subs{grid-template-columns:1fr}.kpi-card--unassigned .kpi-action{width:100%;justify-content:center}}
 .kpi-head{display:flex;align-items:center;gap:9px}
 .kpi-icon{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:10px;background:#f1efff;color:#7364d4}
 .kpi-title{font-size:12px;font-weight:750;color:#4a4f66;letter-spacing:-.01em}
@@ -108,6 +117,11 @@ button.kpi-action:hover:not(:disabled){background:#eae4ff;border-color:#c4b9f5;t
 .kpi-card--capacity .kpi-sub>span,.kpi-card--capacity .kpi-sub>strong,.kpi-card--capacity .kpi-foot{color:#e4e0ff}
 .kpi-card--capacity .kpi-sub>strong{color:#fff}
 .kpi-card--capacity .kpi-foot{color:#b6b0d6}
+/* Base de colaboradores: a linha inteira abre o modal de detalhes */
+.people-table .people-row{cursor:pointer}
+.people-table .people-row:hover{background:#faf9ff}
+.people-table .table-detail{display:flex;align-items:center;gap:5px;border:0;background:transparent;color:#6656c4;font-size:10px;font-weight:700;white-space:nowrap;padding:0}
+.people-table .table-detail:hover:not(:disabled){background:transparent;text-decoration:underline}
 .overview-widgets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
 .overview-widgets--base .insight-panel{min-height:0}
 /* Ranking por setor com rolagem própria para não esticar a altura da página */

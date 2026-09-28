@@ -48,11 +48,17 @@ export function pendingLockerIds(items:InsightPending[]){return new Set(openLock
 export function openPendingCount(items:InsightPending[],kind?:string){return items.filter(item=>item.state==='aberta'&&(!kind||item.kind===kind)).length;}
 export function openPendingWithLocker(items:InsightPending[],kind:string){return openLockerPending(items).filter(item=>item.kind===kind).length;}
 
+/**
+ * Rótulos oficiais dos vínculos exibidos no Dashboard: `Colaborador` absorve
+ * jovens aprendizes, `Promotor(a)` identifica quem tem promotor no cargo,
+ * função ou setor e `Pendência Cadastral` reúne quem está sem setor, sem cargo
+ * e sem empresa.
+ */
 export const categoryLabels:Record<string,string>={
-  colaborador:'Colaboradores FC',
-  promotor_fixo:'Promotores Fixos',
-  terceirizado:'Terceirizados',
-  vinculo_nao_identificado:'Vínculo não identificado'
+  colaborador:'Colaborador',
+  promotor_fixo:'Promotor(a)',
+  terceirizado:'Terceirizado',
+  vinculo_nao_identificado:'Pendência Cadastral'
 };
 export const canonicalCategories=['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado'] as const;
 export const missingSectorLabel='Sem setor';
