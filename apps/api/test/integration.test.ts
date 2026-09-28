@@ -13,7 +13,8 @@ type Auth={cookie:string;csrf:string};
 const uuid=()=>randomUUID();
 async function send(auth:Auth,method:'POST'|'PATCH'|'DELETE',url:string,payload:Record<string,unknown>){return app.inject({method,url,payload,headers:{cookie:auth.cookie,'x-csrf-token':auth.csrf}});}
 async function login():Promise<Auth>{const response=await app.inject({method:'POST',url:'/api/auth/login',payload:{username:'test',password:'Testing-Password-123'}});expect(response.statusCode).toBe(200);return {cookie:response.headers['set-cookie']!.toString().split(';')[0],csrf:response.json().csrf};}
-async function session():Promise<Auth>{const user=(await pool.query<{id:string}>('SELECT id FROM users WHERE username=$1',['test'])).rows[0],token=uuid(),csrf=uuid();await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);return {cookie:`armarios_session=${token}`,csrf};}
+async function sessionFor(username:string):Promise<Auth>{const user=(await pool.query<{id:string}>('SELECT id FROM users WHERE username=$1',[username])).rows[0],token=uuid(),csrf=uuid();await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[hash(token),user.id,hash(csrf)]);return {cookie:`armarios_session=${token}`,csrf};}
+async function session():Promise<Auth>{return sessionFor('test');}
 async function setup(){const auth=await login();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();return {auth,branch};}
 async function setupWithoutLogin(){const auth=await session();const branch=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Filial de Teste',timezone:'America/Fortaleza'})).json();return {auth,branch};}
 async function locker(auth:Auth,branchId:string,number:string,capacity=1,size='padrao',modality='fixo'){const response=await send(auth,'POST',`/api/branches/${branchId}/lockers`,{operationId:uuid(),number,size,capacity,modality,condition:'disponivel'});expect(response.statusCode).toBe(200);return response.json();}
@@ -480,6 +481,55 @@ describe('regras transacionais',()=>{
     const response=await app.inject({method:'GET',url:`/api/branches/${branch.id}/dashboard`,headers:{cookie:auth.cookie}});
     expect(response.statusCode).toBe(200);
     expect(response.json().links).toEqual({total:5,colaborador:1,promotor_fixo:2,terceirizado:1,vinculo_nao_identificado:1});
+  });
+  it('exclui usuário da filial, preserva a trilha de auditoria e recusa a própria conta',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const created=await send(auth,'POST',`/api/branches/${branch.id}/users`,{operationId:uuid(),username:'operador.removivel',role:'operador',temporaryPassword:'Senha-Temporaria-123'});
+    expect(created.statusCode).toBe(200);
+    const target=(await pool.query<{id:string;version:number}>('SELECT id,version FROM users WHERE username=$1',['operador.removivel'])).rows[0];
+    const ownId=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='test'")).rows[0].id;
+    const self=await send(auth,'DELETE',`/api/users/${ownId}`,{operationId:uuid()});
+    expect(self.statusCode).toBe(409);
+    expect(self.json().error.code).toBe('USUARIO');
+    await pool.query('UPDATE users SET must_change_password=false WHERE id=$1',[target.id]);
+    const operator=await sessionFor('operador.removivel');
+    const createdPerson=await send(operator,'POST',`/api/branches/${branch.id}/people`,{operationId:uuid(),name:'Pessoa Auditada',category:'vinculo_nao_identificado',origin:'manual',needsFixed:false});
+    expect(createdPerson.statusCode).toBe(200);
+    const denied=await send(operator,'DELETE',`/api/users/${ownId}`,{operationId:uuid()});
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json().error.code).toBe('PERMISSAO');
+    expect((await pool.query('SELECT id FROM operations WHERE actor_id=$1',[target.id])).rowCount).toBe(1);
+    const removed=await send(auth,'DELETE',`/api/users/${target.id}`,{operationId:uuid(),expectedVersion:target.version});
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toMatchObject({id:target.id,username:'operador.removivel',deleted:true});
+    expect((await pool.query('SELECT id FROM users WHERE id=$1',[target.id])).rowCount).toBe(0);
+    expect((await pool.query('SELECT id FROM users WHERE id=$1',[ownId])).rowCount).toBe(1);
+    expect((await pool.query('SELECT id_hash FROM sessions WHERE user_id=$1',[target.id])).rowCount).toBe(0);
+    expect((await pool.query('SELECT id FROM operations WHERE actor_id=$1',[target.id])).rowCount).toBe(0);
+    const audit=(await pool.query<{actor_id:string|null;description:string}>("SELECT actor_id,description FROM events WHERE kind='pessoa_cadastrada'")).rows;
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actor_id).toBeNull();
+    const history=await app.inject({method:'GET',url:`/api/branches/${branch.id}/history`,headers:{cookie:auth.cookie}});
+    expect((history.json() as {kind:string;description:string|null}[]).find(item=>item.kind==='usuario_excluido')?.description).toBe('Usuário excluído: operador.removivel');
+  });
+  it('altera a própria senha confirmando a atual e encerra as demais sessões',async()=>{
+    const auth=await session();
+    const wrong=await send(auth,'POST','/api/auth/change-password',{currentPassword:'Senha-Errada-123',newPassword:'Nova-Senha-Forte-123'});
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json().error.code).toBe('CREDENCIAIS');
+    const short=await send(auth,'POST','/api/auth/change-password',{currentPassword:'Testing-Password-123',newPassword:'curta123'});
+    expect(short.statusCode).toBe(422);
+    const same=await send(auth,'POST','/api/auth/change-password',{currentPassword:'Testing-Password-123',newPassword:'Testing-Password-123'});
+    expect(same.statusCode).toBe(422);
+    expect(same.json().error.message).toContain('diferente da atual');
+    const stale=await session();
+    const changed=await send(auth,'POST','/api/auth/change-password',{currentPassword:'Testing-Password-123',newPassword:'Nova-Senha-Forte-123'});
+    expect(changed.statusCode).toBe(200);
+    expect((await app.inject({method:'GET',url:'/api/auth/me',headers:{cookie:auth.cookie}})).statusCode).toBe(200);
+    expect((await app.inject({method:'GET',url:'/api/auth/me',headers:{cookie:stale.cookie}})).statusCode).toBe(401);
+    const {rows}=await pool.query<{password_hash:string}>("SELECT password_hash FROM users WHERE username='test'");
+    expect(await argon2.verify(rows[0].password_hash,'Nova-Senha-Forte-123')).toBe(true);
+    expect(await argon2.verify(rows[0].password_hash,'Testing-Password-123')).toBe(false);
   });
 });
 

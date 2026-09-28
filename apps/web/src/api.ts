@@ -1,4 +1,4 @@
-export type User={id:string;role:'geral'|'filial_admin'|'operador'|'consulta';branchId:string|null;mustChangePassword:boolean};
+export type User={id:string;username:string;role:'geral'|'filial_admin'|'operador'|'consulta';branchId:string|null;mustChangePassword:boolean};
 export const op=()=>crypto.randomUUID();
 export function csrf():string {return document.cookie.split('; ').find(x=>x.startsWith('armarios_csrf='))?.split('=')[1]??'';}
 type ApiErrorBody={error?:{code?:string;message?:string;details?:unknown}};

@@ -14,6 +14,7 @@ const events:Record<string,string>={
   pessoa_ti_incluida:'Colaborador incluído na base ativa',lote_ti_aplicado:'Base de colaboradores atualizada',
   pendencia_revisada:'Pendência conferida',pendencia_resolvida:'Pendência resolvida',
   excecao_armario:'Dispensa de armário registrada',usuario_criado:'Usuário criado',usuario_alterado:'Acesso atualizado',
+  usuario_excluido:'Usuário excluído',
   senha_redefinida:'Senha redefinida',dispositivo_autorizado:'Navegador autorizado para consulta',
   dispositivo_revogado:'Autorização de consulta revogada',armarios_importados:'Armários importados',
   compartilhamento_autorizado:'Compartilhamento autorizado',compartilhamento_encerrado:'Compartilhamento encerrado',

@@ -1,10 +1,11 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
+import {ArrowLeftRight, Boxes, Building2, ChevronDown, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
 import {api,post,type User} from './api';
 import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
 import {Select} from './components/Select';
 import {AboutModal} from './components/AboutModal';
+import {ChangePasswordModal} from './components/ChangePasswordModal';
 import {Dashboard} from './pages/Dashboard';
 import {Overview} from './pages/Overview';
 import type {LockerPreset} from './locker-insights';
@@ -40,6 +41,7 @@ export default function App(){
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [aboutOpen,setAboutOpen]=useState(false);
+  const [passwordOpen,setPasswordOpen]=useState(false),[userMenu,setUserMenu]=useState(false);
   const refresh=()=>{setBranches(current=>[...current]);void api<Branch[]>('/branches').then(list=>{setBranches(list);setBranchId(current=>list.some(branch=>branch.id===current)?current:list[0]?.id??'');}).catch(()=>{});};
   useEffect(()=>{void purgeOfflineCopy();},[]);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#2E1065');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
@@ -57,7 +59,13 @@ export default function App(){
       else setMessage('Não foi possível conectar ao servidor. Tente novamente.');
     }finally{if(active)setReady(true);}
   })();return()=>{active=false;};},[]);
-  useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
+  useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setMobileMenu(false);setUserMenu(false);}};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
+  useEffect(()=>{
+    if(!userMenu)return;
+    const onPointerDown=(event:MouseEvent)=>{if(!(event.target instanceof Element)||!event.target.closest('.user-menu'))setUserMenu(false);};
+    document.addEventListener('mousedown',onPointerDown);
+    return()=>document.removeEventListener('mousedown',onPointerDown);
+  },[userMenu]);
   async function logout(){try{await post('/auth/logout',{});}finally{setUser(null);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
   if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===result.user.branchId)?.id??list[0]?.id??'');}}/>;
@@ -92,6 +100,14 @@ export default function App(){
           onChange={value=>{setBranchId(value);setLockerPreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}
           options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
         <span className="status online"><Wifi size={15} aria-hidden="true"/>Conectado</span>
+        <div className="user-menu">
+          <button type="button" className="user-menu-toggle" aria-label={`Conta de ${user.username}`} aria-haspopup="menu" aria-expanded={userMenu} onClick={()=>setUserMenu(open=>!open)}>
+            <UsersRound size={16} aria-hidden="true"/><span>{user.username}</span><ChevronDown size={14} aria-hidden="true"/>
+          </button>
+          {userMenu&&<div className="user-menu-popover" role="menu">
+            <button type="button" role="menuitem" onClick={()=>{setUserMenu(false);setPasswordOpen(true);}}>Alterar senha</button>
+          </div>}
+        </div>
       </div></header>
       {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
         {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
@@ -110,6 +126,7 @@ export default function App(){
       </main>
     </div>
     {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
+    {passwordOpen&&<ChangePasswordModal onClose={()=>setPasswordOpen(false)} onChanged={message=>{setPasswordOpen(false);showNotice(message);}}/>}
   </div>;
 }
 

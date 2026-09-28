@@ -327,4 +327,25 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
         {description:`Acesso atualizado: ${rows[0].username}`});return rows[0];
     }));
   });
+  app.delete('/api/users/:userId',async request=>{
+    const actor=await authenticate(request);
+    const {userId}=z.object({userId:id}).parse(request.params);
+    if(!['geral','filial_admin'].includes(actor.role))fail(403,'PERMISSAO','Acesso administrativo necessário');
+    const body=operation.extend({expectedVersion:z.number().int().positive().optional()}).parse(request.body??{});
+    return transaction(client=>idempotent(client,body.operationId,actor.branch_id,actor.id,body,async()=>{
+      const {rows}=await client.query<{id:string;username:string;role:string;branch_id:string|null;version:number}>(
+        'SELECT id,username,role,branch_id,version FROM users WHERE id=$1 FOR UPDATE',[userId]);
+      const target=rows[0];
+      if(!target)fail(404,'USUARIO','Usuário não encontrado');
+      if(target.id===actor.id)fail(409,'USUARIO','Não é possível excluir a própria conta ativa');
+      if(actor.role!=='geral'&&(target.branch_id!==actor.branch_id||target.role==='geral'))fail(403,'FILIAL','Acesso negado a este usuário');
+      if(body.expectedVersion&&target.version!==body.expectedVersion)fail(409,'VERSAO','Usuário alterado; recarregue');
+      await client.query('DELETE FROM sessions WHERE user_id=$1',[target.id]);
+      await client.query('DELETE FROM users WHERE id=$1',[target.id]);
+      const auditBranch=target.branch_id??actor.branch_id;
+      if(auditBranch)await event(client,auditBranch,actor.id,'usuario_excluido','user',target.id,{username:target.username},
+        {description:`Usuário excluído: ${target.username}`});
+      return {id:target.id,username:target.username,deleted:true};
+    }));
+  });
 }

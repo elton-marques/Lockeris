@@ -6,6 +6,7 @@ const withOperation=<T extends z.ZodRawShape>(shape:T)=>z.object({operationId:id
 const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/auth\/login$/,schema:z.object({username:z.string(),password:z.string()}),summary:'Entrar'},
   {match:/^POST \/api\/auth\/password$/,schema:z.object({oldPassword:z.string(),newPassword:z.string().min(12)}),summary:'Trocar senha'},
+  {match:/^POST \/api\/auth\/change-password$/,schema:z.object({currentPassword:z.string(),newPassword:z.string().min(12)}),summary:'Alterar a própria senha'},
   {match:/^POST \/api\/branches$/,schema:branchInput.and(operation),summary:'Criar filial'},
   {match:/^DELETE \/api\/branches\/:branchId$/,schema:withOperation({expectedVersion:z.number().int().positive()}),summary:'Excluir filial em cascata'},
   {match:/^DELETE \/api\/branches\/:branchId\/history\/clear$/,schema:withOperation({}),summary:'Limpar histórico legado'},
@@ -28,6 +29,7 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/branches\/:branchId\/imports\/migration\/:importId\/confirm$/,schema:withOperation({acknowledgeReviewed:z.literal(true)}),summary:'Confirmar carga inicial de armários'},
   {match:/^POST \/api\/branches\/:branchId\/users$/,schema:withOperation({username:z.string(),role:z.enum(['filial_admin','operador','consulta']),temporaryPassword:z.string()}),summary:'Criar usuário'},
   {match:/^POST \/api\/branches\/:branchId\/users\/:itemId\/reset$/,schema:withOperation({expectedVersion:z.number().int().positive(),temporaryPassword:z.string()}),summary:'Redefinir senha temporária'},
+  {match:/^DELETE \/api\/users\/:userId$/,schema:withOperation({expectedVersion:z.number().int().positive().optional()}),summary:'Excluir usuário'},
 ];
 export function documentRoute({schema,url,route}:{schema:FastifySchema;url:string;route:{method:string|string[]}}):{schema:FastifySchema;url:string}{
   const method=(Array.isArray(route.method)?route.method[0]:route.method).toUpperCase();

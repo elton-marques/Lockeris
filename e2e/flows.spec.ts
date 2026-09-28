@@ -453,3 +453,47 @@ test('admin rola 477 armários e limpa somente a cópia legada',async({page})=>{
   await expect(page.locator('.admin-locker-table')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+test('admin exclui um acesso pela lista e altera a própria senha pelo cabeçalho',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    await pool.query(`INSERT INTO users(username,password_hash,role,branch_id,must_change_password)
+      VALUES('temporario-e2e',$1,'operador',$2,false)
+      ON CONFLICT (lower(username)) DO UPDATE SET branch_id=EXCLUDED.branch_id,must_change_password=false`,
+      [await argon2.hash('Senha-Temporaria-123',{type:argon2.argon2id}),branch.id]);
+    const admin=(await pool.query<{id:string}>("SELECT id FROM users WHERE lower(username)='e2e'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),admin.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.getByRole('button',{name:'Administração'}).click();
+  await expect(page.getByRole('heading',{name:'Acessos'})).toBeVisible();
+  const row=page.locator('.list-row').filter({hasText:'temporario-e2e'});
+  await expect(row).toBeVisible();
+  await row.getByRole('button',{name:'Excluir',exact:true}).click();
+  const confirmation=page.getByRole('alertdialog');
+  await expect(confirmation).toContainText('Tem certeza que deseja excluir o utilizador temporario-e2e? Esta ação não poderá ser desfeita.');
+  await confirmation.getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'Acesso de temporario-e2e excluído.');
+  await closeNotice(page);
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button',{name:'Conta de e2e'}).click();
+  await page.getByRole('menuitem',{name:'Alterar senha'}).click();
+  const modal=page.getByRole('dialog');
+  await expect(modal.getByRole('heading',{name:'Alterar senha'})).toBeVisible();
+  await modal.getByLabel('Senha atual').fill('Senha-Errada-123');
+  await modal.getByLabel('Nova senha',{exact:true}).fill('Nova-Senha-E2e-123');
+  await modal.getByLabel('Confirmar nova senha',{exact:true}).fill('Nova-Senha-E2e-123');
+  await modal.getByRole('button',{name:'Salvar nova senha'}).click();
+  await expect(modal.getByRole('alert')).toHaveText('Senha atual inválida');
+  await modal.getByLabel('Senha atual').fill('Testing-Password-123');
+  await modal.getByRole('button',{name:'Salvar nova senha'}).click();
+  await expect(modal).toHaveCount(0);
+  await expectNotice(page,'Senha alterada com sucesso.');
+  await closeNotice(page);
+});
