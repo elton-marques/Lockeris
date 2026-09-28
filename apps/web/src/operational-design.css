@@ -46,6 +46,9 @@ button.primary:hover:not(:disabled),.primary:hover:not(:disabled){background:var
 .status.online{background:#ECFDF5;color:#047857;border-color:#A7F3D0}
 .status.offline{background:#FFFBEB;color:#92400E;border-color:#FDE68A}
 @media(max-width:700px){.topbar-brand{padding-right:9px}.topbar-brand strong{font-size:12px}}
+
+.topbar{position:sticky;top:0;z-index:100;background:var(--bg-surface,#ffffff);box-shadow:0 2px 10px rgb(0 0 0 / 5%);backdrop-filter:none}
+@media(max-width:700px){.sidebar.mobile-open{z-index:110}}
 .locker-list-panel .tile-meta,.locker-list-panel .tile-footer,.locker-list-panel .tile-key,.locker-list-panel .tile-pending,.tile-people small{font-size:11px}
 .insight-bar-row:focus-visible{outline:3px solid var(--brand);outline-offset:-3px}
 

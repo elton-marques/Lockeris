@@ -151,6 +151,8 @@ O topo da aplicação ganhou o sino de alertas, ao lado do seletor de filial (`N
 
 A contagem total vira badge (`.notification-badge`) apenas quando há alertas, o menu abre com `role="menu"` e fecha no clique fora, em `Esc` ou ao escolher um item, e a lista é recarregada a cada minuto. Os estilos usam as variáveis de tema, cobrindo o modo escuro sem regras separadas.
 
+O cabeçalho permanece fixo no topo durante a rolagem, com fundo opaco, borda inferior e sombra suave nos temas claro e escuro. A Central de Alertas abre sobre tabelas, filtros e botões, em uma superfície sólida com sombra destacada, sem deixar o conteúdo da página transparecer.
+
 ## Higienização de base
 
 A seção **Higienização de base** (`#sanitation` em `apps/web/src/pages/Admin.tsx`) lista os cadastros ativos, sem armário e sem movimentação dentro da janela escolhida (30 a 3650 dias, padrão 90), com seleção individual ou total antes da exclusão:
