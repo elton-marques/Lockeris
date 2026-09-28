@@ -1,4 +1,8 @@
 export const changelog=[
+  {title:'Indicadores com cores mais claras',kind:'sparkles',description:'As informações importantes da filial ganharam destaques visuais e ações mais fáceis de acessar.',items:[
+    'Cada indicador tem uma cor que facilita reconhecer sua situação.',
+    'Os atalhos de consulta ficam alinhados e fáceis de acessar.'
+  ]},
   {title:'Cabeçalho fixo e alertas em destaque',kind:'sparkles',description:'Os atalhos principais permanecem acessíveis e a Central de Alertas ficou mais clara.',items:[
     'Cabeçalho sempre visível durante a navegação pelas telas.',
     'Alertas sem listas de nomes ou matrículas no menu.'

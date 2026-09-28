@@ -349,6 +349,14 @@
 :root[data-theme='dark'] .status.online{background:#123A2D;border-color:#166534;color:#34D399}
 :root[data-theme='dark'] .status.offline{background:#443318;border-color:#92400E;color:#FBBF24}
 :root[data-theme='dark'] .auth-page,:root[data-theme='dark'] .center{background:radial-gradient(circle at 15% 10%,#5B21B6 0,transparent 35%),linear-gradient(145deg,#18181B,#2E1065 75%,#18181B)}
-:root[data-theme='dark'] .overview-page .kpi-card{background:#27272A;border-color:#3F3F46;color:#FAFAFA}
-:root[data-theme='dark'] .overview-page .kpi-icon{background:#3B2364;color:#C4B5FD}
+:root[data-theme='dark'] .overview-page .kpi-card{background:var(--kpi-surface);border-color:var(--kpi-border);color:#FAFAFA}
+:root[data-theme='dark'] .overview-page .kpi-card--occupancy{--kpi-accent:#C4B5FD;--kpi-surface:#302744;--kpi-border:#584276;--kpi-icon-surface:#433266;--kpi-icon-color:#DDD6FE;--kpi-action-color:#DDD6FE;--kpi-action-hover:#473258;--kpi-action-hover-color:#F5F3FF}
+:root[data-theme='dark'] .overview-page .kpi-card--unassigned{--kpi-accent:#FBBF24;--kpi-surface:#352C1D;--kpi-border:#6B512B;--kpi-icon-surface:#493820;--kpi-icon-color:#FCD34D;--kpi-action-color:#FCD34D;--kpi-action-hover:#4B3922;--kpi-action-hover-color:#FEF3C7}
+:root[data-theme='dark'] .overview-page .kpi-card--alert{--kpi-accent:#FB7185;--kpi-surface:#38242B;--kpi-border:#70404C;--kpi-icon-surface:#4A2932;--kpi-icon-color:#FDA4AF;--kpi-action-color:#FDA4AF;--kpi-action-hover:#512D36;--kpi-action-hover-color:#FFE4E6}
+:root[data-theme='dark'] .overview-page .kpi-card--double{--kpi-accent:#818CF8;--kpi-surface:#252B40;--kpi-border:#414B75;--kpi-icon-surface:#30385A;--kpi-icon-color:#C7D2FE;--kpi-action-color:#C7D2FE;--kpi-action-hover:#343C64;--kpi-action-hover-color:#E0E7FF}
+:root[data-theme='dark'] .overview-page .kpi-card--keys{--kpi-accent:#34D399;--kpi-surface:#20342D;--kpi-border:#315C4A;--kpi-icon-surface:#23483D;--kpi-icon-color:#A7F3D0;--kpi-action-color:#A7F3D0;--kpi-action-hover:#2B483D;--kpi-action-hover-color:#D1FAE5}
+:root[data-theme='dark'] .overview-page .kpi-card:hover{border-color:var(--kpi-accent)}
+:root[data-theme='dark'] .overview-page .kpi-card .kpi-icon{background:var(--kpi-icon-surface);color:var(--kpi-icon-color)}
+:root[data-theme='dark'] .overview-page .kpi-card .kpi-action{color:var(--kpi-action-color)}
+:root[data-theme='dark'] .overview-page .kpi-card .kpi-action:hover:not(:disabled){background:var(--kpi-action-hover);color:var(--kpi-action-hover-color)}
 :root[data-theme='dark'] .overview-page{background:transparent}
