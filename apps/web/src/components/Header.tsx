@@ -8,10 +8,14 @@ export type Theme='light'|'dark';
 export type Branch={id:string;name:string;timezone:string;status:string;version:number};
 export type Tab={key:string;label:string;icon:typeof Bell;group:string};
 export type NotificationKey='withoutLocker'|'registrationPending'|'underusedDoubles';
-type NotificationItem={id:string;label:string;detail:string|null};
-type NotificationAlert={key:NotificationKey;label:string;description:string;count:number;items:NotificationItem[]};
+type NotificationAlert={key:NotificationKey;label:string;description:string;count:number};
 type NotificationSummary={total:number;alerts:NotificationAlert[];checkedAt:string};
 const refreshInterval=60_000;
+const notificationCopy:Record<NotificationKey,{description:string;action:string;className:string}>={
+  withoutLocker:{description:'Pessoas ativas aguardando alocação.',action:'Ver colaboradores',className:'without-locker'},
+  registrationPending:{description:'Cadastros com dados incompletos ou divergentes.',action:'Revisar pendências',className:'registration-pending'},
+  underusedDoubles:{description:'Armários duplos com uma vaga livre.',action:'Ver armários duplos',className:'underused-doubles'}
+};
 const pageCopy:Record<string,string>={
   pessoas:'Encontre pessoas, atribua ou transfira armários.',
   pendencias:'Confira situações que precisam de decisão.',
@@ -56,13 +60,12 @@ function NotificationCenter({branchId,onNavigate}:{branchId:string;onNavigate:(k
     {open&&<div className="notification-popover" role="menu" aria-label="Central de alertas">
       <div className="notification-head"><span className="eyebrow">Central de alertas</span>
         <strong>{total?`${total} ${total===1?'alerta ativo':'alertas ativos'}`:'Tudo sob controle'}</strong></div>
-      {alerts.map(alert=><button type="button" role="menuitem" key={alert.key} className="notification-item"
+      {alerts.map(alert=>{const copy=notificationCopy[alert.key];return <button type="button" role="menuitem" key={alert.key} className={`notification-item notification-item--${copy.className}`}
         onClick={()=>{setOpen(false);onNavigate(alert.key);}}>
         <span className="notification-item-top"><strong>{alert.label}</strong><span className={alert.count?'notification-count':'notification-count empty'}>{alert.count}</span></span>
-        <small>{alert.description}</small>
-        {alert.items.length>0&&<span className="notification-preview">{alert.items.slice(0,3).map(item=><span key={item.id}>{item.label}{item.detail?` · ${item.detail}`:''}</span>)}
-          {alert.count>alert.items.length&&<span>+ {alert.count-alert.items.length} outro(s)</span>}</span>}
-      </button>)}
+        <small className="notification-description">{copy.description}</small>
+        <span className="notification-action">{copy.action}<span aria-hidden="true">→</span></span>
+      </button>;})}
       {total===0&&<p className="notification-empty">Nenhum alerta aberto nesta filial.</p>}
     </div>}
   </div>;

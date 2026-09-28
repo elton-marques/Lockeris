@@ -86,7 +86,8 @@ test('login, painel, compartilhamento, cadastro, TI, pendências e administraç�
   await page.getByRole('button',{name:'Sobre o Lockeris'}).click();
   await page.getByRole('button',{name:'Novidades e Versões'}).click();
   await expect(page.getByRole('heading',{name:'Entregas do Lockeris'})).toBeVisible();
-  await expect(page.getByText('Ajustes de domínio e arquivamento')).toBeVisible();
+  await expect(page.getByText('Ajustes de regras e proteção')).toBeVisible();
+  await expect(page.locator('.about-release-items li').first()).toBeVisible();
   await page.screenshot({path:'test-results/visual/08-novidades.png'});
 });
 
@@ -617,6 +618,9 @@ test('central de alertas no cabeçalho abre as listas correspondentes',async({pa
   await expect(registrationPending).toBeVisible();
   await expect(underusedDoubles).toBeVisible();
   await expect(withoutLocker).toContainText('sem armário');
+  await expect(withoutLocker.locator('.notification-action')).toContainText('Ver colaboradores');
+  await expect(withoutLocker.locator('.notification-preview')).toHaveCount(0);
+  await expect(menu.getByText('Alerta Sem Armário',{exact:true})).toHaveCount(0);
   expect(Number(await withoutLocker.locator('.notification-count').innerText())).toBeGreaterThan(0);
   await page.screenshot({path:'test-results/visual/50-central-alertas.png'});
 

@@ -50,7 +50,7 @@ export function AboutModal({onClose}:{onClose:()=>void}){
         <h3>Entregas do Lockeris</h3>
         <ul className="about-versions-list">{changelog.map(item=>{
           const Icon=item.kind==='commit'?GitCommit:item.kind==='shield'?ShieldCheck:item.kind==='bug'?Bug:Sparkles;
-          return <li key={item.title}><Icon size={16} aria-hidden="true"/><span><strong>{item.title}</strong><br/>{item.description}</span></li>;
+          return <li key={item.title}><Icon size={16} aria-hidden="true"/><div className="about-release-copy"><strong>{item.title}</strong><p>{item.description}</p><ul className="about-release-items">{item.items.map(point=><li key={point}>{point}</li>)}</ul></div></li>;
         })}</ul>
       </section>}
 

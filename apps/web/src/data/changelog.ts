@@ -1,23 +1,86 @@
 export const changelog=[
-  {title:'Cabeçalho fixo e Central de Alertas em destaque',kind:'sparkles',description:'O cabeçalho permanece visível no topo durante a navegação pelas telas, mantendo os atalhos principais sempre à mão. A Central de Alertas agora aparece claramente acima do conteúdo, com fundo sólido e sombra que destacam seus avisos sem misturá-los a tabelas, filtros ou botões.'},
-  {title:'Central de Alertas e Higienização da Base',kind:'sparkles',description:'O cabeçalho ganhou um sino de alertas com contador: um clique abre a central com colaboradores sem armário, pendências cadastrais e duplos subutilizados, e cada item leva direto à lista correspondente já filtrada, agilizando o fechamento do dia. Em Administração, a nova seção Higienização de base mostra quem está há tempo sem movimentação e sem armário, permite ajustar a janela de inatividade e excluir vários cadastros de uma vez só, com confirmação prévia, registro no Histórico e recusa automática de quem ainda estiver com armário em mãos no momento da exclusão.'},
-  {title:'Contraste do Tema Claro e Simetria do Dashboard',kind:'sparkles',description:'O fundo claro da aplicação passou a ser um cinza suave (#e2e4e9, token --bg-main) e as superfícies brancas ganharam borda sutil rgb(0 0 0 / 7%) com sombra rgb(0 0 0 / 4%), separando cards, painéis e KPIs do canvas sem perder o tema escuro, que mantém o fundo #18181B e os cards #27272A. Os dois widgets do Dashboard ficaram simétricos em altura — grade de duas colunas com itens esticados e listas distribuídas de cima a baixo — e as barras proporcionais voltaram para as distribuições: o ranking por setor mede cada barra pelo setor mais demandante e Pessoas por vínculo usa o percentual de cada categoria.'},
-  {title:'Painel Executivo Simplificado',kind:'sparkles',description:'O Dashboard passou a abrir com cinco KPIs em grade única, cada card com título, valor grande, uma única linha de legenda e uma ação de texto — Ver armários, Ver pessoas sem armário, Resolver pendências, Ver duplos e Ver chaves — que leva à lista já filtrada. Saíram da tela as notas explicativas sob os widgets, o alerta de posições sem setor ou matrícula, os textos de apoio das métricas de movimentação, as barras de progresso e pílulas dos cards e a seção Ações rápidas, mantendo importação e histórico acessíveis pelo menu lateral. O ranking de ocupação por setor virou lista de linhas clicáveis com a contagem de posições e Pessoas por vínculo passou a exibir rótulo, contagem e percentual em linhas separadas, preservando a regra especial dos armários duplos de setores exclusivos.'},
-  {title:'Alinhamento Vertical da Tabela de Colaboradores e Seleção Corrigida',kind:'bug',description:'Todas as células da tabela de Colaboradores agora se alinham verticalmente em uma única linha: td e th com vertical-align middle, células de checkbox, pessoa e ações em flex com alinhamento centralizado, checkbox sem margens desalinhadas e o link Ver detalhes com margin 0, line-height 1 e display inline-flex. As checkboxes passaram a alternar marcação e desmarcação a qualquer momento: o clique em uma linha marca ou desmarca na hora, o seletor Selecionar colaboradores exibidos marca todos os exibidos quando falta algum e limpa a seleção quando todos já estão marcados, e o botão Excluir selecionados (N) some da barra de ações assim que N = 0.'},
-  {title:'Padrão Único de Pendência Cadastral e Vocabulário Operacional',kind:'sparkles',description:'A categoria vinculo_nao_identificado passou a aparecer como Pendência Cadastral em toda a interface — filtro, coluna Categoria, formulário de cadastro, detalhes da pessoa e card de vínculos —, eliminando a mistura com o rótulo antigo. A remoção de registros deixou de usar linguagem de recursos humanos: o diálogo da pessoa oferece Excluir cadastro com confirmação de segurança, as ações em lote viraram Excluir selecionados e Excluir toda a base de colaboradores, o Histórico exibe Cadastro excluído e Cadastro reativado, e a saída de armário virou Armário #102 desocupado com sucesso tanto no Dashboard quanto nas pendências. A situação de ocupação também mudou de Encerrada para Desocupada.'},
-  {title:'Tela de Colaboradores Enxuta e Filtro por Pendência Cadastral',kind:'sparkles',description:'A tela Colaboradores deixou de abrir com o cartão de atribuição duplicado no topo: a página começa direto na base ativa, e atribuir ou transferir um armário passou a acontecer dentro do diálogo de detalhes da pessoa, junto com a edição do cadastro, a exclusão ou a reativação do cadastro e a dispensa de armário. A coluna Ações da tabela ficou apenas com Ver detalhes, além do clique na própria linha, eliminando botões repetidos em cada registro. O rótulo Pendência Cadastral passou a identificar a categoria vinculo_nao_identificado no filtro e nos demais pontos de exibição.'},
-  {title:'Vínculos Simplificados e Colaboradores Sem Armário',kind:'sparkles',description:'O card Pessoas por vínculo passou a usar os rótulos Colaborador, Promotor(a), Terceirizado e Pendência Cadastral: jovens aprendizes entram como Colaborador, todo promotor identificado por cargo ou setor entra em Promotor(a) e quem está sem setor, sem cargo e sem empresa vira Pendência Cadastral. O Dashboard ganhou o quinto card Colaboradores sem Armário, com a contagem de pessoas ativas sem armário vinculado e atalho para a lista já filtrada. A tela Colaboradores deixou de repetir o botão de armário em cada linha: clicar na pessoa abre o diálogo de detalhes, que leva à atribuição ou à edição, com badge âmbar Sem armário e filtro rápido para quem está pendente de vínculo.'},
-  {title:'Exclusão de Acesso e Alteração da Própria Senha',kind:'sparkles',description:'A lista de acessos em Administração ganhou o botão Excluir, com confirmação explícita e registro na trilha de auditoria, permitindo remover definitivamente um acesso desligado e encerrar suas sessões abertas. O menu da conta no cabeçalho passou a oferecer Alterar senha: o colaborador confirma a senha atual, define uma nova de ao menos 12 caracteres e as demais sessões da conta são encerradas, reforçando a segurança do acesso.'},
-  {title:'Troca de Senha Centralizada e Termo Impresso em Folha Única',kind:'sparkles',description:'A tela de troca de senha temporária passou a seguir a mesma estrutura centralizada da tela de acesso e ganhou o olho de visibilidade nos dois campos, permitindo conferir a senha digitada antes de salvar. O Termo de Responsabilidade foi ajustado para caber em uma única folha A4, com espaçamento e tipografia otimizados, eliminando a segunda página com o rodapé de controle de revisão.'},
-  {title:'Aprimoramentos de Usabilidade no Painel e Tela de Acesso',kind:'sparkles',description:'Remoção de etapas redundantes na gestão de armários, inclusão da opção de alternar a visibilidade da senha no login e precisão na contabilização de promotores no Dashboard.'},
-  {title:'Situação do Armário Simplificada e Comunicados Mais Claros',kind:'sparkles',description:'A gestão de armários passou a refletir apenas as situações Disponível e Ocupado, definidas pela ocupação real, eliminando opções que não correspondem à rotina da operação. Os avisos de confirmação de atribuição, transferência e encerramento de ocupação foram encurtados e colocados no contexto da ação, facilitando a leitura do operador.'},
-  {title:'Manutenção do Histórico e Leitura de Ocupações Otimizadas',kind:'shield',description:'O Histórico ganhou a rotina de limpeza de registros antigos, com confirmação prévia, preservando os eventos operacionais recentes e mantendo a trilha de auditoria íntegra. A listagem de ocupações passou a exibir apenas as informações relevantes para o dia a dia, com leitura direta de pessoa, armário, entrada e situação.'},
-  {title:'Reorganização da Aba de Movimentações e Destaque no Histórico',kind:'sparkles',description:'A aba de movimentações foi reorganizada com subtítulo mais claro, indicadores de situação Ativa e Encerrada e leitura padronizada das datas. No Histórico, cada evento passou a destacar o armário e a pessoa envolvida, com descrição objetiva do ocorrido e apresentação limpa para registros antigos.'},
-  {title:'Trilha de Auditoria Mais Completa e Cadastro de Filiais Enxuto',kind:'sparkles',description:'Cada evento registrado no Histórico passou a conter armário, pessoa com matrícula, setor e a descrição da ação, ampliando a rastreabilidade exigida pela Prevenção de Perdas. O campo Cidade foi retirado do cadastro e da listagem de filiais, simplificando o preenchimento sem perda de informação operacional.'},
-  {title:'Exclusão de Filial Integral e Ajustes de Layout',kind:'bug',description:'A exclusão de filial passou a remover de forma definitiva e coordenada todos os registros vinculados — pendências, eventos, armários, alocações e usuários —, evitando resíduos de dados. O seletor de filial no cabeçalho e a tabela de armários receberam ajustes de alinhamento, e o modal Sobre ganhou rolagem e rodapé corrigidos.'},
-  {title:'Ajustes de domínio e arquivamento',kind:'shield',description:'Regras revisadas para vínculos não identificados, pendências cadastrais e proteção de filiais contra operações indevidas.'},
-  {title:'Correções de cadastro',kind:'bug',description:'Ocupantes sem matrícula deixaram de ser classificados automaticamente como terceirizados, evitando contagens de vínculo incorretas.'},
-  {title:'Centro de Comando',kind:'sparkles',description:'Indicadores de ocupação, capacidade, setores e pendências no painel da filial.'},
-  {title:'Rebranding Lockeris',kind:'sparkles',description:'Identidade visual Lockeris e interface de administração renovada.'},
-  {title:'Migração da Planilha',kind:'commit',description:'Importação inicial de armários e colaboradores com conferência de dados.'}
+  {title:'Cabeçalho fixo e alertas em destaque',kind:'sparkles',description:'Os atalhos principais permanecem acessíveis e a Central de Alertas ficou mais clara.',items:[
+    'Cabeçalho sempre visível durante a navegação pelas telas.',
+    'Alertas sem listas de nomes ou matrículas no menu.'
+  ]},
+  {title:'Central de Alertas e Higienização da Base',kind:'sparkles',description:'Mais agilidade para acompanhar pendências e manter os cadastros atualizados.',items:[
+    'Acesso rápido a colaboradores sem armário, pendências e duplos subutilizados.',
+    'Administração permite revisar e remover cadastros antigos com segurança.'
+  ]},
+  {title:'Dashboard mais claro e equilibrado',kind:'sparkles',description:'Indicadores e informações do painel ficaram mais fáceis de comparar.',items:[
+    'Cards com melhor contraste nos temas claro e escuro.',
+    'Distribuições por setor e vínculo com leitura visual mais uniforme.'
+  ]},
+  {title:'Painel Executivo Simplificado',kind:'sparkles',description:'O Dashboard prioriza os números e as ações mais importantes da operação.',items:[
+    'Indicadores levam diretamente às listas correspondentes.',
+    'Informações organizadas em blocos mais simples e objetivos.'
+  ]},
+  {title:'Tabela de Colaboradores mais prática',kind:'bug',description:'A seleção de pessoas e a leitura das informações ficaram mais consistentes.',items:[
+    'Marque ou desmarque colaboradores individualmente ou em lote.',
+    'Dados e ações alinhados para facilitar a consulta.'
+  ]},
+  {title:'Cadastros com linguagem mais clara',kind:'sparkles',description:'Os nomes das situações e ações agora refletem melhor a rotina da equipe.',items:[
+    'Pendência Cadastral identifica informações que precisam de conferência.',
+    'Exclusão de cadastro e desocupação de armário aparecem com ações distintas.'
+  ]},
+  {title:'Gestão de Colaboradores simplificada',kind:'sparkles',description:'Os dados e as ações de cada pessoa estão reunidos em uma consulta mais direta.',items:[
+    'Detalhes permitem atribuir, transferir ou editar um armário.',
+    'Filtro rápido encontra quem ainda está sem armário.'
+  ]},
+  {title:'Vínculos e armários sem alocação',kind:'sparkles',description:'O Dashboard ajuda a identificar pessoas e armários que precisam de atenção.',items:[
+    'Resumo de pessoas por categoria com nomes mais claros.',
+    'Acesso direto à lista de colaboradores sem armário.'
+  ]},
+  {title:'Acessos e senhas sob controle',kind:'sparkles',description:'Administração ganhou opções para cuidar das contas e proteger os acessos.',items:[
+    'Remova acessos que não são mais necessários.',
+    'Altere sua própria senha pelo menu da conta.'
+  ]},
+  {title:'Acesso e termo de responsabilidade',kind:'sparkles',description:'Entrar na aplicação e imprimir o termo ficou mais simples.',items:[
+    'Confira a senha digitada antes de entrar ou salvar.',
+    'Termo de Responsabilidade ajustado para impressão em uma página.'
+  ]},
+  {title:'Aprimoramentos de uso diário',kind:'sparkles',description:'A operação ganhou ajustes para reduzir etapas e melhorar as consultas.',items:[
+    'Ações de armários mais diretas.',
+    'Consulta de colaboradores mais precisa no Dashboard.'
+  ]},
+  {title:'Situação dos armários mais simples',kind:'sparkles',description:'A disponibilidade agora acompanha a ocupação real do armário.',items:[
+    'Situações apresentadas como Disponível ou Ocupado.',
+    'Confirmações de ações com mensagens mais objetivas.'
+  ]},
+  {title:'Histórico e ocupações mais claros',kind:'shield',description:'As movimentações importantes continuam acessíveis e fáceis de entender.',items:[
+    'Consulte e organize registros antigos do Histórico.',
+    'Ocupações mostram as informações essenciais para o dia a dia.'
+  ]},
+  {title:'Transferências e Histórico organizados',kind:'sparkles',description:'Acompanhe ocupações e trocas de armário com leitura mais simples.',items:[
+    'Situação e datas das ocupações apresentadas com clareza.',
+    'Histórico destaca a pessoa, o armário e o motivo da alteração.'
+  ]},
+  {title:'Rastreabilidade e gestão de filiais',kind:'sparkles',description:'As alterações importantes ficaram mais fáceis de acompanhar.',items:[
+    'Histórico reúne contexto sobre pessoas, armários e ações.',
+    'Cadastro de filiais simplificado para agilizar a gestão.'
+  ]},
+  {title:'Exclusão de filiais e ajustes de navegação',kind:'bug',description:'A gestão de filiais e a navegação receberam melhorias para o uso diário.',items:[
+    'Remova uma filial e seus registros associados de forma coordenada.',
+    'Cabeçalho, tabelas e janela Sobre com apresentação aprimorada.'
+  ]},
+  {title:'Ajustes de regras e proteção',kind:'shield',description:'As regras de acesso e conferência acompanham melhor as necessidades da operação.',items:[
+    'Revisão de cadastros sem identificação completa.',
+    'Proteção contra ações inválidas em filiais.'
+  ]},
+  {title:'Correções na classificação de cadastros',kind:'bug',description:'As informações das pessoas passaram a ser classificadas com mais precisão.',items:[
+    'Cadastros sem matrícula não recebem uma categoria indevida.',
+    'Resumo de vínculos mais fiel às informações disponíveis.'
+  ]},
+  {title:'Centro de Comando',kind:'sparkles',description:'O painel reúne uma visão rápida da situação da filial.',items:[
+    'Acompanhe ocupação e disponibilidade dos armários.',
+    'Consulte setores e pendências em um só lugar.'
+  ]},
+  {title:'Nova identidade Lockeris',kind:'sparkles',description:'A aplicação ganhou uma identidade visual renovada.',items:[
+    'Marca Lockeris presente nas principais telas.',
+    'Administração com apresentação atualizada.'
+  ]},
+  {title:'Importação inicial de planilhas',kind:'commit',description:'Cadastre armários e colaboradores a partir das planilhas da operação.',items:[
+    'Importe os dados para iniciar o controle da filial.',
+    'Confira as informações antes de concluir a carga.'
+  ]}
 ] as const;
