@@ -120,7 +120,7 @@ button.kpi-action:hover:not(:disabled){background:#eae4ff;border-color:#c4b9f5;t
 /* Base de colaboradores: a linha inteira abre o modal de detalhes */
 .people-table .people-row{cursor:pointer}
 .people-table .people-row:hover{background:#faf9ff}
-.people-table .table-detail{display:flex;align-items:center;gap:5px;border:0;background:transparent;color:#6656c4;font-size:10px;font-weight:700;white-space:nowrap;padding:0}
+.people-table .table-detail{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:#6656c4;font-size:10px;font-weight:700;white-space:nowrap;padding:0;margin:0;line-height:1}
 .people-table .table-detail:hover:not(:disabled){background:transparent;text-decoration:underline}
 .overview-widgets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
 .overview-widgets--base .insight-panel{min-height:0}

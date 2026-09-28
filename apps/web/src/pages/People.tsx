@@ -49,6 +49,14 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
   async function afterMutation(message:string){try{await load();refresh();notice(message);}catch{notice('A ação foi concluída, mas a lista não foi atualizada. Recarregue antes de agir novamente.');}}
   const filtered=people.filter(person=>(!category||person.category===category)&&(!onlyWithoutLocker||!person.number)&&(!q||[person.name,person.registration??'',person.company??'',person.number??''].some(value=>value.toLocaleLowerCase('pt-BR').includes(q.toLocaleLowerCase('pt-BR')))));
   const visibleCollaborators=filtered.filter(person=>person.category==='colaborador');
+  const visibleIds=visibleCollaborators.map(person=>person.id);
+  const allVisibleSelected=visibleIds.length>0&&visibleIds.every(id=>selected.includes(id));
+  function togglePerson(id:string,checked:boolean){
+    setSelected(current=>checked?(current.includes(id)?current:[...current,id]):current.filter(value=>value!==id));
+  }
+  function toggleAllVisible(checked:boolean){
+    setSelected(current=>checked?[...new Set([...current,...visibleIds])]:[]);
+  }
   const available=lockers.filter(locker=>locker.modality==='fixo'&&!locker.sector_occupant&&locker.condition==='disponivel'&&locker.migration_status==='conferido'&&
     (locker.occupants.length===0||locker.is_double&&locker.occupants.length<locker.capacity));
   function startEdit(person:Person){setEditing(person);setForm({name:person.name,registration:person.registration??'',category:person.category,company:person.company??'',department:person.department??'',functionName:person.function_name??'',needsFixed:person.needs_fixed});}
@@ -110,16 +118,16 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
             <button key={filter.label} type="button" className={filter.active?'quick-filter active':'quick-filter'} aria-pressed={filter.active} onClick={filter.apply}>{filter.label}</button>)}
         </div>
       </div>
-      {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={visibleCollaborators.length>0&&visibleCollaborators.every(person=>selected.includes(person.id))}
-        onChange={event=>setSelected(event.target.checked?[...new Set([...selected,...visibleCollaborators.map(person=>person.id)])]:selected.filter(id=>!visibleCollaborators.some(person=>person.id===id)))}/>
-        Selecionar colaboradores exibidos</label><button disabled={busy||!selected.length} onClick={()=>archive()}>Excluir selecionados ({selected.length})</button>
+      {admin&&!readonly&&<div className="row-actions"><label className="check"><input type="checkbox" checked={allVisibleSelected} disabled={!visibleIds.length}
+        onChange={event=>toggleAllVisible(event.target.checked)}/>
+        Selecionar colaboradores exibidos</label>{selected.length>0&&<button disabled={busy} onClick={()=>archive()}>Excluir selecionados ({selected.length})</button>}
         <button disabled={busy} onClick={()=>archive(true)}>Excluir toda a base de colaboradores</button></div>}
       {!filtered.length?<EmptyState title={people.length?'Nenhuma pessoa encontrada':'Nenhuma pessoa na base ativa'} description={people.length?'Revise a busca, a categoria ou o filtro de armários.':'Confira a importação de colaboradores ou cadastre uma pessoa externa.'}/>:<div className="table-wrap people-table"><table><thead><tr>{admin&&!readonly&&<th>Selecionar</th>}<th>Pessoa</th><th>Categoria</th><th>Setor / função</th><th>Situação</th><th>Armário</th><th>Ações</th></tr></thead>
-        <tbody>{filtered.map(person=><tr key={person.id} className="people-row" onClick={()=>setDetails(person)}>{admin&&!readonly&&<td data-label="Selecionar" onClick={event=>event.stopPropagation()}>{person.category==='colaborador'&&<input type="checkbox" aria-label={`Selecionar ${person.name}`}
-          checked={selected.includes(person.id)} onChange={event=>setSelected(event.target.checked?[...selected,person.id]:selected.filter(id=>id!==person.id))}/>}</td>}
-          <td data-label="Pessoa"><strong>{person.name}</strong><small>{person.registration??'Sem matrícula'}</small></td><td data-label="Categoria">{labels[person.category]??'Outra categoria'}</td>
+        <tbody>{filtered.map(person=><tr key={person.id} className="people-row" onClick={()=>setDetails(person)}>{admin&&!readonly&&<td data-label="Selecionar" onClick={event=>event.stopPropagation()}>{person.category==='colaborador'&&<div className="people-cell"><input type="checkbox" aria-label={`Selecionar ${person.name}`}
+          checked={selected.includes(person.id)} onChange={event=>togglePerson(person.id,event.target.checked)}/></div>}</td>}
+          <td data-label="Pessoa"><div className="people-cell"><strong>{person.name}</strong><small>{person.registration??'Sem matrícula'}</small></div></td><td data-label="Categoria">{labels[person.category]??'Outra categoria'}</td>
           <td data-label="Setor / função">{person.department??'—'}<small>{person.function_name??'—'}</small></td><td data-label="Situação">Ativo</td><td data-label="Armário">{lockerCell(person)}</td>
-          <td data-label="Ações" onClick={event=>event.stopPropagation()}><div className="row-actions">
+          <td data-label="Ações" onClick={event=>event.stopPropagation()}><div className="row-actions people-cell">
             <button type="button" className="table-detail" onClick={()=>setDetails(person)} aria-label={`Ver detalhes de ${person.name}`}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></div></td></tr>)}</tbody></table></div>}
     </section>
     {!readonly&&<section className="card" id="people-form"><div className="section-head"><div><h2>{editing?`Editar ${editing.name}`:'Cadastrar pessoa externa'}</h2>

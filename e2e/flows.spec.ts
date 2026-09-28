@@ -519,3 +519,73 @@ test('admin exclui um acesso pela lista e altera a própria senha pelo cabeçalh
   await expectNotice(page,'Senha alterada com sucesso.');
   await closeNotice(page);
 });
+
+test('seleção em lote alterna marcações e alinha verticalmente as células da tabela',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    await pool.query(`INSERT INTO users(username,password_hash,role,branch_id,must_change_password)
+      VALUES('e2e-select',$1,'filial_admin',$2,false)
+      ON CONFLICT (lower(username)) DO UPDATE SET role='filial_admin',branch_id=EXCLUDED.branch_id,must_change_password=false`,
+      [await argon2.hash('Testing-Password-123',{type:argon2.argon2id}),branch.id]);
+    const user=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='e2e-select'")).rows[0];
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",
+      [digest(token),user.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'}]);
+  await page.goto('/');
+  await page.getByRole('button',{name:'Colaboradores',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Colaboradores e outras pessoas'})).toBeVisible();
+  const master=page.getByRole('checkbox',{name:'Selecionar colaboradores exibidos'});
+  const boxes=page.locator('.people-table tbody input[type=checkbox]');
+  const bulkButton=page.getByRole('button',{name:/Excluir selecionados/});
+  const checked=page.locator('.people-table tbody input[type=checkbox]:checked');
+  const total=await boxes.count();
+  expect(total).toBeGreaterThan(1);
+  await expect(bulkButton).toHaveCount(0);
+  await boxes.first().check();
+  await expect(bulkButton).toHaveText('Excluir selecionados (1)');
+  await master.check();
+  await expect(checked).toHaveCount(total);
+  await expect(bulkButton).toHaveText(`Excluir selecionados (${total})`);
+  await master.uncheck();
+  await expect(checked).toHaveCount(0);
+  await expect(bulkButton).toHaveCount(0);
+  await boxes.first().check();
+  await expect(checked).toHaveCount(1);
+  await expect(master).not.toBeChecked();
+  await boxes.first().uncheck();
+  await expect(checked).toHaveCount(0);
+  await expect(bulkButton).toHaveCount(0);
+  const alignment=await page.evaluate(()=>{
+    const textCenter=(element:Element|null)=>{
+      if(!element)return null;
+      const range=document.createRange();range.selectNodeContents(element);
+      const rect=range.getBoundingClientRect();
+      return rect.height?rect.top+rect.height/2:null;
+    };
+    const boxCenter=(element:Element|null)=>{
+      if(!element)return null;
+      const rect=element.getBoundingClientRect();
+      return rect.top+rect.height/2;
+    };
+    return [...document.querySelectorAll('.people-table tbody tr')].map(row=>{
+      const rect=row.getBoundingClientRect();
+      return {rowCenter:rect.top+rect.height/2,
+        checkbox:boxCenter(row.querySelector("td[data-label='Selecionar'] input")),
+        name:textCenter(row.querySelector("td[data-label='Pessoa'] .people-cell")),
+        category:textCenter(row.querySelector("td[data-label='Categoria']")),
+        detail:boxCenter(row.querySelector('.table-detail'))};
+    });
+  });
+  expect(alignment.length).toBeGreaterThan(0);
+  for(const row of alignment)for(const key of ['name','category','detail','checkbox'] as const){
+    const value=row[key];
+    if(value===null)continue;
+    expect(Math.abs(value-row.rowCenter),`${key} a ${Math.abs(value-row.rowCenter).toFixed(2)}px do centro da linha`).toBeLessThan(3);
+  }
+  expect(alignment.some(row=>row.checkbox!==null)).toBe(true);
+});
