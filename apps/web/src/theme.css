@@ -202,7 +202,6 @@
 :root[data-theme='dark'] .locker-detail-summary .detail-availability strong{color:#d4c4ff}
 :root[data-theme='dark'] .fixed-locker-number{background:#2c3045;border-color:#50546e;color:#f1f0fb}
 :root[data-theme='dark'] .pending-editor,
-:root[data-theme='dark'] .locker-entry,
 :root[data-theme='dark'] .pending-actions{border-color:#41455d}
 :root[data-theme='dark'] .pending-editor p{color:#bfc4d9}
 :root[data-theme='dark'] .locker-card{background:#292c40;border-color:#41455d;box-shadow:0 8px 22px #080a1766}

@@ -3,28 +3,31 @@ import {ArrowLeftRight,ArrowRight,CircleAlert,Copy,FileClock,Grid2X2,KeyRound,Pl
 import {api} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
-import {alertLevelLabels,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,sectorOccupiedPositions,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
+import {alertLevelLabels,categoryShares,doubleLockerBreakdown,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyBySector,occupancySummary,openPendingCount,openPendingWithLocker,pendingAlertLevel,pendingLockerIds,sectorOccupiedPositions,type CategoryLinks,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
 type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string)=>void};
 type AllocationRow={started_at:string|null;ended_at:string|null};
 type TransferRow={happened_at:string};
 type Movements={allocations:AllocationRow[];transfers:TransferRow[]};
+type DashboardStats={links:CategoryLinks};
 const periods=[7,30] as const;
 
 export function Overview({branchId,branchName,admin=false,onOpenLockers,onNavigate}:Props){
   const [lockers,setLockers]=useState<InsightLocker[]>([]);
   const [pending,setPending]=useState<InsightPending[]>([]);
+  const [stats,setStats]=useState<DashboardStats|null>(null);
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [movements,setMovements]=useState<Movements|null>(null),[movementsError,setMovementsError]=useState(''),[movementsLoading,setMovementsLoading]=useState(false);
   const [period,setPeriod]=useState<(typeof periods)[number]>(30);
 
   useEffect(()=>{let active=true;setLoading(true);setError('');
     (async()=>{try{
-      const [items,issues]=await Promise.all([
+      const [items,issues,summary]=await Promise.all([
         api<InsightLocker[]>(`/branches/${branchId}/lockers`),
-        api<InsightPending[]>(`/branches/${branchId}/pending`)
+        api<InsightPending[]>(`/branches/${branchId}/pending`),
+        api<DashboardStats>(`/branches/${branchId}/dashboard`)
       ]);
-      if(active){setLockers(items);setPending(issues);}
+      if(active){setLockers(items);setPending(issues);setStats(summary);}
     }catch(cause){if(active)setError(cause instanceof Error?cause.message:'Confira a conexão e tente novamente.');}
     finally{if(active)setLoading(false);}})();
     return()=>{active=false;};
@@ -46,7 +49,7 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
   const summary=useMemo(()=>occupancySummary(lockers),[lockers]);
   const doubles=useMemo(()=>doubleLockerBreakdown(lockers),[lockers]);
   const keyControl=useMemo(()=>keyControlSummary(lockers),[lockers]);
-  const categories=useMemo(()=>occupancyByCategory(lockers),[lockers]);
+  const categories=useMemo(()=>stats?categoryShares(stats.links):[],[stats]);
   const sectors=useMemo(()=>occupancyBySector(lockers),[lockers]);
   const pendingIds=pendingLockerIds(pending);
   const openPendings=openPendingCount(pending);
@@ -138,16 +141,16 @@ export function Overview({branchId,branchName,admin=false,onOpenLockers,onNaviga
               aria-label={`${item.name}: ${item.count} ${item.count===1?'posição ocupada':'posições ocupadas'}. Ver armários`}/></div>
             <strong>{item.count}</strong></div>)}</div></div>:<p className="insight-empty">Ainda não há ocupações registradas nesta filial.</p>}
           {missingSector&&<p className="insight-alert"><TriangleAlert size={15} aria-hidden="true"/><span><strong>{missingSector.count} {missingSector.count===1?'posição':'posições'} sem setor identificado.</strong> Confira o cadastro desses ocupantes antes que virem perda de rastreio.</span></p>}
-          <p className="insight-note">Cada posição ocupada é atribuída ao setor do ocupante. Clique em uma barra para ver os registros.</p>
+          <p className="insight-note">Cada posição ocupada é atribuída ao setor do ocupante. Promotores ficam de fora do ranking: promotor é cargo, contado em Pessoas por vínculo. Clique em uma barra para ver os registros.</p>
         </section>
 
         <section className="insight-panel" aria-labelledby="category-widget-title">
-          <div className="insight-heading"><div><h2 id="category-widget-title">Pessoas por vínculo</h2><p>Pessoas identificadas, separadas por categoria cadastral.</p></div></div>
+          <div className="insight-heading"><div><h2 id="category-widget-title">Pessoas por vínculo</h2><p>Toda a base ativa da filial, separada por vínculo cadastral.</p></div></div>
           <div className="category-bars">{categories.map(item=><div className="category-row" key={item.key}>
             <div className="category-row-head"><span>{item.label}</span><strong>{item.count} <small>{item.percent}%</small></strong></div>
             <div className="insight-track"><span className={`category-fill fill-${item.key}`} style={{width:`${Math.max(item.count?3:0,item.percent)}%`}}/></div>
           </div>)}</div>
-          <p className="insight-note">{sectorOccupiedPositions(lockers)} posições ocupadas diretamente por setor. {openPendings} pendências cadastrais e operacionais abertas, contadas pelos itens registrados.</p>
+          <p className="insight-note">Contagem sem limite de exibição: todos os promotores ativos da filial entram em Promotores Fixos, mesmo sem armário. {sectorOccupiedPositions(lockers)} posições ocupadas diretamente por setor. {openPendings} pendências cadastrais e operacionais abertas, contadas pelos itens registrados.</p>
         </section>
       </div>
 

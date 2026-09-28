@@ -227,9 +227,6 @@
 .locker-modal .list h3 { padding-top: 14px; }
 .locker-key { display: flex; align-items: end; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
 .locker-key label { min-width: 210px; flex: 1; }
-.locker-entry { border-top: 1px solid #e6ebef; padding-top: 20px; display: grid; gap: 15px; }
-.locker-entry select[size] { height: auto; max-height: 230px; }
-.locker-entry button.primary { justify-self: start; }
 .pending-tabs { display: flex; gap: 8px; border-bottom: 1px solid #dce5eb; margin-bottom: 18px; }
 .pending-tabs button { border: 0; border-radius: 9px 9px 0 0; background: transparent; color: #53677a; padding: 12px 17px; }
 .pending-tabs button[aria-selected="true"] { color: #145f61; background: #e7f5f2; box-shadow: inset 0 -3px #16817e; }

@@ -67,13 +67,38 @@ const pendingDetailsSql=(openOnly:boolean)=>`SELECT p.*,pe.name person_name,m.pe
 export async function managementRoutes(app:FastifyInstance):Promise<void> {
   app.get('/api/branches/:branchId/dashboard',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    const [lockers,people,pending]=await Promise.all([
+    const [lockers,people,pending,links]=await Promise.all([
       pool.query<{total:string;occupied:string;blocked:string}>(`SELECT count(*) total,count(*) FILTER (WHERE l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) occupied,
         count(*) FILTER (WHERE l.condition<>'disponivel' OR l.migration_status='inconclusivo') blocked FROM lockers l WHERE l.branch_id=$1`,[branchId]),
       pool.query<{total:string}>('SELECT count(*) total FROM memberships WHERE branch_id=$1 AND status=$2',[branchId,'ativo']),
-      pool.query<{total:string}>('SELECT count(*) total FROM pending_items WHERE branch_id=$1 AND state=$2',[branchId,'aberta'])
+      pool.query<{total:string}>('SELECT count(*) total FROM pending_items WHERE branch_id=$1 AND state=$2',[branchId,'aberta']),
+      pool.query<{total:number;colaborador:number;promotor_fixo:number;terceirizado:number;vinculo_nao_identificado:number}>(`
+        SELECT count(*)::int total,
+          count(*) FILTER (WHERE link='colaborador')::int colaborador,
+          count(*) FILTER (WHERE link='promotor_fixo')::int promotor_fixo,
+          count(*) FILTER (WHERE link='terceirizado')::int terceirizado,
+          count(*) FILTER (WHERE link='vinculo_nao_identificado')::int vinculo_nao_identificado
+        FROM (
+          SELECT CASE
+            WHEN m.category='promotor_fixo'
+              OR m.department ILIKE '%promotor%'
+              OR m.function_name ILIKE '%promotor%' THEN 'promotor_fixo'
+            WHEN m.category='terceirizado'
+              OR coalesce(m.company,'') ILIKE '%delta%'
+              OR coalesce(m.company,'') ILIKE '%climatiza%'
+              OR coalesce(m.company,'') ILIKE '%terceiriz%'
+              OR coalesce(m.department,'') ILIKE '%delta%'
+              OR coalesce(m.department,'') ILIKE '%climatiza%'
+              OR coalesce(m.department,'') ILIKE '%terceiriz%' THEN 'terceirizado'
+            WHEN m.category='vinculo_nao_identificado' THEN 'vinculo_nao_identificado'
+            WHEN m.category='colaborador' THEN 'colaborador'
+          END link
+          FROM memberships m
+          WHERE m.branch_id=$1 AND m.status='ativo'
+        ) classified
+        WHERE link IS NOT NULL`,[branchId])
     ]);
-    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0]};
+    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0]};
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {availablePositions,doubleLockerBreakdown,effectiveCapacity,hasExclusiveDoubleRule,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyByCategory,occupancyBySector,occupiedPositions,occupancySummary,pendingAlertLevel,pendingLockerIds,requiresReview,sectorOccupiedPositions,showsLockerPositions,type InsightLocker} from './locker-insights';
+import {availablePositions,categoryShares,doubleLockerBreakdown,effectiveCapacity,hasExclusiveDoubleRule,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyBySector,occupiedPositions,occupancySummary,pendingAlertLevel,pendingLockerIds,requiresReview,sectorOccupiedPositions,showsLockerPositions,type InsightLocker} from './locker-insights';
 
 const locker=(overrides:Partial<InsightLocker>={}):InsightLocker=>({
   id:'101',number:'101',capacity:2,is_double:true,sector_occupant:null,condition:'disponivel',migration_status:'conferido',
@@ -103,47 +103,37 @@ describe('indicadores executivos do painel',()=>{
     expect(doubleLockerBreakdown([locker({id:'9',capacity:1,is_double:false})])).toEqual({total:0,free:0,partial:0,full:0,positions:0,filled:0,utilization:0});
   });
 
-  it('conta pessoas por vínculo sem atribuir as posições setoriais a pessoas',()=>{
-    const rows=occupancyByCategory([
-      locker({id:'1',occupants:[{name:'Ana',registration:'0001',department:'Loja',category:'colaborador'}]}),
-      locker({id:'2',occupants:[{name:'Bia',registration:'0002',department:'Loja',category:'colaborador'}]}),
-      locker({id:'3',occupants:[{name:'Caio',registration:'0003',department:'Delta Climatização',category:'colaborador'}]}),
-      locker({id:'4',sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
-      locker({id:'5',occupants:[{name:'Duda',registration:'0004',department:'Loja',category:'terceirizado'}]}),
-      locker({id:'6',occupants:[{name:'Eli',registration:'0005',department:'PROMOTOR(A)',category:'roteirista',functionName:'PROMOTOR(A)'}]}),
-      locker({id:'7',sector_occupant:'Restaurante FC',capacity:1,is_double:false})
-    ]);
+  it('conta a totalidade dos promotores da filial no card de vínculos, sem limite de exibição',()=>{
+    const rows=categoryShares({colaborador:20,promotor_fixo:54,terceirizado:8,vinculo_nao_identificado:6,total:88});
     expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado']);
-    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({label:'Colaboradores FC',count:2,percent:40});
-    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({label:'Promotores Fixos',count:1,percent:20});
-    expect(rows.find(row=>row.key==='terceirizado')).toMatchObject({label:'Terceirizados',count:2,percent:40});
-    expect(rows.some(row=>row.key==='roteirista')).toBe(false);
-    expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(5);
+    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({label:'Promotores Fixos',count:54,percent:61});
+    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({count:20,percent:23});
+    expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(88);
+  });
+
+  it('zera contagem e percentual quando a filial não tem vínculos classificados',()=>{
+    const rows=categoryShares({colaborador:0,promotor_fixo:0,terceirizado:0,vinculo_nao_identificado:0,total:0});
+    expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado']);
+    expect(rows.every(row=>row.count===0&&row.percent===0)).toBe(true);
   });
 
   it('mantém posições setoriais separadas das pessoas identificadas',()=>{
-    const rows=occupancyByCategory([
-      locker({id:'1',sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
-      locker({id:'2',sector_occupant:'Delta Climatização',capacity:1,is_double:false}),
-      locker({id:'3',occupants:[{name:'Ana',registration:'0001',department:'LOJA',category:'colaborador'}]}),
-      locker({id:'4',occupants:[{name:'Bia',registration:'0002',department:'PROMOTOR(A)',category:'roteirista',functionName:'PROMOTOR(A)'}]}),
-      locker({id:'5',occupants:[{name:'Caio',registration:'0003',department:'Delta Climatização',category:'colaborador'}]})
-    ]);
-    expect(rows.find(row=>row.key==='promotor_fixo')).toMatchObject({count:1,percent:33});
-    expect(rows.find(row=>row.key==='terceirizado')).toMatchObject({count:1,percent:33});
-    expect(rows.find(row=>row.key==='colaborador')).toMatchObject({count:1,percent:33});
-    expect(rows.reduce((sum,row)=>sum+row.count,0)).toBe(3);
-    expect(sectorOccupiedPositions([locker({sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false})])).toBe(1);
+    expect(sectorOccupiedPositions([
+      locker({sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
+      locker({sector_occupant:'Restaurante FC',capacity:1,is_double:false})
+    ])).toBe(2);
+    expect(sectorOccupiedPositions([locker({occupants:[{name:'Ana',registration:'0001',department:'Loja'}]})])).toBe(0);
   });
 
-  it('descarta categorias legadas fora dos três vínculos operacionais',()=>{
-    const rows=occupancyByCategory([
-      locker({id:'1',occupants:[{name:'Ana',registration:'0001',department:'Loja',category:'roteirista'}]}),
-      locker({id:'2',occupants:[{name:'Bia',registration:'0002',department:'Loja'}]}),
-      locker({id:'3',sector_occupant:'Restaurante FC',capacity:1,is_double:false})
+  it('mantém promotores fora do ranking de setores porque promotor é cargo',()=>{
+    const rows=occupancyBySector([
+      locker({id:'1',occupants:[{name:'Ana',registration:'0001',department:'Loja'}]}),
+      locker({id:'2',occupants:[{name:'Eli',registration:'0005',department:'PROMOTOR(A)',functionName:'PROMOTOR(A)'}]}),
+      locker({id:'3',sector_occupant:'PROMOTOR(A)',capacity:1,is_double:false}),
+      locker({id:'4',sector_occupant:'Restaurante',capacity:1,is_double:false})
     ]);
-    expect(rows.map(row=>row.key)).toEqual(['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado']);
-    expect(rows.every(row=>row.count===0&&row.percent===0)).toBe(true);
+    expect(rows.map(row=>row.name)).toEqual(['Loja','Restaurante']);
+    expect(rows.some(row=>row.name.toLocaleLowerCase('pt-BR').includes('promotor'))).toBe(false);
   });
 
   it('marca a ocupação sem setor como anomalia no ranking de setores',()=>{

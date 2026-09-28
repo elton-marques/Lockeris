@@ -198,7 +198,6 @@
 .field-glyph { display: inline-block; vertical-align: -2px; margin-right: 6px; color: var(--muted); opacity: .85; }
 
 /* ---------- Cartões de configuração e cadastro ---------- */
-.locker-modal .locker-entry { display: grid; gap: 15px; border-top: 0; padding-top: 0; }
 .locker-modal .locker-editor { display: grid; gap: 14px; }
 .locker-modal .locker-editor .form-grid { margin-top: 0; }
 .locker-modal .locker-editor button.primary { justify-self: start; }

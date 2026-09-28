@@ -467,6 +467,20 @@ describe('regras transacionais',()=>{
     expect(kinds).not.toContain('armarios_importados');
     expect(Number((await pool.query<{count:string}>('SELECT count(*) FROM events WHERE branch_id=$1',[branch.id])).rows[0].count)).toBe(before-2);
   });
+  it('dashboard conta todos os vínculos ativos da filial, com promotor por cargo e sem limitar a listagem',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const create=async(payload:Record<string,unknown>)=>{const created=await send(auth,'POST',`/api/branches/${branch.id}/people`,{operationId:uuid(),origin:'manual',needsFixed:false,...payload});expect(created.statusCode).toBe(200);};
+    await create({name:'Colaboradora Loja',registration:'2001',category:'colaborador',department:'Loja',functionName:'Operador'});
+    await create({name:'Colaborador Promotor',registration:'2002',category:'colaborador',department:'Loja',functionName:'PROMOTOR(A)'});
+    await create({name:'Promotora Fixa',registration:'2003',category:'promotor_fixo',department:'Loja',functionName:'Promotora'});
+    await create({name:'Terceirizada',registration:'2004',category:'terceirizado',company:'Delta Climatização',department:'Climatização'});
+    await create({name:'Sem vínculo',registration:null,category:'vinculo_nao_identificado'});
+    const legacy=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Roteirista Legado') RETURNING id")).rows[0].id;
+    await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,status) VALUES($1,$2,'roteirista','manual','2006','ativo')",[legacy,branch.id]);
+    const response=await app.inject({method:'GET',url:`/api/branches/${branch.id}/dashboard`,headers:{cookie:auth.cookie}});
+    expect(response.statusCode).toBe(200);
+    expect(response.json().links).toEqual({total:5,colaborador:1,promotor_fixo:2,terceirizado:1,vinculo_nao_identificado:1});
+  });
 });
 
 it('CSV mantém zeros à esquerda e campos entre aspas',async()=>{

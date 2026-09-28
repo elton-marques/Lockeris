@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
+import {ArrowLeftRight, Boxes, Building2, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, Menu, Moon, ShieldCheck, Sun, Upload, UsersRound, Wifi} from 'lucide-react';
 import {api,post,type User} from './api';
 import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
@@ -118,8 +118,25 @@ function ThemeSwitch({theme,onToggle}:{theme:Theme;onToggle:()=>void}){
 }
 function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void;theme:Theme;onToggleTheme:()=>void}){
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [revealPassword,setRevealPassword]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
-  return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div><div className="auth-intro"><span className="brand-icon"><LockerisIcon size={52}/></span><span className="eyebrow">Lockeris</span><h2>Uma operação clara começa por aqui.</h2><p>Plataforma Integrada de Armários. Consulte ocupações, confira pendências e acompanhe cada movimentação na filial autorizada.</p></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p><label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Senha<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;
+  return <main className="auth-page"><div className="auth-theme-control"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/></div>
+    <div className="auth-intro"><span className="brand-icon"><LockerisIcon size={52}/></span><span className="eyebrow">Lockeris</span>
+      <h2>Gestão Integrada e Controle de Armários</h2>
+      <p>Sistema de controle operacional de armários e rastreabilidade para Prevenção de Perdas.</p></div>
+    <form className="auth-card" onSubmit={submit}><span className="eyebrow">Acesso interno</span><h1>Entrar</h1><p>Use as credenciais fornecidas pela administração.</p>
+      <label>Nome de usuário<input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)}/></label>
+      <label className="password-field">Senha
+        <span className="password-control">
+          <input type={revealPassword?'text':'password'} required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/>
+          <button type="button" className="password-toggle" aria-pressed={revealPassword} title={revealPassword?'Ocultar senha':'Mostrar senha'}
+            onClick={()=>setRevealPassword(current=>!current)}>
+            <span className="sr-only">{revealPassword?'Ocultar senha':'Mostrar senha'}</span>
+            {revealPassword?<EyeOff size={16} aria-hidden="true"/>:<Eye size={16} aria-hidden="true"/>}
+          </button>
+        </span>
+      </label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form>
+  </main>;
 }
 function Password({onDone,theme,onToggleTheme}:{onDone:()=>void;theme:Theme;onToggleTheme:()=>void}){
   const [oldPassword,setOld]=useState(''),[newPassword,setNew]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);

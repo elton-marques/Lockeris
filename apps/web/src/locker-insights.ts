@@ -55,8 +55,14 @@ export const categoryLabels:Record<string,string>={
   vinculo_nao_identificado:'Vínculo não identificado'
 };
 export const canonicalCategories=['colaborador','promotor_fixo','terceirizado','vinculo_nao_identificado'] as const;
-const externalCompanyKeywords=['delta','climatizacao','terceiriz'];
 export const missingSectorLabel='Sem setor';
+
+/**
+ * "Promotor" é cargo/função, nunca setor: a menção a promotor no setor ou na
+ * função do ocupante define o vínculo da pessoa e retira o rótulo do ranking
+ * de ocupação por setor.
+ */
+export function mentionsPromoter(value:string|null|undefined){return mentionsSector(value,['promotor']);}
 
 export type AlertLevel='ok'|'atencao'|'critico';
 export function pendingAlertLevel(count:number):AlertLevel{return count===0?'ok':count<=10?'atencao':'critico';}
@@ -78,34 +84,16 @@ export function doubleLockerBreakdown(lockers:InsightLocker[]):DoubleBreakdown{
 }
 
 export type CategoryShare={key:string;label:string;count:number;percent:number};
+export type CategoryLinks={colaborador:number;promotor_fixo:number;terceirizado:number;vinculo_nao_identificado:number;total:number};
 /**
- * Vínculo operacional de um ocupante: o setor/cargo prevalece sobre a categoria
- * cadastrada (PROMOTOR(A) → Promotores Fixos, empresa externa → Terceirizados) e a
- * categoria legada "roteirista" não gera linha própria no painel.
+ * Monta as linhas de "Pessoas por vínculo" a partir da contagem agregada da
+ * filial (`GET /api/branches/:id/dashboard`). A query conta todos os vínculos
+ * ativos da filial — promotores inclusos — sem nenhum `LIMIT` de exibição.
  */
-function occupantLinkKey(person:LockerOccupant):string|null{
-  const context=[person.department,person.functionName];
-  if(context.some(value=>mentionsSector(value,['promotor'])))return 'promotor_fixo';
-  const category=person.category?.trim();
-  if(category==='promotor_fixo')return 'promotor_fixo';
-  if(category==='terceirizado'||context.some(value=>mentionsSector(value,externalCompanyKeywords)))return 'terceirizado';
-  if(category==='vinculo_nao_identificado')return 'vinculo_nao_identificado';
-  if(category==='colaborador')return 'colaborador';
-  return null;
-}
-export function occupancyByCategory(lockers:InsightLocker[]):CategoryShare[]{
-  const counts=new Map<string,number>();
-  canonicalCategories.forEach(key=>counts.set(key,0));
-  for(const locker of lockers){
-    if(locker.sector_occupant)continue;
-    for(const person of locker.occupants){
-      const key=occupantLinkKey(person);
-      if(key)counts.set(key,(counts.get(key)??0)+1);
-    }
-  }
-  const total=[...counts.values()].reduce((sum,count)=>sum+count,0);
+export function categoryShares(links:CategoryLinks):CategoryShare[]{
+  const total=canonicalCategories.reduce((sum,key)=>sum+(links[key]??0),0);
   return canonicalCategories.map(key=>{
-    const count=counts.get(key)??0;
+    const count=links[key]??0;
     return {key,label:categoryLabels[key],count,percent:total?Math.round((count/total)*100):0};
   });
 }
@@ -118,10 +106,12 @@ export function occupancyBySector(lockers:InsightLocker[]):SectorShare[]{
   const counts=new Map<string,number>();
   for(const locker of lockers){
     if(locker.sector_occupant){
+      if(mentionsPromoter(locker.sector_occupant))continue;
       counts.set(locker.sector_occupant,(counts.get(locker.sector_occupant)??0)+effectiveCapacity(locker));continue;
     }
     for(const person of locker.occupants){
       const sector=person.department?.trim()||missingSectorLabel;
+      if(sector!==missingSectorLabel&&mentionsPromoter(sector))continue;
       counts.set(sector,(counts.get(sector)??0)+1);
     }
   }

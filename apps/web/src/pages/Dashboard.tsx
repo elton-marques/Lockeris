@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowLeftRight,ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,MapPin,MessageSquare,PencilLine,Plus,Search,SlidersHorizontal,User,UserPlus,Users,X} from 'lucide-react';
+import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,MapPin,PencilLine,Plus,Search,SlidersHorizontal,User,Users,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
@@ -13,7 +13,6 @@ import {availablePositions,effectiveCapacity,lockerSectors,occupiedPositions,pen
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
-type Person={person_id:string;name:string;registration:string|null;department:string|null;status:string;locker_id:string|null;number:string|null};
 type Pending={pending_locker_id:string|null;state:string;kind:string};
 type PrintData={nome:string;matricula:string;setor:string;numeroArmario:string;tipoUsuario:'colaborador';possuiCopia:boolean;filial:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
@@ -27,12 +26,12 @@ const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=lockerSectors;
 
 export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
-  const [lockers,setLockers]=useState<Locker[]>([]),[people,setPeople]=useState<Person[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
+  const [lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false);
   const [view,setView]=useState<'cards'|'table'>('cards');
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
-  const [personQuery,setPersonQuery]=useState(''),[personId,setPersonId]=useState(''),[keyCopy,setKeyCopy]=useState(''),[note,setNote]=useState(''),[transferReason,setTransferReason]=useState('');
-  const [sharingReason,setSharingReason]=useState(''),[sharingDue,setSharingDue]=useState(''),[busy,setBusy]=useState(false);
+  const [keyCopy,setKeyCopy]=useState('');
+  const [busy,setBusy]=useState(false);
   const [printData,setPrintData]=useState<PrintData|null>(null);
   const [edit,setEdit]=useState({keyCopy:'sim'});
   const [occupantEdit,setOccupantEdit]=useState<OccupantEdit|null>(null),[draft,setDraft]=useState<OccupantDraft>(emptyDraft);
@@ -41,10 +40,10 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
   async function load(){
     setLoading(true);setLoadError('');
     try{
-    const [l,p,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<Person[]>(`/branches/${branchId}/people`),
+    const [l,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),
       api<Pending[]>(`/branches/${branchId}/pending`),
       api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
-    setLockers(l);setPeople(p);setPending(items);setRegistrations(roster);
+    setLockers(l);setPending(items);setRegistrations(roster);
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}
     finally{setLoading(false);}
   }
@@ -105,16 +104,8 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
   const officialEdit=findRegistration(registrations,draft.registration);
   const officialFieldsLocked=!!officialEdit||!!editingOccupant&&editingOccupant.origin==='ti'&&
     registrationKey(draft.registration)===registrationKey(editingOccupant.registration??'');
-  const matches=people.filter(person=>person.status==='ativo'&&(!personQuery||[person.name,person.registration??''].some(value=>lower(value).includes(lower(personQuery)))))
-    .sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
-  const chosen=people.find(person=>person.person_id===personId);
-  const source=lockers.find(item=>item.occupants.some(occupant=>occupant.personId===personId));
-  const sourceAllocation=source?.occupants.find(occupant=>occupant.personId===personId);
-  const needsSharing=!!locker&&locker.occupants.length>0&&!locker.is_double;
-  const canEnter=!!locker&&locker.modality==='fixo'&&!readonly&&availablePositions(locker)>0;
 
   function openLocker(item:Locker){
-    setPersonQuery('');setPersonId('');setNote('');setTransferReason('');setSharingReason('');setSharingDue('');
     setKeyCopy(item.key_copy_available===false?'nao':'sim');
     setOccupantEdit(null);setDraft(emptyDraft);fillEdit(item);setSelected(item.id);
   }
@@ -175,27 +166,6 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
         expectedMembershipVersion:editingOccupant?.membershipVersion,name:draft.name.trim(),registration:draft.registration.trim()||null,
         department:draft.department.trim()||null,functionName:draft.functionName.trim()||null}:null}),
     `Informações do armário #${locker.number} salvas.`,scope==='attributes',cancelOccupantEdit);}
-  async function assign(event:React.FormEvent){
-    event.preventDefault();if(!locker||!chosen||!keyCopy||!canEnter||source?.id===locker.id)return;
-    if(!await askConfirm(`${source?`Transferir ${chosen.name} do armário ${source.number} para o ${locker.number}`:`Atribuir o armário ${locker.number} a ${chosen.name}`} na filial ${branchName}?${source?' A ocupação anterior será encerrada.':''}`))return;
-    const keyCopyAvailable=keyCopy==='sim';
-    const assignmentPrintData:PrintData={nome:chosen.name,matricula:chosen.registration??'',setor:chosen.department??'',numeroArmario:locker.number,tipoUsuario:'colaborador',possuiCopia:keyCopyAvailable,filial:branchName};
-    const successMessage=source?`Armário #${locker.number} transferido para ${chosen.name} com sucesso.`
-      :`Armário #${locker.number} atribuído a ${chosen.name} com sucesso!`;
-    const offerPrint=()=>{setPrintData(assignmentPrintData);notice(successMessage,{label:'Imprimir Termo',onClick:handlePrint});};
-    if(source&&sourceAllocation){
-      if(transferReason.trim().length<3)return;
-      act(()=>post(`/branches/${branchId}/allocations/transfer`,{operationId:op(),allocationId:sourceAllocation.allocationId,
-        expectedAllocationVersion:sourceAllocation.allocationVersion,destinationLockerId:locker.id,sourceVersion:source.version,destinationVersion:locker.version,
-        reason:transferReason.trim(),note:note.trim()||null,keyCopyAvailable,sharingReason:sharingReason.trim()||null,
-        sharingDueAt:sharingDue?new Date(`${sharingDue}T12:00:00`).toISOString():null}),successMessage,true,offerPrint);
-      return;
-    }
-    act(()=>post(`/branches/${branchId}/allocations/occupy`,{operationId:op(),personId:chosen.person_id,lockerId:locker.id,
-      expectedVersion:locker.version,modality:locker.modality,seasonal:false,note:note.trim()||null,keyCopyAvailable,
-      sharingReason:sharingReason.trim()||null,sharingDueAt:sharingDue?new Date(`${sharingDue}T12:00:00`).toISOString():null}),
-    successMessage,true,offerPrint);
-  }
   async function release(occupant:Occupant){
     if(!locker||!await askConfirm(`Desocupar o armário ${locker.number} e encerrar a ocupação de ${occupant.name}?`))return;
     act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:occupant.allocationId,
@@ -330,24 +300,6 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
                 onChange={checked=>setEdit(current=>({...current,keyCopy:checked?'sim':'nao'}))}/></div>
           </div>
           <button className="primary" disabled={busy}>Salvar dados do armário</button>
-        </form>}
-        {canEnter&&<form className="locker-card locker-entry" onSubmit={assign} aria-labelledby="locker-entry-title">
-          <div className="locker-card-head"><h3 id="locker-entry-title"><span className="card-icon"><UserPlus size={16} aria-hidden="true"/></span>Cadastrar pessoa neste armário</h3></div>
-          {admin&&<div className="control-cell"><ToggleSwitch label="Cópia da chave ao atribuir" hint="Situação da cópia registrada junto com a ocupação."
-            checked={keyCopy==='sim'} onChange={checked=>setKeyCopy(checked?'sim':'nao')}/></div>}
-          <label className="field-icon"><FieldIcon icon={Search}/>Pesquisar pessoa por nome ou matrícula<input value={personQuery} onChange={event=>{setPersonQuery(event.target.value);setPersonId('');}} placeholder="Digite nome ou matrícula"/></label>
-          <label>Pessoas cadastradas<select required size={Math.min(7,Math.max(3,matches.length+1))} value={personId} onChange={event=>setPersonId(event.target.value)}>
-            <option value="">Selecione uma pessoa</option>{matches.map(person=><option key={person.person_id} value={person.person_id}>
-              {person.name}{person.registration?` · ${person.registration}`:''}{person.number?` · armário ${person.number}`:''}</option>)}</select></label>
-          {chosen&&source?.id===locker.id&&<p className="warning">{chosen.name} já ocupa este armário.</p>}
-          {chosen&&source&&source.id!==locker.id&&<p className="action-summary"><strong>Transferência</strong> · {chosen.name}, armário {source.number} → {locker.number}, filial {branchName}. A ocupação anterior será encerrada.</p>}
-          {chosen&&!source&&<p className="action-summary"><strong>Atribuição</strong> · {chosen.name} receberá o armário {locker.number}, filial {branchName}.</p>}
-          {chosen&&source&&source.id!==locker.id&&<label className="field-icon"><FieldIcon icon={ArrowLeftRight}/>Motivo da transferência<input required minLength={3} value={transferReason} onChange={event=>setTransferReason(event.target.value)}/></label>}
-          <label className="field-icon"><FieldIcon icon={MessageSquare}/>Observação (opcional)<input value={note} onChange={event=>setNote(event.target.value)}/></label>
-          {needsSharing&&<><label>Motivo do compartilhamento<input required value={sharingReason} onChange={event=>setSharingReason(event.target.value)}/></label>
-            <label>Previsão de encerramento do compartilhamento<input type="date" required value={sharingDue} onChange={event=>setSharingDue(event.target.value)}/></label></>}
-          <button className="primary" disabled={busy||!personId||!keyCopy||source?.id===locker.id||!!source&&transferReason.trim().length<3}>
-            {source?'Transferir para este armário':'Cadastrar neste armário'}</button>
         </form>}
       </section>
     </div>}
