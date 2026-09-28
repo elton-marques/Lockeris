@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
 /* Esconde o termo na navegação normal do sistema */
 .termo-print-container {
@@ -24,7 +24,7 @@
   /* 2. Configuração de Margem e Fundo Branco */
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 10mm;
   }
 
   html,
@@ -80,7 +80,7 @@
   }
 
   .termo-logo {
-    padding: 8px;
+    padding: 10px 12px;
     border-right: 2px solid #000;
     display: flex;
     align-items: center;
@@ -89,7 +89,7 @@
 
   .termo-logo img {
     max-width: 100%;
-    max-height: 60px;
+    max-height: 76px;
     object-fit: contain;
   }
 
@@ -97,7 +97,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8px;
+    padding: 10px 12px;
   }
 
   .termo-title {
@@ -116,7 +116,7 @@
 
   .termo-meta-item {
     flex: 1;
-    padding: 4px 8px;
+    padding: 6px 10px;
     font-size: 10pt;
     border-bottom: 1px solid #000;
     display: flex;
@@ -144,7 +144,7 @@
 
   .termo-col {
     flex: 1;
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-right: 2px solid #000 !important; /* REFORÇADO PARA 2PX */
     color: #000 !important;
   }
@@ -165,7 +165,7 @@
   .termo-label {
     background-color: #c5e0b4 !important;
     font-weight: bold;
-    padding: 5px 10px;
+    padding: 8px 12px;
     border-right: 2px solid #000 !important; /* REFORÇADO PARA 2PX */
     border-bottom: 2px solid #000 !important; /* REFORÇADO PARA 2PX */
     color: #000 !important;
@@ -174,7 +174,7 @@
   }
 
   .termo-value {
-    padding: 5px 10px;
+    padding: 8px 12px;
     border-bottom: 2px solid #000 !important; /* REFORÇADO PARA 2PX */
     color: #000 !important;
     display: flex;
@@ -187,9 +187,9 @@
   }
 
   .termo-body {
-    padding: 10px 12px;
-    font-size: 11px;
-    line-height: 1.2;
+    padding: 16px 18px;
+    font-size: 14px;
+    line-height: 1.4;
     border-bottom: 2px solid #000;
     color: #000 !important;
     page-break-inside: avoid;
@@ -197,26 +197,32 @@
   }
 
   .termo-body p {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.2;
+    margin: 0 0 6px;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .termo-body p:last-of-type {
+    margin-bottom: 0;
   }
 
   .termo-body ol {
-    margin: 6px 0;
-    padding-left: 16px;
-    font-size: 11px;
-    line-height: 1.2;
+    margin: 8px 0;
+    padding-left: 22px;
+    font-size: 0.85rem;
+    line-height: 1.35;
   }
 
   .termo-body li {
-    margin-bottom: 2px;
-    line-height: 1.18;
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+    line-height: 1.35;
   }
 
   .termo-signature-area {
-    height: 72px;
-    padding: 10px;
+    height: 120px;
+    margin-top: 2rem;
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
