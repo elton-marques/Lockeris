@@ -66,7 +66,7 @@
   --border-divider:#3F3F46;--border-strong:#71717A;--brand-accent:#7C3AED;--brand-accent-hover:#6D28D9;
   --brand-surface:#3B2364;--focus-ring:#C4B5FD;--status-success:#34D399;--status-warning:#FBBF24;--status-danger:#F43F5E;
   --ink:#FAFAFA;--ink-soft:#D4D4D8;--muted:#A1A1AA;
-  --line:#3F3F46;--surface:#27272A;--canvas:#18181B;
+  --line:#3F3F46;--surface:#27272A;--canvas:#18181B;--bg-main:#18181B;
   --brand:#A78BFA;--brand-hover:#C4B5FD;--brand-soft:#3B2364;--focus:#C4B5FD;
   --shadow:0 18px 38px #080a1780;
   color:var(--ink);background:var(--canvas);
@@ -129,7 +129,7 @@
 :root[data-theme='dark'] .theme-switch svg:last-child{color:#d1baff}
 :root[data-theme='dark'] .theme-switch-thumb{background:#5c529a;box-shadow:0 2px 9px #080a18a8;transform:translateX(29px)}
 :root[data-theme='dark'] .insight-empty{color:#bfc4d8}
-:root[data-theme='dark'] .insight-bar-row>span,
+:root[data-theme='dark'] .insight-bar-row>span:first-child,
 :root[data-theme='dark'] .insight-bar-row strong{color:#d2d5e7}
 :root[data-theme='dark'] .view-switch{background:#2b2e42;border-color:#464960}
 :root[data-theme='dark'] .view-switch button{background:transparent;color:#bdc1d8;border-color:transparent}
@@ -280,12 +280,17 @@
 :root[data-theme='dark'] .kpi-badge--critico{background:#4b2b32;color:#ffb8bf;border-color:#7c424c}
 :root[data-theme='dark'] .kpi-action{color:#c9bcff}
 :root[data-theme='dark'] button.kpi-action:hover:not(:disabled){color:#e2dcff}
-:root[data-theme='dark'] .category-row-head{border-color:#3d4159}
+:root[data-theme='dark'] .category-row{border-color:#3d4159}
 :root[data-theme='dark'] .category-row-head span{color:#cdd1e3}
 :root[data-theme='dark'] .category-row-head strong{color:#f0f1fb}
 :root[data-theme='dark'] .category-row-head small{color:#a9aec6}
+:root[data-theme='dark'] .insight-track,
+:root[data-theme='dark'] .category-track{background:#31354c}
+:root[data-theme='dark'] .insight-fill,
+:root[data-theme='dark'] .category-fill{background:linear-gradient(90deg,#8f80ff,#b3a4ff)}
+:root[data-theme='dark'] .insight-bar-row.anomaly .insight-fill{background:linear-gradient(90deg,#e0655b,#f0918a)}
 :root[data-theme='dark'] .insight-bar-row:hover{background:#2a2e44;border-color:#3f435e}
-:root[data-theme='dark'] .insight-bar-row.anomaly>span{color:#ff9d9d}
+:root[data-theme='dark'] .insight-bar-row.anomaly>span:first-child{color:#ff9d9d}
 :root[data-theme='dark'] .period-toggle{background:#2b2e42;border-color:#464960}
 :root[data-theme='dark'] .period-toggle button{background:transparent;color:#bdc1d8}
 :root[data-theme='dark'] .period-toggle button:hover{background:#34374f}

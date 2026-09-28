@@ -51,6 +51,7 @@ export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
   const keyControl=useMemo(()=>keyControlSummary(lockers),[lockers]);
   const categories=useMemo(()=>stats?categoryShares(stats.links):[],[stats]);
   const sectors=useMemo(()=>occupancyBySector(lockers),[lockers]);
+  const maxSector=sectors[0]?.count??0;
   const openPendings=openPendingCount(pending);
   const alertLevel=pendingAlertLevel(openPendings);
   const withoutLocker=stats?.withoutLocker.total??0;
@@ -110,17 +111,22 @@ export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
       <div className="overview-widgets">
         <section className="insight-panel" aria-labelledby="sector-widget-title">
           <div className="insight-heading"><h2 id="sector-widget-title">Ranking de ocupação por setor</h2></div>
-          {sectors.length?<div className="insight-scroll"><div className="insight-bars">{sectors.map(item=><button type="button"
-            className={item.anomaly?'insight-bar-row anomaly':'insight-bar-row'} key={item.name}
-            onClick={()=>onOpenLockers({sector:item.anomaly?'__none__':item.name,status:'ocupado'})}>
-            <span>{item.anomaly&&<TriangleAlert size={13} aria-hidden="true"/>}{item.name}</span>
-            <strong>{item.count}</strong></button>)}</div></div>:<p className="insight-empty">Ainda não há ocupações registradas nesta filial.</p>}
+          {sectors.length?<div className="insight-scroll"><div className="insight-bars">{sectors.map(item=>{
+            const fill=maxSector?Math.round(item.count/maxSector*100):0;
+            return <button type="button"
+              className={item.anomaly?'insight-bar-row anomaly':'insight-bar-row'} key={item.name}
+              onClick={()=>onOpenLockers({sector:item.anomaly?'__none__':item.name,status:'ocupado'})}>
+              <span>{item.anomaly&&<TriangleAlert size={13} aria-hidden="true"/>}{item.name}</span>
+              <strong>{item.count}</strong>
+              <span className="insight-track" aria-hidden="true"><span className="insight-fill" style={{width:`${fill}%`}}/></span>
+            </button>;})}</div></div>:<p className="insight-empty">Ainda não há ocupações registradas nesta filial.</p>}
         </section>
 
         <section className="insight-panel" aria-labelledby="category-widget-title">
           <div className="insight-heading"><h2 id="category-widget-title">Pessoas por vínculo</h2></div>
           <div className="category-bars">{categories.map(item=><div className="category-row" key={item.key}>
             <div className="category-row-head"><span>{item.label}</span><strong>{item.count} <small>{item.percent}%</small></strong></div>
+            <span className="category-track" aria-hidden="true"><span className="category-fill" style={{width:`${item.percent}%`}}/></span>
           </div>)}</div>
         </section>
       </div>
