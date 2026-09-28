@@ -63,7 +63,7 @@ describe('regras transacionais',()=>{
     const stale=await send(auth,'POST',`/api/branches/${branch.id}/allocations/transfer`,{operationId:uuid(),allocationId:transferred.json().id,expectedAllocationVersion:999,destinationLockerId:secondDestination.id,sourceVersion:2,destinationVersion:1,reason:'Altura mais confortável'});expect(stale.statusCode).toBe(409);
     expect((await pool.query<{locker_id:string}>('SELECT locker_id FROM allocations WHERE person_id=$1 AND ended_at IS NULL',[member.person_id])).rows[0].locker_id).toBe(destination.id);
   });
-  it('preserva ocupação ao encerrar atuação e exige prazo e capacidade no compartilhamento',async()=>{
+  it('preserva ocupação ao excluir cadastro e exige prazo e capacidade no compartilhamento',async()=>{
     const {auth,branch}=await setupWithoutLogin();
     const shared=await locker(auth,branch.id,'Grande',3,'grande'),other=await locker(auth,branch.id,'Outro');
     const a=await person(auth,branch.id,'Pessoa A','1001'),b=await person(auth,branch.id,'Pessoa B','1002'),c=await person(auth,branch.id,'Pessoa C','1003');
