@@ -411,3 +411,4 @@
 :root[data-theme='dark'] .overview-page button.kpi-card--capacity:hover:not(:disabled){background:#27272A;border-color:#7C3AED;color:#FAFAFA}
 :root[data-theme='dark'] .overview-page .kpi-icon,:root[data-theme='dark'] .overview-page .kpi-card--capacity .kpi-icon{background:#3B2364;color:#C4B5FD}
 :root[data-theme='dark'] .overview-page .kpi-progress,:root[data-theme='dark'] .overview-page .kpi-card--capacity .kpi-progress{background:#3F3F46;border-color:#52525B}
+:root[data-theme='dark'] .overview-page{background:transparent}

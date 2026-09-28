@@ -84,7 +84,7 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .sidebar-footer { border-color: #34515b; color: #bfd4d3; gap: 6px; font-size: .8rem; text-transform: none; }
 .sidebar-footer button { display: inline-flex; align-items: center; gap: 6px; color: #fff; padding: 9px; }
 .sidebar-footer button:hover:not(:disabled) { background: #234653; }
-.main-area { background: radial-gradient(circle at 90% 0%, #e5f1ed 0, transparent 29rem), var(--canvas); }
+.main-area { background: #e8e8e8 }
 .topbar { min-height: 126px; background: #fff; border-color: var(--line); padding: 26px 34px; }
 .topbar p { color: var(--muted); font-size: .91rem; margin-top: 5px; }
 .top-actions { gap: 10px; align-self: flex-start; }
