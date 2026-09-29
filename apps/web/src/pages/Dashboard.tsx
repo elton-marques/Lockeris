@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,MapPin,PencilLine,Plus,Search,SlidersHorizontal,User,Users,X} from 'lucide-react';
+import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,LogOut,MapPin,PencilLine,Plus,Search,SlidersHorizontal,User,Users,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
@@ -183,9 +183,9 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
     finally{setBusy(false);}
   }
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
-    if(event.key==='Escape'){event.preventDefault();if(releaseTarget)setReleaseTarget(null);else setSelected(null);return;}
+    if(event.key==='Escape'){event.preventDefault();if(releaseTarget){if(!busy)setReleaseTarget(null);}else setSelected(null);return;}
     if(event.key!=='Tab')return;
-    const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled)'));
+    const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'));
     if(!elements.length)return;
     if(event.shiftKey&&document.activeElement===elements[0]){event.preventDefault();elements.at(-1)?.focus();}
     else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}
@@ -314,12 +314,21 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
         </form>}
       </section>
     </div>}
-    {locker&&releaseTarget&&<div className="locker-modal-backdrop custody-backdrop"><form className="card custody-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" onKeyDown={modalKeyDown} onSubmit={confirmRelease}>
-      <span className="eyebrow">Desocupação</span><h2 id="release-title">Desocupar armário {locker.number}</h2>
-      <p>Remover {releaseTarget.name} da ocupação deste armário?</p>
-      <label className="custody-check"><input type="checkbox" autoFocus checked={hasItems} onChange={event=>setHasItems(event.target.checked)}/> Pertences deixados no armário?</label>
-      {hasItems&&<FoundItemForm value={foundItem} onChange={setFoundItem}/>}
-      <div className="row-actions"><button type="button" onClick={()=>setReleaseTarget(null)}>Cancelar</button><button className="primary" disabled={busy}>Confirmar desocupação</button></div>
+    {locker&&releaseTarget&&<div className="locker-modal-backdrop custody-backdrop"><form className="custody-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" aria-busy={busy} onKeyDown={modalKeyDown} onSubmit={confirmRelease}>
+      <header className="custody-dialog-header">
+        <div><span className="eyebrow">Desocupação</span><h2 id="release-title"><LogOut size={21} aria-hidden="true"/>Desocupar Armário Nº {locker.number}</h2></div>
+        <button className="custody-dialog-close" type="button" autoFocus disabled={busy} aria-label="Fechar desocupação" onClick={()=>setReleaseTarget(null)}><X size={18} aria-hidden="true"/></button>
+      </header>
+      <section className="custody-occupant-card" aria-label="Colaborador a desocupar">
+        <strong>{releaseTarget.name}</strong>
+        <div className="custody-occupant-meta"><span><Hash size={14} aria-hidden="true"/>{releaseTarget.registration?`Matrícula ${releaseTarget.registration}`:'Sem matrícula'}</span><span><Building2 size={14} aria-hidden="true"/>{releaseTarget.department||'Setor não informado'}</span></div>
+      </section>
+      <p className="custody-release-note"><CircleAlert size={17} aria-hidden="true"/>Ao confirmar, esta ocupação será encerrada e a vaga do armário ficará disponível para uso.</p>
+      <section className="custody-belongings" aria-label="Pertences deixados no armário">
+        <ToggleSwitch label="Pertences deixados no armário?" checked={hasItems} disabled={busy} onChange={setHasItems}/>
+        {hasItems&&<div className="custody-found-card"><h3>Registro em Achados e Perdidos</h3><FoundItemForm value={foundItem} onChange={setFoundItem}/></div>}
+      </section>
+      <footer className="custody-dialog-actions"><button type="button" disabled={busy} onClick={()=>setReleaseTarget(null)}>Cancelar</button><button type="submit" className="primary" disabled={busy}>{busy?'Desocupando...':'Confirmar Desocupação'}</button></footer>
     </form></div>}
     </>}
     </div>

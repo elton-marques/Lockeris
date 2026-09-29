@@ -1,4 +1,8 @@
 export const changelog=[
+  {title:'Desocupação mais clara',kind:'sparkles',description:'A confirmação de saída do armário ficou mais fácil de conferir e concluir.',items:[
+    'Janela centralizada com dados do ocupante em destaque.',
+    'Registro de pertences aparece apenas quando necessário, mantendo a operação fluida.'
+  ]},
   {title:'Lockeris portátil para Windows',kind:'sparkles',description:'A filial pode usar o Lockeris no próprio computador, mesmo sem internet.',items:[
     'Pacote independente com início automático e banco de dados local.',
     'Encerramento seguro e preservação dos registros entre os acessos.'
