@@ -5,6 +5,7 @@ import { authenticate, branchAccess } from './auth.js';
 import { pool, transaction, one, fail, type Client } from './db.js';
 import { idempotent, event } from './operations.js';
 import { refreshPending } from './pending.js';
+import { insertRetainedItem } from './custody.js';
 
 type Locker = { id: string; version: number; number: string; capacity: number; is_double: boolean; condition: string; migration_status: string; modality: string; sector_occupant: string | null };
 type Allocation = { id: string; person_id: string; locker_id: string; version: number; ended_at: string | null; person_name?: string; registration?: string | null };
@@ -94,7 +95,7 @@ export async function movementRoutes(app: FastifyInstance): Promise<void> {
       const allocation = await one<Allocation>(client,'SELECT * FROM allocations WHERE id=$1 AND branch_id=$2 FOR UPDATE',[body.allocationId,branchId]);
       if (allocation.ended_at || allocation.version !== body.expectedVersion) fail(409,'ALOCACAO','Alocação alterada ou já desocupada');
       const { rows } = await client.query('UPDATE allocations SET ended_at=now(),ended_by=$2,note=COALESCE($3,note),version=version+1 WHERE id=$1 RETURNING *',[body.allocationId,actor.id,body.note]);
-      if(body.retainedDescription)await client.query('INSERT INTO retained_items(branch_id,locker_id,person_id,description) VALUES($1,$2,$3,$4)',[branchId,allocation.locker_id,allocation.person_id,body.retainedDescription]);
+      if(body.retainedItem)await insertRetainedItem(client,branchId,allocation.locker_id,allocation.person_id,body.retainedItem);
       await client.query('UPDATE lockers SET version=version+1 WHERE id=$1',[allocation.locker_id]);
       await endSharingIfSolo(client,branchId,allocation.locker_id,actor.id);
       await event(client,branchId,actor.id,'ocupacao_encerrada','allocation',allocation.id,{ lockerId: allocation.locker_id, personId: allocation.person_id },

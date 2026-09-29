@@ -20,7 +20,7 @@ const pageCopy:Record<string,string>={
   pessoas:'Encontre pessoas, atribua ou transfira armários.',
   pendencias:'Confira situações que precisam de decisão.',
   movimentacoes:'Acompanhe ocupações e trocas registradas.',
-  retidos:'Acompanhe pertences esquecidos e o prazo de guarda.',
+  achados:'Registre os itens encontrados e acompanhe o prazo de guarda.',
   auditorias:'Registre inspeções e apresente resultados à gestão.',
   importacao:'Valide as planilhas antes de atualizar os dados.',
   historico:'Consulte eventos registrados na filial.'

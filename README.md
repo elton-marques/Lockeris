@@ -42,11 +42,11 @@ As linhas da tabela de Colaboradores ficam alinhadas verticalmente em uma única
 
 Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, preservando zeros à esquerda. Se a matrícula da planilha de armários existir na base de colaboradores, o sistema usa automaticamente o nome, setor e função oficiais, mesmo que o nome na carga inicial esteja vazio ou diferente. A tela Pendências separa armários e pessoas em abas; armários ficam em ordem numérica e pessoas em ordem alfabética. Cada registro abre uma conferência com os dados atuais e as linhas originais da planilha, quando houver. Em **Resolvidas**, cada registro mostra o motivo original e o que resolveu a pendência; uma pessoa que recebeu armário continua na aba Pessoas do histórico.
 
-## Pertences retidos e auditorias
+## Achados e Perdidos e auditorias
 
-Ao desocupar um armário, marque **Pertences deixados no armário?** e descreva os objetos encontrados. A tela **Pertences Retidos** acompanha os 30 dias de guarda, sinaliza vencimentos e permite registrar devolução ao dono ou destinação após o prazo.
+Ao desocupar um armário, marque **Pertences deixados no armário?** e registre categoria, data e hora do achado, responsável, local onde foi encontrado, local de guarda na PP e descrição. A tela **Achados e Perdidos** também permite cadastrar itens encontrados fora dos armários pelo botão **+ Registrar Item**. As categorias são roupa, calçado, celular, relógio, óculos e outro (com nome personalizado). O prazo de custódia de 30 dias é calculado a partir da data e hora do achado. Use os filtros de categoria, situação e busca para acompanhar vencimentos; registre devolução ao proprietário ou destinação após o prazo.
 
-Em **Auditorias**, abra uma inspeção por filial, selecione os armários e registre irregularidades e observações. Ao concluir, use **Gerar Relatório para Gestão** para visualizar e imprimir em A4 o responsável, a data, o índice de conformidade e as ocorrências com providências recomendadas. O índice usa a quantidade de armários registrada no início da inspeção.
+Em **Auditorias**, selecione um colaborador ativo da Prevenção de Perdas (inclusive setor PP) para iniciar a inspeção, identificada automaticamente pela data e hora. Registre irregularidades por armário; cada ocorrência preserva os dados dos ocupantes (nome completo, matrícula e setor) ou indica **Armário desocupado**. A administração pode excluir auditorias com confirmação. Ao concluir, use **Gerar Relatório para Gestão** para visualizar e imprimir em A4 o responsável, a data, o índice de conformidade e as ocorrências com providências recomendadas. O índice usa a quantidade de armários registrada no início da inspeção.
 
 ## Gestão de filiais
 

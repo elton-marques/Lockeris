@@ -15,6 +15,21 @@
 .custody-form label,.custody-dialog label{display:grid;gap:.4rem}
 .custody-form input,.custody-form select,.custody-form textarea,.custody-dialog textarea{width:100%;min-height:42px;box-sizing:border-box}
 .custody-form textarea,.custody-dialog textarea{min-height:85px;resize:vertical}
+.custody-form-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.custody-form-fields label{display:grid;gap:.4rem;min-width:0}
+.custody-form-fields label:last-of-type,.custody-form-fields>small{grid-column:1/-1}
+.custody-form-fields input,.custody-form-fields select,.custody-form-fields textarea{width:100%;min-height:42px;box-sizing:border-box}
+.custody-register{margin:1.5rem 0}
+.custody-filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(2,minmax(160px,1fr));gap:1rem;margin:1.5rem 0 1rem}
+.custody-filters label{display:grid;gap:.4rem}
+.custody-filters input,.custody-filters select{width:100%;min-height:44px}
+.custody-count{margin-bottom:.5rem;font-weight:700}
+.custody-occupants{margin:.5rem 0;display:grid;gap:.5rem}
+.custody-occupants strong,.custody-occupants small{display:block}
+.custody-vacant{display:inline-block;padding:.3rem .65rem;margin:.5rem 0;border-radius:8px;color:#9f1239;background:#ffe4e6}
+.custody-delete{margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1rem}
+.custody-delete button{color:#9f1239;border-color:#fda4af}
+.custody-hint{font-size:.85rem;color:var(--text-secondary)}
 .custody-complete{margin-top:1.5rem}
 .custody-audit{display:grid;gap:.25rem;text-align:left;width:100%;padding:1rem;border:1px solid var(--border,#e4e4e7);border-radius:12px;background:var(--surface,#fff);color:inherit;cursor:pointer}
 .custody-audit--active{border-color:#7c3aed;box-shadow:inset 3px 0 #7c3aed}
@@ -39,7 +54,7 @@
 .custody-report th,.custody-report td{padding:.6rem;text-align:left;vertical-align:top;border-bottom:1px solid #e4e4e7}
 .custody-report th{background:#f4f4f5}
 .custody-report footer{margin-top:2rem;border-top:1px solid #e4e4e7;padding-top:.75rem;color:#52525b;font-size:.75rem}
-@media(max-width:850px){.custody-layout{grid-template-columns:1fr}.custody-item{align-items:flex-start;flex-direction:column}.custody-report-meta{grid-template-columns:1fr}}
+@media(max-width:850px){.custody-layout{grid-template-columns:1fr}.custody-item{align-items:flex-start;flex-direction:column}.custody-report-meta{grid-template-columns:1fr}.custody-filters{grid-template-columns:1fr}.custody-form-fields{grid-template-columns:1fr}}
 @media print{
   @page{size:A4 portrait;margin:10mm}
   body:has(.custody-report) .content>*:not(.custody-report){display:none!important}

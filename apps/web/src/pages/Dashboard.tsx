@@ -8,6 +8,7 @@ import type {RegistrationOption} from '../RegistrationInput';
 import {TermoResponsabilidade} from '../components/TermoResponsabilidade';
 import {FieldIcon,ToggleSwitch} from '../components/LockerControls';
 import {SelectField} from '../components/Select';
+import {FoundItemForm,newFoundItem,foundItemPayload} from '../components/FoundItemForm';
 import {availablePositions,effectiveCapacity,hasExclusiveDoubleRule,lockerSectors,occupiedPositions,pendingKindLabels,pendingLockerIds,requiresReview,showsLockerPositions,type LockerPreset} from '../locker-insights';
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
@@ -36,7 +37,7 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
   const [edit,setEdit]=useState({keyCopy:'sim'});
   const [occupantEdit,setOccupantEdit]=useState<OccupantEdit|null>(null),[draft,setDraft]=useState<OccupantDraft>(emptyDraft);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
-  const [releaseTarget,setReleaseTarget]=useState<Occupant|null>(null),[hasItems,setHasItems]=useState(false),[itemDescription,setItemDescription]=useState('');
+  const [releaseTarget,setReleaseTarget]=useState<Occupant|null>(null),[hasItems,setHasItems]=useState(false),[foundItem,setFoundItem]=useState(()=>newFoundItem());
 
   async function load(){
     setLoading(true);setLoadError('');
@@ -170,13 +171,13 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
         expectedMembershipVersion:editingOccupant?.membershipVersion,name:draft.name.trim(),registration:draft.registration.trim()||null,
         department:draft.department.trim()||null,functionName:draft.functionName.trim()||null}:null}),
     `Informações do armário #${locker.number} salvas.`,scope==='attributes',cancelOccupantEdit);}
-  function release(occupant:Occupant){setReleaseTarget(occupant);setHasItems(false);setItemDescription('');}
+  function release(occupant:Occupant){setReleaseTarget(occupant);setHasItems(false);setFoundItem(newFoundItem(`Armário ${locker?.number??''}`));}
   async function confirmRelease(event:React.FormEvent){
     event.preventDefault();if(!locker||!releaseTarget)return;
     const number=locker.number;setBusy(true);
     try{
       await post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:releaseTarget.allocationId,
-        expectedVersion:releaseTarget.allocationVersion,...(hasItems?{retainedDescription:itemDescription.trim()}:{})});
+        expectedVersion:releaseTarget.allocationVersion,...(hasItems?{retainedItem:foundItemPayload(foundItem)}:{})});
       setReleaseTarget(null);await load();refresh();notice(`Armário #${number} desocupado com sucesso.`);
     }catch(error){notice(error instanceof Error?error.message:'Falha na desocupação');}
     finally{setBusy(false);}
@@ -242,7 +243,7 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
         </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong>{item.is_double&&<span className="double-badge table-badge">Duplo</span>}</td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{showsLockerPositions(item)?`${occupiedPositions(item)} de ${effectiveCapacity(item)}`:occupiedPositions(item)>0?'Ocupado':'Livre'}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
-      <section className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
+      <section className="locker-modal" role="dialog" aria-modal="true" aria-hidden={!!releaseTarget} aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
         <div className="section-head"><div className="locker-title"><span className="eyebrow">Detalhes do armário</span>
           <h2 id="locker-dialog-title">Armário Nº {locker.number}</h2>
           <div className="locker-title-badges"><span className="badge locker-branch-badge"><MapPin size={13} aria-hidden="true"/>{branchName}</span>
@@ -313,12 +314,12 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
         </form>}
       </section>
     </div>}
-    {locker&&releaseTarget&&<div className="locker-modal-backdrop custody-backdrop"><form className="card custody-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" onSubmit={confirmRelease}>
+    {locker&&releaseTarget&&<div className="locker-modal-backdrop custody-backdrop"><form className="card custody-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" onKeyDown={modalKeyDown} onSubmit={confirmRelease}>
       <span className="eyebrow">Desocupação</span><h2 id="release-title">Desocupar armário {locker.number}</h2>
       <p>Remover {releaseTarget.name} da ocupação deste armário?</p>
-      <label className="custody-check"><input type="checkbox" checked={hasItems} onChange={event=>setHasItems(event.target.checked)}/> Pertences deixados no armário?</label>
-      {hasItems&&<><label>Descrição dos pertences<textarea required maxLength={2000} value={itemDescription} onChange={event=>setItemDescription(event.target.value)} placeholder="Descreva os pertences encontrados"/></label><p>Prazo de guarda: 30 dias a partir da desocupação.</p></>}
-      <div className="row-actions"><button type="button" onClick={()=>setReleaseTarget(null)}>Cancelar</button><button className="primary" disabled={busy||hasItems&&!itemDescription.trim()}>Confirmar desocupação</button></div>
+      <label className="custody-check"><input type="checkbox" autoFocus checked={hasItems} onChange={event=>setHasItems(event.target.checked)}/> Pertences deixados no armário?</label>
+      {hasItems&&<FoundItemForm value={foundItem} onChange={setFoundItem}/>}
+      <div className="row-actions"><button type="button" onClick={()=>setReleaseTarget(null)}>Cancelar</button><button className="primary" disabled={busy}>Confirmar desocupação</button></div>
     </form></div>}
     </>}
     </div>

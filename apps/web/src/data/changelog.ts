@@ -1,5 +1,9 @@
 export const changelog=[
-  {title:'Pertences retidos e auditorias',kind:'shield',description:'A equipe acompanha pertences esquecidos e apresenta inspeções concluídas à gestão.',items:[
+  {title:'Achados e Perdidos com registro completo',kind:'shield',description:'A Prevenção de Perdas acompanha cada achado desde a identificação até a baixa.',items:[
+    'Categoria, responsável, local do achado e guarda reunidos com o prazo de 30 dias.',
+    'Auditorias identificadas pela data, com responsável da equipe e ocupantes visíveis.'
+  ]},
+  {title:'Achados e Perdidos e auditorias',kind:'shield',description:'A equipe acompanha pertences esquecidos e apresenta inspeções concluídas à gestão.',items:[
     'Prazo de guarda e situação dos pertences visíveis para a Prevenção de Perdas.',
     'Irregularidades dos armários reunidas em relatório com providências recomendadas.'
   ]},

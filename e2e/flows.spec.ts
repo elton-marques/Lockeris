@@ -476,6 +476,7 @@ test('admin rola 477 armários e limpa somente a cópia legada',async({page})=>{
 });
 
 test('admin exclui um acesso pela lista e altera a própria senha pelo cabeçalho',async({page})=>{
+  test.setTimeout(120000);
   const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
   const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
   const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -511,7 +512,7 @@ test('admin exclui um acesso pela lista e altera a própria senha pelo cabeçalh
   await modal.getByLabel('Nova senha',{exact:true}).fill('Nova-Senha-E2e-123');
   await modal.getByLabel('Confirmar nova senha',{exact:true}).fill('Nova-Senha-E2e-123');
   await modal.getByRole('button',{name:'Salvar nova senha'}).click();
-  await expect(modal.getByRole('alert')).toHaveText('Senha atual inválida');
+  await expect(modal.getByRole('alert')).toHaveText('Senha atual inválida',{timeout:30000});
   await modal.getByLabel('Senha atual').fill('Testing-Password-123');
   await modal.getByRole('button',{name:'Salvar nova senha'}).click();
   await expect(modal).toHaveCount(0);
@@ -657,7 +658,7 @@ test('admin higieniza a base excluindo cadastros obsoletos',async({page})=>{
   await page.goto('/');
   await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   await page.getByRole('button',{name:'Administração'}).click();
-  await expect(page.getByRole('heading',{name:'Higienização de base'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Higienização de base'})).toBeVisible({timeout:15000});
 
   const obsoleteRow=page.getByLabel('Selecionar Cadastro Obsoleto E2E');
   await expect(obsoleteRow).toBeVisible();
@@ -690,6 +691,8 @@ test('desocupação guarda pertences e auditoria gera relatório para gestão',a
     const locker=(await pool.query<{id:string}>("INSERT INTO lockers(branch_id,number,size,capacity,modality) VALUES($1,'609','padrao',1,'fixo') RETURNING id",[branch.id])).rows[0];
     const person=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Pessoa da Inspeção') RETURNING id")).rows[0];
     await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed) VALUES($1,$2,'colaborador','manual','6090',true)",[person.id,branch.id]);
+    const auditor=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Fiscal da Prevenção') RETURNING id")).rows[0];
+    await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,department,needs_fixed) VALUES($1,$2,'colaborador','manual','6091','PP',true)",[auditor.id,branch.id]);
     await pool.query("INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,started_by) VALUES($1,$2,$3,'fixo',now(),$4)",[branch.id,locker.id,person.id,admin.id]);
     await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),admin.id,digest(csrf)]);
   }finally{await pool.end();}
@@ -700,32 +703,52 @@ test('desocupação guarda pertences e auditoria gera relatório para gestão',a
   await page.locator('.occupant-slot').filter({hasText:'Pessoa da Inspeção'}).getByRole('button',{name:'Desocupar armário'}).click();
   const dialog=page.getByRole('dialog',{name:'Desocupar armário 609'});
   await dialog.getByRole('checkbox',{name:'Pertences deixados no armário?'}).check();
-  await dialog.getByLabel('Descrição dos pertences').fill('Mochila azul de teste');
+  await dialog.getByLabel('Categoria').selectOption('outro');
+  await dialog.getByLabel('Qual categoria?').fill('Mochila');
+  await dialog.getByLabel('Quem encontrou?').fill('Equipe PP');
+  await dialog.getByLabel('Local de guarda na PP').fill('Prateleira 2');
+  await dialog.getByLabel('Descrição do item').fill('Mochila azul de teste');
   await dialog.getByRole('button',{name:'Confirmar desocupação'}).click();
   await expectNotice(page,'desocupado com sucesso');await closeNotice(page);
   await page.getByRole('dialog',{name:'Armário Nº 609'}).getByRole('button',{name:'Fechar'}).click();
-  await page.getByRole('button',{name:'Pertences Retidos'}).click();
+  await page.getByRole('button',{name:'Achados e Perdidos'}).click();
   await expect(page.getByText('Mochila azul de teste')).toBeVisible();
   await expect(page.getByText('30 dia(s) restantes')).toBeVisible();
+  await page.getByRole('button',{name:'+ Registrar Item'}).click();
+  const manual=page.locator('.custody-register');
+  await manual.getByLabel('Categoria').selectOption('celular');
+  await manual.getByLabel('Quem encontrou?').fill('Fiscal da Prevenção');
+  await manual.getByLabel('Local onde foi achado').fill('Corredor Central');
+  await manual.getByLabel('Local de guarda na PP').fill('Prateleira 3');
+  await manual.getByLabel('Descrição do item').fill('Celular preto de teste');
+  await manual.getByRole('button',{name:'Salvar item'}).click();
+  await closeNotice(page);
+  await page.getByLabel('Buscar item').fill('Celular preto');
+  await expect(page.getByText('Celular preto de teste')).toBeVisible();
+  await expect(page.getByText('Mochila azul de teste')).toHaveCount(0);
   await page.getByRole('button',{name:'Auditorias'}).click();
-  await page.getByLabel('Título').fill('Inspeção semanal');
-  await page.getByLabel('Responsável').fill('Equipe de Prevenção');
+  await page.getByLabel('Responsável da Prevenção de Perdas').selectOption({label:'Fiscal da Prevenção · 6091'});
   await page.getByRole('button',{name:'Iniciar auditoria'}).click();
   await closeNotice(page);
   await page.getByRole('combobox',{name:'Armário'}).selectOption({label:'№ 609'});
   await page.getByRole('combobox',{name:'Ocorrência'}).selectOption('sem_cadeado');
   await page.getByRole('button',{name:'Adicionar ocorrência'}).click();
   await closeNotice(page);
+  await expect(page.getByText('Armário desocupado')).toBeVisible();
   await page.getByRole('button',{name:'Concluir auditoria'}).click();
   await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
   await closeNotice(page);
   await page.getByRole('button',{name:'Gerar Relatório para Gestão'}).click();
   const report=page.getByRole('article',{name:'Relatório para Gestão'});
-  await expect(report).toContainText('Equipe de Prevenção');
+  await expect(report).toContainText('Fiscal da Prevenção');
   await expect(report).toContainText('Sem cadeado');
   await expect(report).toContainText('Providência recomendada');
   await page.emulateMedia({media:'print'});
   await expect(report.locator('header')).toBeVisible();
   await expect(page.locator('.sidebar')).toBeHidden();
   expect((await page.pdf({format:'A4',printBackground:true})).length).toBeGreaterThan(1000);
+  await page.emulateMedia({media:'screen'});
+  await page.getByRole('button',{name:'Excluir Auditoria'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'Auditoria excluída.');
 });

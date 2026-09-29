@@ -28,7 +28,7 @@ const tabs=[
   {key:'pessoas',label:'Colaboradores',icon:UsersRound,group:'Operação'},
   {key:'pendencias',label:'Pendências',icon:ClipboardCheck,group:'Operação'},
   {key:'movimentacoes',label:'Transferências',icon:ArrowLeftRight,group:'Operação'},
-  {key:'retidos',label:'Pertences Retidos',icon:PackageSearch,group:'Operação'},
+  {key:'achados',label:'Achados e Perdidos',icon:PackageSearch,group:'Operação'},
   {key:'auditorias',label:'Auditorias',icon:ClipboardList,group:'Operação'},
   {key:'importacao',label:'Importações',icon:Upload,group:'Gestão'},
   {key:'historico',label:'Histórico',icon:FileClock,group:'Gestão'},
@@ -115,7 +115,7 @@ export default function App(){
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
-          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='retidos'?<RetainedItems {...props}/>:page==='auditorias'?<Audits {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
+          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='achados'?<RetainedItems {...props}/>:page==='auditorias'?<Audits {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
     {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}

@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { id } from '@armarios/contracts';
-import { authenticate, branchAccess } from './auth.js';
-import { pool, transaction, one, fail } from './db.js';
+import { id, retainedItemInput } from '@armarios/contracts';
+import { authenticate, branchAccess, adminAccess } from './auth.js';
+import { pool, transaction, one, fail, type Client } from './db.js';
 
 const branchParams=z.object({branchId:id});
 const itemParams=z.object({id});
-const text=z.string().trim().min(1).max(2000);
 const optionalNotes=z.string().trim().max(2000).nullish();
 const issue=z.enum(['cadeado_fora_padrao','sem_cadeado','itens_fora_armario','mecanismo_avariado','outro']);
 const recommendations:Record<z.infer<typeof issue>,string>={
@@ -16,23 +15,43 @@ const recommendations:Record<z.infer<typeof issue>,string>={
   mecanismo_avariado:'Solicitar manutenção do mecanismo e restringir o uso até a correção.',
   outro:'Avaliar a ocorrência e registrar a providência adotada.'
 };
+const preventionDepartment=(department:string|null)=>{
+  const normalized=(department??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  return /prevencao\s+de\s+perdas|(^|[^a-z])pp([^a-z]|$)/.test(normalized);
+};
+type FoundItem=z.infer<typeof retainedItemInput>;
+export async function insertRetainedItem(client:Client,branchId:string,lockerId:string|null,personId:string|null,item:FoundItem){
+  const foundAt=item.foundAt?new Date(item.foundAt):new Date();
+  if(foundAt.getTime()>Date.now()+60_000)fail(422,'DATA','A data do achado não pode estar no futuro');
+  if(lockerId)await one(client,'SELECT id FROM lockers WHERE id=$1 AND branch_id=$2',[lockerId,branchId]);
+  if(personId)await one(client,'SELECT id FROM people WHERE id=$1 AND EXISTS(SELECT 1 FROM memberships WHERE person_id=$1 AND branch_id=$2)',[personId,branchId]);
+  let finderName=item.finderName;
+  if(item.finderId){const finder=await one<{name:string}>(client,`SELECT p.name FROM people p JOIN memberships m ON m.person_id=p.id
+    WHERE p.id=$1 AND m.branch_id=$2 AND m.status='ativo'`,[item.finderId,branchId]);finderName=finder.name;}
+  return (await client.query(`INSERT INTO retained_items(branch_id,locker_id,person_id,category,custom_category,found_at,expires_at,
+    finder_id,finder_name,found_location,storage_location,description)
+    VALUES($1,$2,$3,$4,$5,$6,$6::timestamptz + interval '30 days',$7,$8,$9,$10,$11) RETURNING *`,
+  [branchId,lockerId,personId,item.category,item.category==='outro'?item.customCategory:null,foundAt.toISOString(),item.finderId??null,
+    finderName,item.foundLocation,item.storageLocation,item.description])).rows[0];
+}
+
+async function auditRecords(auditId:string){return (await pool.query(`SELECT r.*,l.number locker_number FROM audit_records r
+  JOIN lockers l ON l.id=r.locker_id WHERE r.audit_id=$1 ORDER BY l.number,r.issue_type`,[auditId])).rows;}
 
 export async function custodyRoutes(app:FastifyInstance):Promise<void>{
   app.get('/api/branches/:branchId/retained-items',async request=>{
     const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
     return (await pool.query(`SELECT r.*,l.number locker_number,p.name person_name FROM retained_items r
-      JOIN lockers l ON l.id=r.locker_id LEFT JOIN people p ON p.id=r.person_id
+      LEFT JOIN lockers l ON l.id=r.locker_id LEFT JOIN people p ON p.id=r.person_id
       WHERE r.branch_id=$1 ORDER BY (r.status='retido') DESC,r.expires_at ASC`,[branchId])).rows;
   });
   app.post('/api/retained-items',async request=>{
     const actor=await authenticate(request);
-    const body=z.object({branchId:id,lockerId:id,personId:id.nullish(),description:text,notes:optionalNotes}).parse(request.body);
+    const body=z.object({branchId:id,lockerId:id.nullish(),personId:id.nullish()}).passthrough().parse(request.body);
+    const item=retainedItemInput.parse(body.item??body);
     branchAccess(actor,body.branchId,true);
     return transaction(async client=>{
-      await one(client,'SELECT id FROM lockers WHERE id=$1 AND branch_id=$2',[body.lockerId,body.branchId]);
-      if(body.personId)await one(client,'SELECT id FROM people WHERE id=$1 AND EXISTS(SELECT 1 FROM memberships WHERE person_id=$1 AND branch_id=$2)',[body.personId,body.branchId]);
-      return (await client.query(`INSERT INTO retained_items(branch_id,locker_id,person_id,description,notes)
-        VALUES($1,$2,$3,$4,$5) RETURNING *`,[body.branchId,body.lockerId,body.personId??null,body.description,body.notes??null])).rows[0];
+      return insertRetainedItem(client,body.branchId,body.lockerId??null,body.personId??null,item);
     });
   });
   app.patch('/api/retained-items/:id/status',async request=>{
@@ -51,17 +70,40 @@ export async function custodyRoutes(app:FastifyInstance):Promise<void>{
     return (await pool.query(`SELECT a.*,count(DISTINCT r.locker_id)::integer affected_lockers FROM audits a
       LEFT JOIN audit_records r ON r.audit_id=a.id WHERE a.branch_id=$1 GROUP BY a.id ORDER BY a.started_at DESC`,[branchId])).rows;
   });
+  app.get('/api/branches/:branchId/auditors',async request=>{
+    const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
+    const {rows}=await pool.query<{id:string;name:string;registration:string|null;department:string|null}>(`SELECT p.id,p.name,m.registration,m.department FROM memberships m
+      JOIN people p ON p.id=m.person_id WHERE m.branch_id=$1 AND m.status='ativo' ORDER BY p.name`,[branchId]);
+    return rows.filter(row=>preventionDepartment(row.department));
+  });
   app.post('/api/branches/:branchId/audits',async request=>{
     const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId,true);
-    const body=z.object({title:text,auditorName:text}).parse(request.body);
-    return (await pool.query(`INSERT INTO audits(branch_id,title,auditor_name,total_lockers)
-      SELECT $1,$2,$3,count(*)::integer FROM lockers WHERE branch_id=$1 RETURNING *`,[branchId,body.title,body.auditorName])).rows[0];
+    const body=z.object({auditorId:id}).parse(request.body);
+    return transaction(async client=>{
+      const auditor=await one<{name:string;department:string|null}>(client,`SELECT p.name,m.department FROM people p
+        JOIN memberships m ON m.person_id=p.id WHERE p.id=$1 AND m.branch_id=$2 AND m.status='ativo' FOR SHARE OF m`,[body.auditorId,branchId]);
+      if(!preventionDepartment(auditor.department))fail(422,'AUDITOR','Selecione um colaborador ativo da Prevenção de Perdas');
+      return (await client.query(`INSERT INTO audits(branch_id,title,auditor_id,auditor_name,total_lockers)
+        SELECT b.id,'Auditoria - ' || to_char(now() AT TIME ZONE b.timezone,'DD/MM/YYYY') || ' às ' ||
+          to_char(now() AT TIME ZONE b.timezone,'HH24:MI'),$2,$3,
+          (SELECT count(*)::integer FROM lockers WHERE branch_id=b.id) FROM branches b WHERE b.id=$1 RETURNING *`,
+        [branchId,body.auditorId,auditor.name])).rows[0];
+    });
+  });
+  app.delete('/api/audits/:id',async request=>{
+    const actor=await authenticate(request);const {id:auditId}=itemParams.parse(request.params);
+    return transaction(async client=>{
+      const audit=await one<{branch_id:string}>(client,'SELECT branch_id FROM audits WHERE id=$1 FOR UPDATE',[auditId]);
+      adminAccess(actor,audit.branch_id);
+      await client.query('DELETE FROM audits WHERE id=$1',[auditId]);
+      return {deleted:true,id:auditId};
+    });
   });
   app.get('/api/audits/:id',async request=>{
     const actor=await authenticate(request);const {id:auditId}=itemParams.parse(request.params);
     const audit=(await pool.query<{branch_id:string}>('SELECT * FROM audits WHERE id=$1',[auditId])).rows[0];
     if(!audit)fail(404,'NAO_ENCONTRADO','Auditoria não encontrada');branchAccess(actor,audit.branch_id);
-    const records=(await pool.query(`SELECT r.*,l.number locker_number FROM audit_records r JOIN lockers l ON l.id=r.locker_id WHERE r.audit_id=$1 ORDER BY l.number,r.issue_type`,[auditId])).rows;
+    const records=await auditRecords(auditId);
     return {audit,records};
   });
   app.post('/api/audits/:id/records',async request=>{
@@ -70,9 +112,13 @@ export async function custodyRoutes(app:FastifyInstance):Promise<void>{
     return transaction(async client=>{
       const audit=await one<{branch_id:string;status:string}>(client,'SELECT branch_id,status FROM audits WHERE id=$1 FOR UPDATE',[auditId]);branchAccess(actor,audit.branch_id,true);
       if(audit.status!=='em_andamento')fail(409,'AUDITORIA','A auditoria já foi concluída');
-      await one(client,'SELECT id FROM lockers WHERE id=$1 AND branch_id=$2',[body.lockerId,audit.branch_id]);
-      return (await client.query(`INSERT INTO audit_records(audit_id,locker_id,issue_type,notes) VALUES($1,$2,$3,$4) RETURNING *`,
-        [auditId,body.lockerId,body.issueType,body.notes??null])).rows[0];
+      const locker=await one<{sector_occupant:string|null}>(client,'SELECT sector_occupant FROM lockers WHERE id=$1 AND branch_id=$2 FOR UPDATE',[body.lockerId,audit.branch_id]);
+      const occupants=(await client.query<{name:string;registration:string|null;department:string|null}>(`SELECT p.name,m.registration,m.department FROM allocations a
+        JOIN people p ON p.id=a.person_id LEFT JOIN memberships m ON m.person_id=p.id AND m.branch_id=a.branch_id
+        WHERE a.locker_id=$1 AND a.ended_at IS NULL ORDER BY p.name`,[body.lockerId])).rows;
+      return (await client.query(`INSERT INTO audit_records(audit_id,locker_id,issue_type,notes,occupants,sector_occupant)
+        VALUES($1,$2,$3,$4,$5::jsonb,$6) RETURNING *`,
+        [auditId,body.lockerId,body.issueType,body.notes??null,JSON.stringify(occupants),locker.sector_occupant])).rows[0];
     });
   });
   app.patch('/api/audits/:id/complete',async request=>{
@@ -91,8 +137,7 @@ export async function custodyRoutes(app:FastifyInstance):Promise<void>{
     if(!audit)fail(404,'NAO_ENCONTRADO','Auditoria não encontrada');
     branchAccess(actor,audit.branch_id);
     if(audit.status!=='concluida')fail(409,'AUDITORIA','Conclua a auditoria antes de gerar o relatório');
-    const records=(await pool.query<{issue_type:z.infer<typeof issue>;locker_id:string}>(`SELECT r.*,l.number locker_number FROM audit_records r
-      JOIN lockers l ON l.id=r.locker_id WHERE r.audit_id=$1 ORDER BY l.number,r.issue_type`,[auditId])).rows;
+    const records=await auditRecords(auditId) as {issue_type:z.infer<typeof issue>;locker_id:string}[];
     const affected=new Set(records.map(row=>row.locker_id)).size;
     return {audit,records:records.map(row=>({...row,recommendation:recommendations[row.issue_type]})),affectedLockers:affected,
       complianceIndex:audit.total_lockers?Math.max(0,Math.round(100*(audit.total_lockers-affected)/audit.total_lockers)):100};
