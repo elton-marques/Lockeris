@@ -14,6 +14,7 @@ import { managementRoutes } from './management.js';
 import { migrationRoutes } from './migration.js';
 import { notificationRoutes } from './notifications.js';
 import { sanitationRoutes } from './sanitation.js';
+import { custodyRoutes } from './custody.js';
 import { refreshPending } from './pending.js';
 import { documentRoute } from './openapi.js';
 
@@ -42,6 +43,7 @@ await migrationRoutes(app);
 await managementRoutes(app);
 await notificationRoutes(app);
 await sanitationRoutes(app);
+await custodyRoutes(app);
 
 const timer=setInterval(async()=>{
   try {

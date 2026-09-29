@@ -42,6 +42,12 @@ As linhas da tabela de Colaboradores ficam alinhadas verticalmente em uma única
 
 Matrículas numéricas são comparadas sem espaços, pontos, barras ou hífens, preservando zeros à esquerda. Se a matrícula da planilha de armários existir na base de colaboradores, o sistema usa automaticamente o nome, setor e função oficiais, mesmo que o nome na carga inicial esteja vazio ou diferente. A tela Pendências separa armários e pessoas em abas; armários ficam em ordem numérica e pessoas em ordem alfabética. Cada registro abre uma conferência com os dados atuais e as linhas originais da planilha, quando houver. Em **Resolvidas**, cada registro mostra o motivo original e o que resolveu a pendência; uma pessoa que recebeu armário continua na aba Pessoas do histórico.
 
+## Pertences retidos e auditorias
+
+Ao desocupar um armário, marque **Pertences deixados no armário?** e descreva os objetos encontrados. A tela **Pertences Retidos** acompanha os 30 dias de guarda, sinaliza vencimentos e permite registrar devolução ao dono ou destinação após o prazo.
+
+Em **Auditorias**, abra uma inspeção por filial, selecione os armários e registre irregularidades e observações. Ao concluir, use **Gerar Relatório para Gestão** para visualizar e imprimir em A4 o responsável, a data, o índice de conformidade e as ocorrências com providências recomendadas. O índice usa a quantidade de armários registrada no início da inspeção.
+
 ## Gestão de filiais
 
 A tela **Administração** (`apps/web/src/pages/Admin.tsx`) é o ponto de criação e exclusão de filiais, restrito ao perfil **Administração geral**:

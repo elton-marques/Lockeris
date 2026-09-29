@@ -27,6 +27,39 @@ beforeEach(async()=>{await pool.query('TRUNCATE branches,people,users CASCADE');
 afterAll(async()=>{await app.close();});
 
 describe('regras transacionais',()=>{
+  it('guarda pertences junto da desocupação, impede baixa dupla e separa filiais',async()=>{
+    const {auth,branch}=await setupWithoutLogin();const cabinet=await locker(auth,branch.id,'401');const member=await person(auth,branch.id,'Dona','401');
+    const occupied=await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false});
+    expect(occupied.statusCode).toBe(200);
+    const release={operationId:uuid(),allocationId:occupied.json().id,expectedVersion:1,retainedDescription:'Mochila azul'};
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,release)).statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/release`,release)).statusCode).toBe(200);
+    const list=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/retained-items`,headers:{cookie:auth.cookie}})).json();
+    expect(list).toHaveLength(1);expect(list[0]).toMatchObject({description:'Mochila azul',person_id:member.person_id,status:'retido'});
+    expect(Math.round((new Date(list[0].expires_at).getTime()-new Date(list[0].retained_at).getTime())/86400000)).toBe(30);
+    expect((await send(auth,'PATCH',`/api/retained-items/${list[0].id}/status`,{status:'devolvido'})).statusCode).toBe(200);
+    expect((await send(auth,'PATCH',`/api/retained-items/${list[0].id}/status`,{status:'destinado'})).statusCode).toBe(409);
+    const pending=(await send(auth,'POST','/api/retained-items',{branchId:branch.id,lockerId:cabinet.id,description:'Casaco'})).json();
+    expect((await send(auth,'PATCH',`/api/retained-items/${pending.id}/status`,{status:'destinado'})).statusCode).toBe(409);
+    await pool.query("UPDATE retained_items SET expires_at=now()-interval '1 day' WHERE id=$1",[pending.id]);
+    expect((await send(auth,'PATCH',`/api/retained-items/${pending.id}/status`,{status:'destinado'})).statusCode).toBe(200);
+    const other=(await send(auth,'POST','/api/branches',{operationId:uuid(),name:'Outra filial'})).json();
+    expect((await send(auth,'POST','/api/retained-items',{branchId:other.id,lockerId:cabinet.id,description:'Inválido'})).statusCode).toBe(404);
+  });
+  it('fecha a auditoria, bloqueia novas ocorrências e calcula conformidade por armário distinto',async()=>{
+    const {auth,branch}=await setupWithoutLogin();const cabinet=await locker(auth,branch.id,'501');await locker(auth,branch.id,'502');
+    const created=await send(auth,'POST',`/api/branches/${branch.id}/audits`,{title:'Inspeção',auditorName:'Prevenção'});
+    expect(created.statusCode).toBe(200);const auditId=created.json().id;
+    const reportUrl=`/api/audits/${auditId}/report`;
+    expect((await app.inject({method:'GET',url:reportUrl,headers:{cookie:auth.cookie}})).statusCode).toBe(409);
+    for(const issueType of ['sem_cadeado','mecanismo_avariado'])expect((await send(auth,'POST',`/api/audits/${auditId}/records`,{lockerId:cabinet.id,issueType})).statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/audits/${auditId}/records`,{lockerId:cabinet.id,issueType:'sem_cadeado'})).statusCode).toBe(409);
+    expect((await send(auth,'PATCH',`/api/audits/${auditId}/complete`,{summaryNotes:'Revisão necessária'})).statusCode).toBe(200);
+    expect((await send(auth,'POST',`/api/audits/${auditId}/records`,{lockerId:cabinet.id,issueType:'outro'})).statusCode).toBe(409);
+    const report=(await app.inject({method:'GET',url:reportUrl,headers:{cookie:auth.cookie}})).json();
+    expect(report).toMatchObject({affectedLockers:1,complianceIndex:50});expect(report.records).toHaveLength(2);
+    expect(report.records[0].recommendation).toBeTruthy();
+  });
   it('aceita uma única disputa pela última capacidade e não duplica operação',async()=>{
     const {auth,branch}=await setup();const cabinet=await locker(auth,branch.id,'101');const a=await person(auth,branch.id,'Pessoa A','0001'),b=await person(auth,branch.id,'Pessoa B','0002');
     const payloadA={operationId:uuid(),personId:a.person_id,lockerId:cabinet.id,expectedVersion:cabinet.version,modality:'fixo',seasonal:false};

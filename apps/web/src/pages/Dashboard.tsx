@@ -25,7 +25,7 @@ const numeric=new Intl.Collator('pt-BR',{numeric:true,sensitivity:'base'});
 const lower=(value:string)=>value.toLocaleLowerCase('pt-BR');
 const sectors=lockerSectors;
 
-export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfirm,admin=false,preset}:PageProps&{preset?:LockerPreset}){
+export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=false,preset}:PageProps&{preset?:LockerPreset}){
   const [lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
   const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false),[doublePartial,setDoublePartial]=useState(preset?.doublePartial??false);
   const [view,setView]=useState<'cards'|'table'>('cards');
@@ -36,6 +36,7 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
   const [edit,setEdit]=useState({keyCopy:'sim'});
   const [occupantEdit,setOccupantEdit]=useState<OccupantEdit|null>(null),[draft,setDraft]=useState<OccupantDraft>(emptyDraft);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
+  const [releaseTarget,setReleaseTarget]=useState<Occupant|null>(null),[hasItems,setHasItems]=useState(false),[itemDescription,setItemDescription]=useState('');
 
   async function load(){
     setLoading(true);setLoadError('');
@@ -169,13 +170,19 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
         expectedMembershipVersion:editingOccupant?.membershipVersion,name:draft.name.trim(),registration:draft.registration.trim()||null,
         department:draft.department.trim()||null,functionName:draft.functionName.trim()||null}:null}),
     `Informações do armário #${locker.number} salvas.`,scope==='attributes',cancelOccupantEdit);}
-  async function release(occupant:Occupant){
-    if(!locker||!await askConfirm(`Desocupar o armário ${locker.number} e remover o ocupante ${occupant.name}?`))return;
-    act(()=>post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:occupant.allocationId,
-      expectedVersion:occupant.allocationVersion}),`Armário #${locker.number} desocupado com sucesso.`);
+  function release(occupant:Occupant){setReleaseTarget(occupant);setHasItems(false);setItemDescription('');}
+  async function confirmRelease(event:React.FormEvent){
+    event.preventDefault();if(!locker||!releaseTarget)return;
+    const number=locker.number;setBusy(true);
+    try{
+      await post(`/branches/${branchId}/allocations/release`,{operationId:op(),allocationId:releaseTarget.allocationId,
+        expectedVersion:releaseTarget.allocationVersion,...(hasItems?{retainedDescription:itemDescription.trim()}:{})});
+      setReleaseTarget(null);await load();refresh();notice(`Armário #${number} desocupado com sucesso.`);
+    }catch(error){notice(error instanceof Error?error.message:'Falha na desocupação');}
+    finally{setBusy(false);}
   }
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
-    if(event.key==='Escape'){event.preventDefault();setSelected(null);return;}
+    if(event.key==='Escape'){event.preventDefault();if(releaseTarget)setReleaseTarget(null);else setSelected(null);return;}
     if(event.key!=='Tab')return;
     const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled)'));
     if(!elements.length)return;
@@ -306,6 +313,13 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,askConfir
         </form>}
       </section>
     </div>}
+    {locker&&releaseTarget&&<div className="locker-modal-backdrop custody-backdrop"><form className="card custody-dialog" role="dialog" aria-modal="true" aria-labelledby="release-title" onSubmit={confirmRelease}>
+      <span className="eyebrow">Desocupação</span><h2 id="release-title">Desocupar armário {locker.number}</h2>
+      <p>Remover {releaseTarget.name} da ocupação deste armário?</p>
+      <label className="custody-check"><input type="checkbox" checked={hasItems} onChange={event=>setHasItems(event.target.checked)}/> Pertences deixados no armário?</label>
+      {hasItems&&<><label>Descrição dos pertences<textarea required maxLength={2000} value={itemDescription} onChange={event=>setItemDescription(event.target.value)} placeholder="Descreva os pertences encontrados"/></label><p>Prazo de guarda: 30 dias a partir da desocupação.</p></>}
+      <div className="row-actions"><button type="button" onClick={()=>setReleaseTarget(null)}>Cancelar</button><button className="primary" disabled={busy||hasItems&&!itemDescription.trim()}>Confirmar desocupação</button></div>
+    </form></div>}
     </>}
     </div>
   {printData&&<TermoResponsabilidade dados={printData}/>}</>;

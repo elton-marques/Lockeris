@@ -35,6 +35,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if(branch.version!==body.expectedVersion)fail(409,'VERSAO','Filial alterada; recarregue');
       const branchUsers='SELECT id FROM users WHERE branch_id=$1';
       await client.query('DELETE FROM pending_items WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM retained_items WHERE branch_id=$1',[branchId]);
+      await client.query('DELETE FROM audits WHERE branch_id=$1',[branchId]);
       await client.query(`DELETE FROM events WHERE branch_id=$1 OR actor_id IN (${branchUsers})`,[branchId]);
       await client.query('DELETE FROM legacy_history WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);
       await client.query('DELETE FROM import_sources WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);

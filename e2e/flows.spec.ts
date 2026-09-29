@@ -679,3 +679,53 @@ test('admin higieniza a base excluindo cadastros obsoletos',async({page})=>{
   await expect(page.getByText('Nenhum cadastro obsoleto',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Excluir cadastros selecionados'})).toHaveCount(0);
 });
+
+test('desocupação guarda pertences e auditoria gera relatório para gestão',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
+    const admin=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='e2e'")).rows[0];
+    const locker=(await pool.query<{id:string}>("INSERT INTO lockers(branch_id,number,size,capacity,modality) VALUES($1,'609','padrao',1,'fixo') RETURNING id",[branch.id])).rows[0];
+    const person=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Pessoa da Inspeção') RETURNING id")).rows[0];
+    await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed) VALUES($1,$2,'colaborador','manual','6090',true)",[person.id,branch.id]);
+    await pool.query("INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,started_by) VALUES($1,$2,$3,'fixo',now(),$4)",[branch.id,locker.id,person.id,admin.id]);
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),admin.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/');
+  await page.getByRole('button',{name:'Abrir detalhes do armário 609'}).click();
+  await page.locator('.occupant-slot').filter({hasText:'Pessoa da Inspeção'}).getByRole('button',{name:'Desocupar armário'}).click();
+  const dialog=page.getByRole('dialog',{name:'Desocupar armário 609'});
+  await dialog.getByRole('checkbox',{name:'Pertences deixados no armário?'}).check();
+  await dialog.getByLabel('Descrição dos pertences').fill('Mochila azul de teste');
+  await dialog.getByRole('button',{name:'Confirmar desocupação'}).click();
+  await expectNotice(page,'desocupado com sucesso');await closeNotice(page);
+  await page.getByRole('dialog',{name:'Armário Nº 609'}).getByRole('button',{name:'Fechar'}).click();
+  await page.getByRole('button',{name:'Pertences Retidos'}).click();
+  await expect(page.getByText('Mochila azul de teste')).toBeVisible();
+  await expect(page.getByText('30 dia(s) restantes')).toBeVisible();
+  await page.getByRole('button',{name:'Auditorias'}).click();
+  await page.getByLabel('Título').fill('Inspeção semanal');
+  await page.getByLabel('Responsável').fill('Equipe de Prevenção');
+  await page.getByRole('button',{name:'Iniciar auditoria'}).click();
+  await closeNotice(page);
+  await page.getByRole('combobox',{name:'Armário'}).selectOption({label:'№ 609'});
+  await page.getByRole('combobox',{name:'Ocorrência'}).selectOption('sem_cadeado');
+  await page.getByRole('button',{name:'Adicionar ocorrência'}).click();
+  await closeNotice(page);
+  await page.getByRole('button',{name:'Concluir auditoria'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await closeNotice(page);
+  await page.getByRole('button',{name:'Gerar Relatório para Gestão'}).click();
+  const report=page.getByRole('article',{name:'Relatório para Gestão'});
+  await expect(report).toContainText('Equipe de Prevenção');
+  await expect(report).toContainText('Sem cadeado');
+  await expect(report).toContainText('Providência recomendada');
+  await page.emulateMedia({media:'print'});
+  await expect(report.locator('header')).toBeVisible();
+  await expect(page.locator('.sidebar')).toBeHidden();
+  expect((await page.pdf({format:'A4',printBackground:true})).length).toBeGreaterThan(1000);
+});

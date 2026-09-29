@@ -1,4 +1,8 @@
 export const changelog=[
+  {title:'Pertences retidos e auditorias',kind:'shield',description:'A equipe acompanha pertences esquecidos e apresenta inspeções concluídas à gestão.',items:[
+    'Prazo de guarda e situação dos pertences visíveis para a Prevenção de Perdas.',
+    'Irregularidades dos armários reunidas em relatório com providências recomendadas.'
+  ]},
   {title:'Indicadores com cores mais claras',kind:'sparkles',description:'As informações importantes da filial ganharam destaques visuais e ações mais fáceis de acessar.',items:[
     'Cada indicador tem uma cor que facilita reconhecer sua situação.',
     'Os atalhos de consulta ficam alinhados e fáceis de acessar.'

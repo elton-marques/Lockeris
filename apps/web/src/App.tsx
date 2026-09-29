@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, ClipboardCheck, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, ShieldCheck, Upload, UsersRound} from 'lucide-react';
+import {ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, PackageSearch, ShieldCheck, Upload, UsersRound} from 'lucide-react';
 import {api,post,type User} from './api';
 import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
@@ -15,6 +15,8 @@ import {Imports} from './pages/Imports';
 import {Pending} from './pages/Pending';
 import {History} from './pages/History';
 import {Admin} from './pages/Admin';
+import {RetainedItems} from './pages/RetainedItems';
+import {Audits} from './pages/Audits';
 
 export type NoticeAction={label:string;onClick:()=>void};
 export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
@@ -26,6 +28,8 @@ const tabs=[
   {key:'pessoas',label:'Colaboradores',icon:UsersRound,group:'Operação'},
   {key:'pendencias',label:'Pendências',icon:ClipboardCheck,group:'Operação'},
   {key:'movimentacoes',label:'Transferências',icon:ArrowLeftRight,group:'Operação'},
+  {key:'retidos',label:'Pertences Retidos',icon:PackageSearch,group:'Operação'},
+  {key:'auditorias',label:'Auditorias',icon:ClipboardList,group:'Operação'},
   {key:'importacao',label:'Importações',icon:Upload,group:'Gestão'},
   {key:'historico',label:'Histórico',icon:FileClock,group:'Gestão'},
   {key:'administracao',label:'Administração',icon:ShieldCheck,group:'Gestão'}
@@ -111,7 +115,7 @@ export default function App(){
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
-          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
+          page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='retidos'?<RetainedItems {...props}/>:page==='auditorias'?<Audits {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
     {aboutOpen&&<AboutModal onClose={()=>setAboutOpen(false)}/>}
