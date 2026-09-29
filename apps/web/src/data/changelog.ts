@@ -1,4 +1,9 @@
 export const changelog=[
+  {title:'Lockeris portátil com dados da filial',kind:'sparkles',description:'A versão 1.0 reúne os registros da filial e uma experiência mais clara para a Prevenção de Perdas.',items:[
+    'Telas renovadas facilitam a leitura e o acompanhamento das informações.',
+    'Achados e Perdidos e auditorias ficaram mais simples de consultar e preencher.',
+    'A confirmação de desocupação destaca os dados importantes antes de concluir a ação.'
+  ]},
   {title:'Desocupação mais clara',kind:'sparkles',description:'A confirmação de saída do armário ficou mais fácil de conferir e concluir.',items:[
     'Janela centralizada com dados do ocupante em destaque.',
     'Registro de pertences aparece apenas quando necessário, mantendo a operação fluida.'

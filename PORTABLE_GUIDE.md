@@ -33,11 +33,11 @@ Em caso de erro, o build preserva os arquivos parciais em `dist-portable/.build-
 
 1. Copie `Lockeris-Portable` do pendrive para uma pasta local, por exemplo `C:\Users\SeuUsuario\Lockeris-Portable`. Prefira disco local a executar o banco diretamente no pendrive; evite pastas de rede ou sincronizadas.
 2. Abra `config/.env.portable` no Bloco de Notas. A API usa `PORT=3001`; o banco usa `PGPORT=15432`. Se alguma porta estiver ocupada ou reservada pelo Windows, escolha outra porta livre, entre 1024 e 65535. O Docker existente pode ocupar `3001`.
-3. Execute `INICIAR.bat` como usuário comum. Na primeira execução, ele gera senhas aleatórias locais, inicializa `data/` em UTF-8 com autenticação por senha, cria o banco, aplica as migrações e cria um administrador inicial. Aguarde a confirmação; o navegador abre automaticamente.
-4. Para entrar, consulte `BOOTSTRAP_USERNAME` e a **última ocorrência** de `BOOTSTRAP_PASSWORD` em `config/.env.portable`. A senha deve ser alterada no primeiro acesso. Nas próximas execuções, usuários, senhas e registros existentes são preservados.
-5. Cadastre a filial e seus dados pela aplicação. A distribuição não inclui banco inicializado, pessoas, planilhas, backups ou segredos do desenvolvimento.
+3. Execute `INICIAR.bat` como usuário comum. Em um pacote novo, a primeira execução gera senhas locais, inicializa o banco, aplica as migrações e cria um administrador inicial. Em um pacote já preparado com dados, o banco e os usuários existentes são preservados. Aguarde a confirmação; o navegador abre automaticamente.
+4. Em um pacote novo, para entrar, consulte `BOOTSTRAP_USERNAME` e a **última ocorrência** de `BOOTSTRAP_PASSWORD` em `config/.env.portable`; altere a senha no primeiro acesso. Em um pacote preparado, entre com uma conta já existente. Nas próximas execuções, usuários, senhas e registros são preservados.
+5. Em um pacote novo, cadastre a filial e seus dados pela aplicação. Quando o pacote já vier preparado com os registros da filial, use os acessos existentes e confira as informações após o primeiro início.
 
-As senhas geradas ficam apenas no pacote local. Proteja `config/.env.portable`; não compartilhe nem versione uma cópia em uso. `PGPASSWORD` autentica o banco existente: não o altere no arquivo sem alterar também a senha dentro do PostgreSQL. `BOOTSTRAP_PASSWORD` não redefine contas já criadas.
+As senhas geradas ficam apenas no pacote local. Proteja `config/.env.portable` e o diretório `data/` de um pacote com registros da filial; não compartilhe nem versione uma cópia em uso. `PGPASSWORD` autentica o banco existente: não o altere no arquivo sem alterar também a senha dentro do PostgreSQL. `BOOTSTRAP_PASSWORD` não redefine contas já criadas.
 
 Na cópia portátil, a impressão usa as fontes alternativas locais já definidas no site; a importação opcional do Google Fonts é removida apenas dos arquivos empacotados para evitar consultas à internet.
 
@@ -66,7 +66,7 @@ Lockeris-Portable/
 │   ├── packages/contracts/
 │   ├── node_modules/         somente dependências de produção
 │   └── launcher.mjs          controlador local
-├── data/                     aparece no primeiro início
+├── data/                     aparece no primeiro início ou já contém os dados preparados da filial
 ├── config/.env.portable
 ├── INICIAR.bat
 ├── PARAR.bat
