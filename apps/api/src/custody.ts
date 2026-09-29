@@ -20,6 +20,7 @@ const preventionDepartment=(department:string|null)=>{
   return /prevencao\s+de\s+perdas|(^|[^a-z])pp([^a-z]|$)/.test(normalized);
 };
 type FoundItem=z.infer<typeof retainedItemInput>;
+const withMinuteFoundAt=<T extends {found_at:Date}>(row:T)=>({...row,found_at:row.found_at.toISOString().slice(0,16)+'Z'});
 export async function insertRetainedItem(client:Client,branchId:string,lockerId:string|null,personId:string|null,item:FoundItem){
   const foundAt=item.foundAt?new Date(item.foundAt):new Date();
   if(foundAt.getTime()>Date.now()+60_000)fail(422,'DATA','A data do achado não pode estar no futuro');
@@ -28,11 +29,11 @@ export async function insertRetainedItem(client:Client,branchId:string,lockerId:
   let finderName=item.finderName;
   if(item.finderId){const finder=await one<{name:string}>(client,`SELECT p.name FROM people p JOIN memberships m ON m.person_id=p.id
     WHERE p.id=$1 AND m.branch_id=$2 AND m.status='ativo'`,[item.finderId,branchId]);finderName=finder.name;}
-  return (await client.query(`INSERT INTO retained_items(branch_id,locker_id,person_id,category,custom_category,found_at,expires_at,
-    finder_id,finder_name,found_location,storage_location,description)
-    VALUES($1,$2,$3,$4,$5,$6,$6::timestamptz + interval '30 days',$7,$8,$9,$10,$11) RETURNING *`,
+  return withMinuteFoundAt((await client.query<{found_at:Date}>(`INSERT INTO retained_items(branch_id,locker_id,person_id,category,custom_category,found_at,expires_at,
+    finder_id,finder_name,found_location,description)
+    VALUES($1,$2,$3,$4,$5,$6,$6::timestamptz + interval '30 days',$7,$8,$9,$10) RETURNING *`,
   [branchId,lockerId,personId,item.category,item.category==='outro'?item.customCategory:null,foundAt.toISOString(),item.finderId??null,
-    finderName,item.foundLocation,item.storageLocation,item.description])).rows[0];
+    finderName,item.foundLocation,item.description])).rows[0]);
 }
 
 async function auditRecords(auditId:string){return (await pool.query(`SELECT r.*,l.number locker_number FROM audit_records r
@@ -41,9 +42,9 @@ async function auditRecords(auditId:string){return (await pool.query(`SELECT r.*
 export async function custodyRoutes(app:FastifyInstance):Promise<void>{
   app.get('/api/branches/:branchId/retained-items',async request=>{
     const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
-    return (await pool.query(`SELECT r.*,l.number locker_number,p.name person_name FROM retained_items r
+    return (await pool.query<{found_at:Date}>(`SELECT r.*,l.number locker_number,p.name person_name FROM retained_items r
       LEFT JOIN lockers l ON l.id=r.locker_id LEFT JOIN people p ON p.id=r.person_id
-      WHERE r.branch_id=$1 ORDER BY (r.status='retido') DESC,r.expires_at ASC`,[branchId])).rows;
+      WHERE r.branch_id=$1 ORDER BY (r.status='retido') DESC,r.expires_at ASC`,[branchId])).rows.map(withMinuteFoundAt);
   });
   app.post('/api/retained-items',async request=>{
     const actor=await authenticate(request);
@@ -62,7 +63,7 @@ export async function custodyRoutes(app:FastifyInstance):Promise<void>{
       branchAccess(actor,row.branch_id,true);
       if(row.status!=='retido')fail(409,'SITUACAO','Este pertence já recebeu baixa');
       if(body.status==='destinado'&&new Date(row.expires_at).getTime()>Date.now())fail(409,'PRAZO','Aguarde o fim dos 30 dias de guarda antes de dar destinação');
-      return (await client.query(`UPDATE retained_items SET status=$2,resolved_at=now(),notes=COALESCE($3,notes) WHERE id=$1 RETURNING *`,[itemId,body.status,body.notes??null])).rows[0];
+      return withMinuteFoundAt((await client.query<{found_at:Date}>(`UPDATE retained_items SET status=$2,resolved_at=now(),notes=COALESCE($3,notes) WHERE id=$1 RETURNING *`,[itemId,body.status,body.notes??null])).rows[0]);
     });
   });
   app.get('/api/branches/:branchId/audits',async request=>{

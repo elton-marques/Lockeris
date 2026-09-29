@@ -19,6 +19,9 @@
 .custody-form-fields label{display:grid;gap:.4rem;min-width:0}
 .custody-form-fields label:last-of-type,.custody-form-fields>small{grid-column:1/-1}
 .custody-form-fields input,.custody-form-fields select,.custody-form-fields textarea{width:100%;min-height:42px;box-sizing:border-box}
+.custody-form-fields :is(input,select,textarea){border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-input);color:var(--text-primary);padding:10px 12px;font:inherit}
+.custody-form-fields :is(input,textarea)::placeholder{color:var(--text-muted);opacity:1}
+.custody-form-fields :is(input,select,textarea):focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
 .custody-register{margin:1.5rem 0}
 .custody-filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(2,minmax(160px,1fr));gap:1rem;margin:1.5rem 0 1rem}
 .custody-filters label{display:grid;gap:.4rem}

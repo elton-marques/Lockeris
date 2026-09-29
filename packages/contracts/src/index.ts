@@ -30,7 +30,6 @@ export const retainedItemInput = z.object({
   finderId: id.nullish(),
   finderName: z.string().trim().min(1).max(200),
   foundLocation: z.string().trim().min(1).max(300),
-  storageLocation: z.string().trim().min(1).max(300),
   description: z.string().trim().min(1).max(2000)
 }).superRefine((value,ctx)=>{
   if(value.category==='outro'&&!value.customCategory)ctx.addIssue({code:'custom',path:['customCategory'],message:'Informe a categoria'});

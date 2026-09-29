@@ -1,4 +1,8 @@
 export const changelog=[
+  {title:'Achados e Perdidos mais simples',kind:'sparkles',description:'A Prevenção de Perdas registra e consulta pertences com mais clareza.',items:[
+    'Cadastro com menos campos e orientação neutra para informar o local do achado.',
+    'Datas sem segundos e descrição mais confortável para preencher e ler.'
+  ]},
   {title:'Achados e Perdidos com registro completo',kind:'shield',description:'A Prevenção de Perdas acompanha cada achado desde a identificação até a baixa.',items:[
     'Categoria, responsável, local do achado e guarda reunidos com o prazo de 30 dias.',
     'Auditorias identificadas pela data, com responsável da equipe e ocupantes visíveis.'

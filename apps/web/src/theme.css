@@ -62,7 +62,7 @@
   --bg-surface:#27272A;--surface-card:#27272A;
   --primary:#7C3AED;--primary-dark:#2E1065;--accent:#34D399;--accent-hover:#10B981;
   --warning:#FBBF24;--danger:#F43F5E;--bg-app:#18181B;--bg-card:#27272A;--border:#3F3F46;
-  --surface-base:#18181B;--surface-raised:#27272A;--surface-subtle:#3F3F46;--surface-inverse:#2E1065;
+  --surface-base:#18181B;--surface-raised:#27272A;--surface-subtle:#3F3F46;--surface-input:#292c40;--surface-inverse:#2E1065;
   --text-primary:#FAFAFA;--text-secondary:#D4D4D8;--text-muted:#A1A1AA;--text-on-brand:#FFFFFF;
   --border-divider:#3F3F46;--border-strong:#71717A;--brand-accent:#7C3AED;--brand-accent-hover:#6D28D9;
   --brand-surface:#3B2364;--focus-ring:#C4B5FD;--status-success:#34D399;--status-warning:#FBBF24;--status-danger:#F43F5E;
