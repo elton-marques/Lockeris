@@ -1,4 +1,6 @@
 node_modules/
+dist-portable/
+.portable-cache/
 dist/
 *.tsbuildinfo
 .env

@@ -9,6 +9,8 @@
     "dev:api": "npm run dev -w @armarios/api",
     "dev:web": "npm run dev -w @armarios/web",
     "build": "npm run build -w @armarios/contracts && npm run build -w @armarios/api && npm run build -w @armarios/web",
+    "build:portable": "node scripts/portable/build.mjs",
+    "package:portable": "npm run build:portable",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",

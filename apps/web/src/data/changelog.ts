@@ -1,4 +1,8 @@
 export const changelog=[
+  {title:'Lockeris portátil para Windows',kind:'sparkles',description:'A filial pode usar o Lockeris no próprio computador, mesmo sem internet.',items:[
+    'Pacote independente com início automático e banco de dados local.',
+    'Encerramento seguro e preservação dos registros entre os acessos.'
+  ]},
   {title:'Achados e Perdidos mais simples',kind:'sparkles',description:'A Prevenção de Perdas registra e consulta pertences com mais clareza.',items:[
     'Cadastro com menos campos e orientação neutra para informar o local do achado.',
     'Datas sem segundos e descrição mais confortável para preencher e ler.'

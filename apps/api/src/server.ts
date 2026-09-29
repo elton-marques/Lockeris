@@ -17,6 +17,7 @@ import { sanitationRoutes } from './sanitation.js';
 import { custodyRoutes } from './custody.js';
 import { refreshPending } from './pending.js';
 import { documentRoute } from './openapi.js';
+import { registerPortableWeb } from './portable.js';
 
 export const app=Fastify({logController:new LogController({disableRequestLogging:true}),logger:{redact:['req.headers.cookie','req.headers.authorization','req.headers.x-csrf-token','req.headers.x-device-secret','req.body','res.body']},bodyLimit:11*1024*1024});
 await app.register(cookie);
@@ -44,6 +45,7 @@ await managementRoutes(app);
 await notificationRoutes(app);
 await sanitationRoutes(app);
 await custodyRoutes(app);
+if(process.env.PORTABLE_MODE==='true') await registerPortableWeb(app);
 
 const timer=setInterval(async()=>{
   try {
@@ -53,4 +55,4 @@ const timer=setInterval(async()=>{
 },60*60*1000);
 timer.unref();
 app.addHook('onClose',async()=>{clearInterval(timer);await pool.end();});
-if(process.env.NODE_ENV!=='test') await app.listen({host:'0.0.0.0',port:Number(process.env.PORT??3001)});
+if(process.env.NODE_ENV!=='test') await app.listen({host:process.env.PORTABLE_MODE==='true'?'127.0.0.1':'0.0.0.0',port:Number(process.env.PORT??3001)});
