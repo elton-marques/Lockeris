@@ -41,7 +41,6 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       await client.query('DELETE FROM legacy_history WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);
       await client.query('DELETE FROM import_sources WHERE import_id IN (SELECT id FROM imports WHERE branch_id=$1)',[branchId]);
       await client.query('DELETE FROM imports WHERE branch_id=$1',[branchId]);
-      await client.query('DELETE FROM authorized_devices WHERE branch_id=$1',[branchId]);
       await client.query('DELETE FROM sharings WHERE locker_id IN (SELECT id FROM lockers WHERE branch_id=$1)',[branchId]);
       await client.query('DELETE FROM allocations WHERE branch_id=$1',[branchId]);
       await client.query('DELETE FROM lockers WHERE branch_id=$1',[branchId]);

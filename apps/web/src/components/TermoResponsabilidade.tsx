@@ -1,5 +1,8 @@
 import React from "react";
 import "./termo-print.css";
+import { PrintLogo } from "./PrintLogo";
+
+const companyName = import.meta.env.VITE_COMPANY_NAME?.trim() || "Ferreira Costa";
 
 interface TermoProps {
   dados: {
@@ -21,7 +24,7 @@ export function TermoResponsabilidade({ dados }: TermoProps) {
     <div className="termo-print-container">
       <div className="termo-header">
         <div className="termo-logo">
-          <img src="/logo-fc.png" alt="Ferreira Costa" />
+          <PrintLogo />
         </div>
 
         <div className="termo-title-container">
@@ -77,7 +80,7 @@ export function TermoResponsabilidade({ dados }: TermoProps) {
 
       <div className="termo-body">
         <p>
-          Por meio deste, confirmo estar recebendo da Ferreira Costa o armário
+          Por meio deste, confirmo estar recebendo da {companyName} o armário
           de numeração citada acima, um cadeado e uma cópia da chave para
           guardar meus pertences. E na condição de usuário é meu dever:
         </p>

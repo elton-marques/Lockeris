@@ -1,0 +1,7 @@
+.print-logo{width:180px;min-height:64px;display:grid;place-items:center;text-align:center}
+.print-logo img{display:block;width:100%;height:64px;max-height:64px;object-fit:contain}
+.print-logo-text{font:700 13px/1.4 Arial,sans-serif;color:#222}
+.print-logo-text small{font-size:9px;letter-spacing:.04em}
+@media print{
+  .print-logo img{display:block!important;width:100%;height:64px;max-height:64px;object-fit:contain;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}

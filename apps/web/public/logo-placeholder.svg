@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 64" role="img" aria-label="Sua Empresa">
+  <rect x="1" y="1" width="178" height="62" rx="6" fill="#fff" stroke="#444" stroke-width="2"/>
+  <path d="M15 43V22l13-8 13 8v21H15Zm8 0V29h10v14" fill="none" stroke="#444" stroke-width="2" stroke-linejoin="round"/>
+  <text x="52" y="30" fill="#222" font-family="Arial, sans-serif" font-size="13" font-weight="700">SUA EMPRESA</text>
+  <text x="52" y="45" fill="#444" font-family="Arial, sans-serif" font-size="8">PREVENÇÃO DE PERDAS</text>
+</svg>

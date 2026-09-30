@@ -19,7 +19,7 @@ import { refreshPending } from './pending.js';
 import { documentRoute } from './openapi.js';
 import { registerPortableWeb } from './portable.js';
 
-export const app=Fastify({logController:new LogController({disableRequestLogging:true}),logger:{redact:['req.headers.cookie','req.headers.authorization','req.headers.x-csrf-token','req.headers.x-device-secret','req.body','res.body']},bodyLimit:11*1024*1024});
+export const app=Fastify({logController:new LogController({disableRequestLogging:true}),logger:{redact:['req.headers.cookie','req.headers.authorization','req.headers.x-csrf-token','req.body','res.body']},bodyLimit:11*1024*1024});
 await app.register(cookie);
 await app.register(rateLimit,{global:false});
 await app.register(multipart,{limits:{fileSize:10*1024*1024,files:1,fields:12}});
