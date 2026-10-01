@@ -7,6 +7,7 @@ import { authenticate, branchAccess, adminAccess } from './auth.js';
 import { hash, pool, transaction, one, fail, type Client } from './db.js';
 import { idempotent, event, changedFields, type EventContext } from './operations.js';
 import { refreshPending } from './pending.js';
+import { classifyLink, effectiveRules, type LinkRules } from './link-rules.js';
 import {registrationKey} from './registration.js';
 
 const route=z.object({branchId:id}),routeItem=z.object({branchId:id,itemId:id});
@@ -68,43 +69,15 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
   app.get('/api/branches/:branchId/dashboard',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
     const trendBoundaries=Array.from({length:8},(_,index)=>new Date(Date.now()-(7-index)*7*86400000).toISOString());
-    const [lockers,people,pending,links,withoutLocker,keyLoans,trend]=await Promise.all([
+    const [lockers,people,pending,rawLinks,withoutLocker,keyLoans,trend,storedRules]=await Promise.all([
       pool.query<{total:string;occupied:string;blocked:string}>(`SELECT count(*) total,count(*) FILTER (WHERE l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) occupied,
         count(*) FILTER (WHERE l.condition<>'disponivel' OR l.migration_status='inconclusivo') blocked FROM lockers l WHERE l.branch_id=$1`,[branchId]),
       pool.query<{total:string}>('SELECT count(*) total FROM memberships WHERE branch_id=$1 AND status=$2',[branchId,'ativo']),
       pool.query<{total:string}>('SELECT count(*) total FROM pending_items WHERE branch_id=$1 AND state=$2',[branchId,'aberta']),
-      pool.query<{total:number;colaborador:number;promotor_fixo:number;terceirizado:number;vinculo_nao_identificado:number}>(`
-        SELECT count(*)::int total,
-          count(*) FILTER (WHERE link='colaborador')::int colaborador,
-          count(*) FILTER (WHERE link='promotor_fixo')::int promotor_fixo,
-          count(*) FILTER (WHERE link='terceirizado')::int terceirizado,
-          count(*) FILTER (WHERE link='vinculo_nao_identificado')::int vinculo_nao_identificado
-        FROM (
-          SELECT CASE
-            WHEN m.department ILIKE '%aprendiz%'
-              OR m.function_name ILIKE '%aprendiz%'
-              OR p.name ILIKE '%aprendiz%' THEN 'colaborador'
-            WHEN m.category='promotor_fixo'
-              OR m.department ILIKE '%promotor%'
-              OR m.function_name ILIKE '%promotor%' THEN 'promotor_fixo'
-            WHEN m.category='terceirizado'
-              OR coalesce(m.company,'') ILIKE '%delta%'
-              OR coalesce(m.company,'') ILIKE '%climatiza%'
-              OR coalesce(m.company,'') ILIKE '%terceiriz%'
-              OR coalesce(m.department,'') ILIKE '%delta%'
-              OR coalesce(m.department,'') ILIKE '%climatiza%'
-              OR coalesce(m.department,'') ILIKE '%terceiriz%' THEN 'terceirizado'
-            WHEN coalesce(trim(m.department),'')=''
-              AND coalesce(trim(m.function_name),'')=''
-              AND coalesce(trim(m.company),'')='' THEN 'vinculo_nao_identificado'
-            WHEN m.category='colaborador' THEN 'colaborador'
-            WHEN m.category='vinculo_nao_identificado' THEN 'vinculo_nao_identificado'
-          END link
-          FROM memberships m
-          JOIN people p ON p.id=m.person_id
-          WHERE m.branch_id=$1 AND m.status='ativo'
-        ) classified
-        WHERE link IS NOT NULL`,[branchId]),
+      pool.query<{name:string;category:string|null;department:string|null;function_name:string|null;company:string}>(`
+        SELECT p.name,m.category,m.department,m.function_name,coalesce(m.company,'') company
+        FROM memberships m JOIN people p ON p.id=m.person_id
+        WHERE m.branch_id=$1 AND m.status='ativo'`,[branchId]),
       pool.query<{total:number}>(`SELECT count(*)::int total FROM memberships m
         WHERE m.branch_id=$1 AND m.status='ativo'
           AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)`,[branchId]),
@@ -118,9 +91,13 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
             WHERE l2.branch_id=$1 AND coalesce(a.started_at,a.migrated_at)<=p.week_end
               AND (a.ended_at IS NULL OR a.ended_at>p.week_end)) occupied,
           (SELECT coalesce(sum(l3.capacity),0)::int FROM lockers l3 WHERE l3.branch_id=$1 AND l3.created_at<=p.week_end) capacity
-        FROM points p ORDER BY p.week_end`,[branchId,trendBoundaries])
+        FROM points p ORDER BY p.week_end`,[branchId,trendBoundaries]),
+      pool.query<{link_rules:LinkRules|null}>('SELECT link_rules FROM branch_settings WHERE branch_id=$1',[branchId])
     ]);
-    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0],withoutLocker:withoutLocker.rows[0],keyLoans:keyLoans.rows[0],trend:trend.rows};
+    const rules=effectiveRules(storedRules.rows[0]?.link_rules??null);
+    const links={colaborador:0,promotor_fixo:0,terceirizado:0,vinculo_nao_identificado:0,total:0};
+    for(const member of rawLinks.rows){const link=classifyLink(member,rules);if(link){links[link]+=1;links.total+=1;}}
+    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links,withoutLocker:withoutLocker.rows[0],keyLoans:keyLoans.rows[0],trend:trend.rows};
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);

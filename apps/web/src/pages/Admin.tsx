@@ -20,6 +20,7 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
   const [locker,setLocker]=useState({number:'',size:'padrao',capacity:1,isDouble:false,modality:'fixo',destination:'',sectorOccupant:'',condition:'disponivel'});
   const [username,setUsername]=useState(''),[role,setRole]=useState('operador'),[temporaryPassword,setTemporaryPassword]=useState('');
   const [resetEditor,setResetEditor]=useState<string|null>(null),[resetValue,setResetValue]=useState('');
+  const [ruleDraft,setRuleDraft]=useState({apprentice:'',promoter:'',thirdParty:''}),[rulesVersion,setRulesVersion]=useState(-1),[ruleBusy,setRuleBusy]=useState(false);
   const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
   async function load(){if(!branchId){setLoading(false);return;}setLoading(true);setLoadError('');try{const [b,c,p]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),api<User[]>(`/branches/${branchId}/users`),api<Person[]>(`/branches/${branchId}/people`)]);setLockers(b);setUsers(c);setPeople(p);}
     catch(e){setLoadError(e instanceof Error?e.message:'Confira a conexão e tente novamente.');throw e;}finally{setLoading(false);}}
@@ -33,6 +34,22 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
     finally{setStaleLoading(false);}
   }
   useEffect(()=>{setStale(null);setSelected(new Set());if(admin&&!readonly&&branchId)loadStale().catch(()=>{});},[branchId,admin,readonly]);
+  useEffect(()=>{setRulesVersion(-1);if(!branchId||readonly||!admin)return;
+    api<{apprentice:string[];promoter:string[];thirdParty:string[];version:number}>(`/branches/${branchId}/settings/link-rules`)
+      .then(rules=>{setRuleDraft({apprentice:rules.apprentice.join(', '),promoter:rules.promoter.join(', '),thirdParty:rules.thirdParty.join(', ')});setRulesVersion(rules.version);})
+      .catch(()=>{setRulesVersion(-1);});
+  },[branchId,readonly,admin]);
+  async function saveRules(){
+    const parse=(value:string)=>value.split(',').map(item=>item.trim().toLocaleLowerCase('pt-BR')).filter(Boolean);
+    setRuleBusy(true);
+    try{
+      const saved=await patch<{apprentice:string[];promoter:string[];thirdParty:string[];version:number}>(`/branches/${branchId}/settings/link-rules`,
+        {operationId:op(),expectedVersion:Math.max(0,rulesVersion),apprentice:parse(ruleDraft.apprentice),promoter:parse(ruleDraft.promoter),thirdParty:parse(ruleDraft.thirdParty)});
+      setRuleDraft({apprentice:saved.apprentice.join(', '),promoter:saved.promoter.join(', '),thirdParty:saved.thirdParty.join(', ')});setRulesVersion(saved.version);
+      notice('Regras de vínculo atualizadas. O painel passa a usá-las na próxima atualização.');
+    }catch(e){notice(e instanceof Error?e.message:'Não foi possível salvar as regras.');}
+    finally{setRuleBusy(false);}
+  }
   async function purge(){
     if(!selected.size)return;
     if(!await askConfirm(`Excluir ${selected.size} cadastro(s) da base? Esta ação não pode ser desfeita.`))return;
@@ -120,6 +137,15 @@ export function Admin({branchId,readonly,refresh,notice,askConfirm,general=false
             </div>
           </>}
         </>}
+      </section>}
+      {admin&&<section className="card"><span className="eyebrow">Painel</span><h2>Regras de vínculo</h2>
+        <p>Palavras-chave que classificam as pessoas no painel "Pessoas por vínculo" (compare com setor, cargo, função e empresa). Separe por vírgula. Sem valor, vale o padrão do sistema.</p>
+        <div className="form-grid">
+          <label>Aprendiz (vira Colaborador)<input value={ruleDraft.apprentice} onChange={event=>setRuleDraft(current=>({...current,apprentice:event.target.value}))} placeholder="padrão: aprendiz"/></label>
+          <label>Promotor(a)<input value={ruleDraft.promoter} onChange={event=>setRuleDraft(current=>({...current,promoter:event.target.value}))} placeholder="padrão: promotor"/></label>
+          <label>Terceirizado<input value={ruleDraft.thirdParty} onChange={event=>setRuleDraft(current=>({...current,thirdParty:event.target.value}))} placeholder="padrão: delta, climatiza, terceiriz"/></label>
+        </div>
+        <button className="primary" type="button" disabled={ruleBusy||rulesVersion<0} onClick={()=>{saveRules().catch(()=>{});}}>Salvar regras de vínculo</button>
       </section>}
       </>}
     </>}

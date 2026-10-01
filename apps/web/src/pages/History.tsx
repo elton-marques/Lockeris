@@ -25,7 +25,7 @@ const events:Record<string,string>={
   terceirizado_sem_matricula_reconhecido:'Terceirizado sem matrícula reconhecido',
   promotor_roteirista_retirado:'Promotor roteirista retirado',ocupante_associado_por_nome:'Ocupante associado por nome',
   pendencia_auto_reconciliada:'Matrícula reconciliada automaticamente',
-  historico_limpo:'Histórico legado limpo'
+  historico_limpo:'Histórico legado limpo',regras_vinculo_atualizadas:'Regras de vínculo atualizadas'
 };
 const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Dispositivo legado',allocation:'Ocupação',sharing:'Compartilhamento',key_loan:'Chave'};
 export const eventLabel=(kind:string)=>events[kind]??'Evento registrado';
