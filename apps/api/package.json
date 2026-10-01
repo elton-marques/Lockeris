@@ -1,9 +1,17 @@
 {
   "name": "@armarios/api",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Elton Marques",
   "type": "module",
-  "scripts": { "dev": "tsx watch src/server.ts", "build": "tsc -p tsconfig.json", "start": "node dist/server.js", "migrate": "tsx src/cli/migrate.ts", "bootstrap": "tsx src/cli/bootstrap.ts", "reset-password": "tsx src/cli/reset-password.ts", "seed": "tsx src/cli/seed.ts" },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "migrate": "tsx src/cli/migrate.ts",
+    "bootstrap": "tsx src/cli/bootstrap.ts",
+    "reset-password": "tsx src/cli/reset-password.ts",
+    "seed": "tsx src/cli/seed.ts"
+  },
   "dependencies": {
     "@armarios/contracts": "1.0.0",
     "@fastify/cookie": "^11.0.2",
@@ -22,5 +30,10 @@
     "yauzl": "^3.2.0",
     "zod": "^4.1.11"
   },
-  "devDependencies": { "@types/pg": "^8.15.5", "@types/papaparse": "^5.3.16", "@types/iconv-lite": "^0.0.1", "@types/yauzl": "^2.10.3" }
+  "devDependencies": {
+    "@types/pg": "^8.15.5",
+    "@types/papaparse": "^5.3.16",
+    "@types/iconv-lite": "^0.0.1",
+    "@types/yauzl": "^2.10.3"
+  }
 }

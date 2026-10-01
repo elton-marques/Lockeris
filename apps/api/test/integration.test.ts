@@ -657,3 +657,48 @@ describe('limpeza periódica',()=>{
     expect((await pool.query('SELECT 1 FROM sessions WHERE id_hash=$1',['valida'])).rowCount).toBe(1);
   });
 });
+
+describe('higienização, acessos e exportação',()=>{
+  it('lista cadastros obsoletos e exclui em lote',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    await person(auth,branch.id,'Antiga sem armário','7001');
+    await pool.query("UPDATE memberships SET created_at=now()-interval '200 days' WHERE registration='7001'");
+    const list=await app.inject({method:'GET',url:`/api/branches/${branch.id}/people/stale?inactiveDays=90`,headers:{cookie:auth.cookie}});
+    expect(list.statusCode).toBe(200);
+    expect(list.json().some((row:{registration:string|null})=>row.registration==='7001')).toBe(true);
+    const membershipId=(await pool.query<{id:string}>("SELECT id FROM memberships WHERE registration='7001'")).rows[0]!.id;
+    const purge=await send(auth,'POST','/api/people/bulk-purge',{operationId:uuid(),branchId:branch.id,membershipIds:[membershipId]});
+    expect(purge.statusCode).toBe(200);
+    expect((await pool.query('SELECT 1 FROM memberships WHERE id=$1',[membershipId])).rowCount).toBe(0);
+  });
+  it('cria acesso, altera o perfil e redefine a senha temporária encerrando sessões',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const created=await send(auth,'POST',`/api/branches/${branch.id}/users`,{operationId:uuid(),username:'operador.teste',role:'operador',temporaryPassword:'Senha-Temporaria-1'});
+    expect(created.statusCode).toBe(200);
+    const userId=created.json().id as string;
+    const firstLogin=await app.inject({method:'POST',url:'/api/auth/login',payload:{username:'operador.teste',password:'Senha-Temporaria-1'}});
+    expect(firstLogin.statusCode).toBe(200);
+    expect(firstLogin.json().user.mustChangePassword).toBe(true);
+    const userVersion=(await pool.query<{version:number}>('SELECT version FROM users WHERE id=$1',[userId])).rows[0]!.version;
+    const patched=await send(auth,'PATCH',`/api/branches/${branch.id}/users/${userId}`,{operationId:uuid(),expectedVersion:userVersion,role:'consulta'});
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().role).toBe('consulta');
+    const reset=await send(auth,'POST',`/api/branches/${branch.id}/users/${userId}/reset`,{operationId:uuid(),expectedVersion:patched.json().version,temporaryPassword:'Nova-Temporaria-2'});
+    expect(reset.statusCode).toBe(200);
+    const reLogin=await app.inject({method:'POST',url:'/api/auth/login',payload:{username:'operador.teste',password:'Nova-Temporaria-2'}});
+    expect(reLogin.statusCode).toBe(200);
+    const staleSession=await app.inject({method:'GET',url:'/api/auth/me',headers:{cookie:firstLogin.headers['set-cookie']!.toString().split(';')[0]}});
+    expect(staleSession.statusCode).toBe(401);
+  });
+  it('exporta o histórico da filial em CSV',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'801');
+    const member=await person(auth,branch.id,'Pessoa CSV','8002');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false,reason:'=SOMA(A1)'})).statusCode).toBe(200);
+    const response=await app.inject({method:'GET',url:`/api/branches/${branch.id}/history/export`,headers:{cookie:auth.cookie}});
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/csv');
+    expect(response.body).toContain('ocupacao_iniciada');
+    expect(response.body).toContain('Pessoa CSV');
+  });
+});

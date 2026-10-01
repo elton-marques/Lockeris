@@ -1,5 +1,7 @@
 # Lockeris
 
+[![CI](https://github.com/elton-marques/Lockeris/actions/workflows/ci.yml/badge.svg)](https://github.com/elton-marques/Lockeris/actions/workflows/ci.yml)
+
 **Gestão integrada e controle de armários para Prevenção de Perdas.**
 
 O Lockeris centraliza a gestão de armários, ocupantes e alocações por filial. Desenvolvido para a operação de Prevenção de Perdas, reúne controle de chaves, importação de planilhas, conferência de pendências, auditorias e histórico de movimentações em uma aplicação interna.
@@ -213,6 +215,12 @@ Execute os comandos na raiz do projeto.
 Copy-Item .env.example .env
 ```
 
+Edite `.env` e defina `POSTGRES_PASSWORD`. Para testes locais em HTTP, use `COOKIE_SECURE=false` — em produção, sirva por HTTPS (proxy com TLS) e defina `COOKIE_SECURE=true`; a API registra um aviso no log quando o cookie roda sem o flag `Secure`. O login é limitado por usuário e por IP (5 e 30 tentativas por 15 minutos por padrão; ajuste com `AUTH_LOGIN_MAX_USER`, `AUTH_LOGIN_MAX_IP` e `AUTH_LOGIN_RATE_MINUTES`), e a identidade impressa no Termo de Responsabilidade sai de `VITE_COMPANY_NAME` e `VITE_COMPANY_LOGO_URL` no build do web.
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Edite `.env` e defina `POSTGRES_PASSWORD`. Para testes locais em HTTP, use `COOKIE_SECURE=false`.
 
 ### 2. Inicie os serviços
@@ -320,7 +328,11 @@ $env:E2E_DATABASE_URL = $env:DATABASE_URL
 npm run test:e2e
 ```
 
-O navegador padrão é o Chrome. Para usar o Edge, configure antes de executar:
+Com cobertura de testes, use `npm run test:coverage` (relatório em `coverage/`).
+
+A navegação da SPA sincroniza as abas com a URL por hash (`/#/pessoas`, `/#/pendencias`…): deep-link e recarga mantêm a tela atual, rotas desconhecidas abrem a página **Página não encontrada** e abas administrativas redirecionam perfis sem permissão ao painel.
+
+O teste de navegador usa o Chromium empacotado do Playwright por padrão. Para usar o Chrome ou o Edge do sistema, configure antes de executar:
 
 ```powershell
 $env:E2E_BROWSER_CHANNEL = 'msedge'

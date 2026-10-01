@@ -1,4 +1,5 @@
 import Fastify,{LogController} from 'fastify';
+import {createRequire} from 'node:module';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
@@ -23,7 +24,7 @@ export const app=Fastify({logController:new LogController({disableRequestLogging
 await app.register(cookie);
 await app.register(rateLimit,{global:false});
 await app.register(multipart,{limits:{fileSize:10*1024*1024,files:1,fields:12}});
-await app.register(swagger,{openapi:{info:{title:'Gestão de Armários API',version:'1.0.0'},servers:[{url:'/'}],components:{securitySchemes:{cookieAuth:{type:'apiKey',in:'cookie',name:'armarios_session'}}}},transform:documentRoute});
+await app.register(swagger,{openapi:{info:{title:'Gestão de Armários API',version:createRequire(import.meta.url)('../package.json').version},servers:[{url:'/'}],components:{securitySchemes:{cookieAuth:{type:'apiKey',in:'cookie',name:'armarios_session'}}}},transform:documentRoute});
 await app.register(swaggerUI,{routePrefix:'/api/docs'});
 app.setErrorHandler((error,request,reply)=>{
   const err=error as Error & {statusCode?:number;code?:string};
