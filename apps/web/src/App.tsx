@@ -87,6 +87,7 @@ export default function App(){
     if(key==='withoutLocker')navigate('pessoas',{withoutLocker:true});
     else if(key==='registrationPending')navigate('pendencias');
     else if(key==='keyLoanOpen')openLockers({keyLoan:true});
+    else if(key==='custodyExpiring')navigate('achados');
     else openLockers({doublePartial:true});
   }
   return <div className="app-shell">

@@ -40,6 +40,26 @@ async function auditRecords(auditId:string){return (await pool.query(`SELECT r.*
   JOIN lockers l ON l.id=r.locker_id WHERE r.audit_id=$1 ORDER BY l.number,r.issue_type`,[auditId])).rows;}
 
 export async function custodyRoutes(app:FastifyInstance):Promise<void>{
+  app.get('/api/branches/:branchId/daily-summary',async request=>{
+    const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
+    const [overdue,expiring,loans,pending]=await Promise.all([
+      pool.query<{id:string;description:string;locker_number:string|null;days_overdue:number}>(`SELECT r.id,r.description,r.locker_number,
+        GREATEST(1,extract(day FROM now()-r.expires_at)::int) days_overdue
+        FROM retained_items r WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at<now()
+        ORDER BY r.expires_at LIMIT 50`,[branchId]),
+      pool.query<{id:string;description:string;locker_number:string|null;days_left:number}>(`SELECT r.id,r.description,r.locker_number,
+        extract(day FROM r.expires_at-now())::int days_left
+        FROM retained_items r WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at>=now() AND r.expires_at<now()+interval '5 days'
+        ORDER BY r.expires_at LIMIT 50`,[branchId]),
+      pool.query<{id:string;locker_number:string;person_name:string;days_out:number}>(`SELECT k.id,l.number locker_number,k.person_name,
+        extract(day FROM now()-k.taken_at)::int days_out
+        FROM key_loans k JOIN lockers l ON l.id=k.locker_id
+        WHERE k.branch_id=$1 AND k.returned_at IS NULL AND k.taken_at<now()-interval '7 days'
+        ORDER BY k.taken_at LIMIT 50`,[branchId]),
+      pool.query<{kind:string;count:number}>('SELECT kind,count(*)::int count FROM pending_items WHERE branch_id=$1 AND state=$2 GROUP BY kind ORDER BY count DESC',[branchId,'aberta'])
+    ]);
+    return {overdue:overdue.rows,expiring:expiring.rows,keyLoans:loans.rows,pending:pending.rows};
+  });
   app.get('/api/branches/:branchId/retained-items',async request=>{
     const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
     return (await pool.query<{found_at:Date}>(`SELECT r.*,l.number locker_number,p.name person_name FROM retained_items r

@@ -18,7 +18,7 @@ const pendingLabels: Record<string, string> = {
 const exclusiveDoubleKeywords = ['transporte pesado', 'conservacao', 'limpeza', 'manutencao'];
 const normalized = (value: string | null | undefined) => value ? value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR') : '';
 
-export type NotificationKey = 'withoutLocker' | 'registrationPending' | 'underusedDoubles' | 'keyLoanOpen';
+export type NotificationKey = 'withoutLocker' | 'registrationPending' | 'underusedDoubles' | 'keyLoanOpen' | 'custodyExpiring';
 export type NotificationItem = { id: string; label: string; detail: string | null };
 export type NotificationAlert = { key: NotificationKey; label: string; description: string; count: number; items: NotificationItem[] };
 export type NotificationSummary = { total: number; alerts: NotificationAlert[]; checkedAt: string };
@@ -27,6 +27,7 @@ type PersonRow = { membership_id: string; name: string; registration: string | n
 type PendingRow = { membership_id: string; kind: string; name: string | null; registration: string | null };
 type DoubleRow = { id: string; number: string; occupants: { name: string; registration: string | null; department: string | null }[] };
 type KeyLoanRow = { id: string; locker_id: string; number: string; person_name: string; person_registration: string | null; days_out: number };
+type CustodyRow = { id: string; description: string; locker_number: string | null; days_left: number };
 
 async function withoutLockerAlert(branchId: string): Promise<NotificationAlert> {
   const { rows } = await pool.query<PersonRow>(`SELECT m.id membership_id,p.name,m.registration,m.department
@@ -111,6 +112,25 @@ async function keyLoanOpenAlert(branchId: string): Promise<NotificationAlert> {
   };
 }
 
+async function custodyExpiringAlert(branchId: string): Promise<NotificationAlert> {
+  const { rows } = await pool.query<CustodyRow>(`SELECT r.id,r.description,r.locker_number,
+      extract(day FROM r.expires_at-now())::int days_left
+    FROM retained_items r
+    WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at<now()+interval '5 days'
+    ORDER BY r.expires_at LIMIT ${listLimit}`, [branchId]);
+  return {
+    key: 'custodyExpiring',
+    label: 'Prazos de custódia',
+    description: 'Achados vencidos ou vencendo nos próximos 5 dias.',
+    count: rows.length,
+    items: rows.slice(0, previewLimit).map(row => ({
+      id: row.id,
+      label: row.description.slice(0, 80),
+      detail: row.days_left < 0 ? 'Prazo vencido' : `${row.days_left} dia(s) restante(s)`
+    }))
+  };
+}
+
 export function notificationSummary(alerts: NotificationAlert[], checkedAt = new Date().toISOString()): NotificationSummary {
   return { total: alerts.reduce((sum, alert) => sum + alert.count, 0), alerts, checkedAt };
 }
@@ -120,7 +140,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request);
     const { branchId } = route.parse(request.params);
     branchAccess(actor, branchId);
-    const alerts = await Promise.all([withoutLockerAlert(branchId), registrationPendingAlert(branchId), underusedDoublesAlert(branchId), keyLoanOpenAlert(branchId)]);
+    const alerts = await Promise.all([withoutLockerAlert(branchId), registrationPendingAlert(branchId), underusedDoublesAlert(branchId), keyLoanOpenAlert(branchId), custodyExpiringAlert(branchId)]);
     return notificationSummary(alerts);
   });
 }

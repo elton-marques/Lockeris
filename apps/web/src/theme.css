@@ -368,3 +368,6 @@
 :root[data-theme='dark'] .overview-page .kpi-card .kpi-action{color:var(--kpi-action-color)}
 :root[data-theme='dark'] .overview-page .kpi-card .kpi-action:hover:not(:disabled){background:var(--kpi-action-hover);color:var(--kpi-action-hover-color)}
 :root[data-theme='dark'] .overview-page{background:transparent}
+:root[data-theme='dark'] .custody-badge--urgent{background:#7c4a1e;color:#ffd9b3}
+:root[data-theme='dark'] .daily-summary-block{background:#27272A;border-color:#3F3F46;color:#FAFAFA}
+:root[data-theme='dark'] .daily-summary-block .count{background:#3F3F46;color:#e4e4e7}
