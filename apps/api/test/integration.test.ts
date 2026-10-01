@@ -1,7 +1,7 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import argon2 from 'argon2';
 import {randomUUID} from 'node:crypto';
-import {app} from '../src/server.js';
+import {app,runPeriodicCleanup} from '../src/server.js';
 import {pool} from '../src/db.js';
 import {parseFile} from '../src/imports.js';
 import {hash} from '../src/db.js';
@@ -598,9 +598,14 @@ it('CSV mantém zeros à esquerda e campos entre aspas',async()=>{
   expect(sheets[0].rows[1]).toEqual(['0009','Nome; Composto']);
 });
 it('OpenAPI publica contratos de operação',()=>{
-  const document=app.swagger() as {paths:Record<string,Record<string,{requestBody?:unknown}>>};
+  const document=app.swagger() as {paths:Record<string,Record<string,{requestBody?:unknown;summary?:string}>>};
   expect(document.paths['/api/branches/{branchId}/allocations/occupy'].post.requestBody).toBeDefined();
   expect(document.paths['/api/branches/{branchId}/history/clear'].delete.requestBody).toBeDefined();
+  expect(document.paths['/api/branches/{branchId}/lockers/{itemId}/key-copy'].post.requestBody).toBeDefined();
+  expect(document.paths['/api/branches/{branchId}/pending/{itemId}/revise'].post.requestBody).toBeDefined();
+  expect(document.paths['/api/retained-items/{id}/status'].patch.requestBody).toBeDefined();
+  expect(document.paths['/api/audits/{id}/records'].post.requestBody).toBeDefined();
+  expect(document.paths['/api/branches/{branchId}/users/{itemId}'].patch.requestBody).toBeDefined();
 });
 
 describe('limites de login, csrf e troca de senha obrigatória',()=>{
@@ -632,5 +637,23 @@ describe('limites de login, csrf e troca de senha obrigatória',()=>{
     expect((await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}})).statusCode).toBe(403);
     expect((await app.inject({method:'GET',url:'/api/branches?incluir=123',headers:{cookie:auth.cookie}})).statusCode).toBe(403);
     expect((await app.inject({method:'GET',url:'/api/auth/me',headers:{cookie:auth.cookie}})).statusCode).toBe(200);
+  });
+});
+
+describe('limpeza periódica',()=>{
+  it('remove sessões expiradas e operações com mais de 30 dias preservando as recentes',async()=>{
+    const user=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='test'")).rows[0]!;
+    const oldOp=uuid(),recentOp=uuid();
+    await pool.query("INSERT INTO operations(id,actor_id,payload_hash) VALUES($1,$2,'antiga')",[oldOp,user.id]);
+    await pool.query("UPDATE operations SET created_at=now()-interval '31 days' WHERE id=$1",[oldOp]);
+    await pool.query("INSERT INTO operations(id,actor_id,payload_hash) VALUES($1,$2,'recente')",[recentOp,user.id]);
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES('expirada',$1,'x',now()-interval '1 hour')",[user.id]);
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES('valida',$1,'y',now()+interval '1 hour')",[user.id]);
+    const result=await runPeriodicCleanup();
+    expect(result.sessions).toBe(1);
+    expect(result.operations).toBe(1);
+    expect((await pool.query<{id:string}>('SELECT id FROM operations')).rows.map(row=>row.id)).toEqual([recentOp]);
+    expect((await pool.query('SELECT 1 FROM sessions WHERE id_hash=$1',['expirada'])).rowCount).toBe(0);
+    expect((await pool.query('SELECT 1 FROM sessions WHERE id_hash=$1',['valida'])).rowCount).toBe(1);
   });
 });

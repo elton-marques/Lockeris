@@ -1,10 +1,21 @@
 import type {FastifySchema} from 'fastify';
 import {z} from 'zod';
-import {branchInput,lockerInput,personInput,personUpdateInput,occupyInput,releaseInput,transferInput,operation,id} from '@armarios/contracts';
+import {branchInput,lockerInput,personInput,personUpdateInput,occupyInput,releaseInput,transferInput,operation,id,retainedItemInput} from '@armarios/contracts';
 
 const withOperation=<T extends z.ZodRawShape>(shape:T)=>z.object({operationId:id,...shape});
+const reviseInput=withOperation({
+  expectedVersion:z.number().int().positive().optional(),
+  expectedLockerVersion:z.number().int().positive(),
+  isDouble:z.boolean(),sectorOccupant:z.string().nullable(),
+  condition:z.enum(['disponivel','manutencao','bloqueado']).optional(),
+  keyCopyAvailable:z.boolean().optional(),
+  finalize:z.boolean().optional(),
+  occupant:z.object({allocationId:id.optional(),membershipId:id.optional(),expectedMembershipVersion:z.number().int().positive().optional(),
+    name:z.string().optional(),registration:z.string().nullable().optional(),department:z.string().nullable().optional(),functionName:z.string().nullable().optional()}).nullable().optional()
+});
 const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/auth\/login$/,schema:z.object({username:z.string(),password:z.string()}),summary:'Entrar'},
+  {match:/^POST \/api\/auth\/logout$/,schema:z.object({}),summary:'Encerrar sessão'},
   {match:/^POST \/api\/auth\/password$/,schema:z.object({oldPassword:z.string(),newPassword:z.string().min(12)}),summary:'Trocar senha'},
   {match:/^POST \/api\/auth\/change-password$/,schema:z.object({currentPassword:z.string(),newPassword:z.string().min(12)}),summary:'Alterar a própria senha'},
   {match:/^POST \/api\/branches$/,schema:branchInput.and(operation),summary:'Criar filial'},
@@ -29,8 +40,18 @@ const writeBodies:{match:RegExp;schema:z.ZodType;summary:string}[]=[
   {match:/^POST \/api\/branches\/:branchId\/imports\/:importId\/confirm$/,schema:withOperation({acknowledgeComplete:z.literal(true),sameDateCorrection:z.boolean().optional(),resolutions:z.record(z.string(),z.string()).optional()}),summary:'Confirmar base de colaboradores'},
   {match:/^POST \/api\/branches\/:branchId\/imports\/migration\/:importId\/confirm$/,schema:withOperation({acknowledgeReviewed:z.literal(true)}),summary:'Confirmar carga inicial de armários'},
   {match:/^POST \/api\/branches\/:branchId\/users$/,schema:withOperation({username:z.string(),role:z.enum(['filial_admin','operador','consulta']),temporaryPassword:z.string()}),summary:'Criar usuário'},
+  {match:/^PATCH \/api\/branches\/:branchId\/users\/:itemId$/,schema:withOperation({expectedVersion:z.number().int().positive(),role:z.enum(['filial_admin','operador','consulta']).optional(),active:z.boolean().optional()}),summary:'Alterar acesso'},
   {match:/^POST \/api\/branches\/:branchId\/users\/:itemId\/reset$/,schema:withOperation({expectedVersion:z.number().int().positive(),temporaryPassword:z.string()}),summary:'Redefinir senha temporária'},
   {match:/^DELETE \/api\/users\/:userId$/,schema:withOperation({expectedVersion:z.number().int().positive().optional()}),summary:'Excluir usuário'},
+  {match:/^POST \/api\/branches\/:branchId\/lockers\/:itemId\/key-copy$/,schema:withOperation({expectedVersion:z.number().int().positive(),available:z.boolean()}),summary:'Atualizar cópia da chave'},
+  {match:/^POST \/api\/branches\/:branchId\/pending\/:itemId\/revise$/,schema:reviseInput,summary:'Conferir pendência de armário'},
+  {match:/^POST \/api\/branches\/:branchId\/lockers\/:itemId\/revise$/,schema:reviseInput,summary:'Conferir armário na carga inicial'},
+  {match:/^POST \/api\/retained-items$/,schema:retainedItemInput.and(z.object({branchId:id,lockerId:id.nullish(),personId:id.nullish()})),summary:'Registrar item achado'},
+  {match:/^PATCH \/api\/retained-items\/:id\/status$/,schema:z.object({status:z.enum(['devolvido','destinado']),notes:z.string().max(2000).nullish()}),summary:'Dar baixa de item achado'},
+  {match:/^POST \/api\/branches\/:branchId\/audits$/,schema:z.object({auditorId:id}),summary:'Iniciar auditoria'},
+  {match:/^DELETE \/api\/audits\/:id$/,schema:z.object({}),summary:'Excluir auditoria'},
+  {match:/^POST \/api\/audits\/:id\/records$/,schema:z.object({lockerId:id,issueType:z.enum(['cadeado_fora_padrao','sem_cadeado','itens_fora_armario','mecanismo_avariado','outro']),notes:z.string().max(2000).nullish()}),summary:'Registrar irregularidade'},
+  {match:/^PATCH \/api\/audits\/:id\/complete$/,schema:z.object({summaryNotes:z.string().max(2000).nullish()}),summary:'Concluir auditoria'},
 ];
 export function documentRoute({schema,url,route}:{schema:FastifySchema;url:string;route:{method:string|string[]}}):{schema:FastifySchema;url:string}{
   const method=(Array.isArray(route.method)?route.method[0]:route.method).toUpperCase();

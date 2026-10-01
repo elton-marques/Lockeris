@@ -35,7 +35,19 @@ app.setErrorHandler((error,request,reply)=>{
   if(status===500) request.log.error({code:err.code??'UNEXPECTED',requestId:request.id},'Erro técnico');
   reply.status(status).send({error:{code,message,details:issue?error.issues.map(x=>({path:x.path,message:x.message})):undefined,requestId:request.id}});
 });
-app.get('/api/health',async()=>({ok:true}));
+app.get('/api/health',async()=>{
+  try{await pool.query('SELECT 1');return {ok:true,db:true};}
+  catch{throw Object.assign(new Error('Banco de dados indisponível'),{statusCode:503});}
+});
+app.addHook('onResponse',async(request,reply)=>{
+  if(request.method==='GET'||request.method==='HEAD')return;
+  request.log.info({method:request.method,url:request.url,status:reply.statusCode},'escrita_registrada');
+});
+export async function runPeriodicCleanup():Promise<{sessions:number;operations:number}>{
+  const sessions=await pool.query('DELETE FROM sessions WHERE expires_at<now()');
+  const operations=await pool.query("DELETE FROM operations WHERE created_at<now()-interval '30 days'");
+  return {sessions:sessions.rowCount??0,operations:operations.rowCount??0};
+}
 if(process.env.COOKIE_SECURE==='false') app.log.warn('COOKIE_SECURE=false: os cookies da sessão vão sem o flag Secure. Em produção, sirva a aplicação por HTTPS (proxy com TLS) e defina COOKIE_SECURE=true.');
 await authRoutes(app);
 await catalogRoutes(app);
@@ -55,5 +67,10 @@ const timer=setInterval(async()=>{
   } catch(error) { app.log.error({err:error},'Falha ao atualizar pendências'); }
 },60*60*1000);
 timer.unref();
-app.addHook('onClose',async()=>{clearInterval(timer);await pool.end();});
+const cleanupTimer=setInterval(()=>{
+  runPeriodicCleanup().then(result=>{if(result.sessions||result.operations)app.log.info(result,'limpeza_periodica');})
+    .catch(error=>app.log.error({err:error},'Falha na limpeza periódica'));
+},24*60*60*1000);
+cleanupTimer.unref();
+app.addHook('onClose',async()=>{clearInterval(timer);clearInterval(cleanupTimer);await pool.end();});
 if(process.env.NODE_ENV!=='test') await app.listen({host:process.env.PORTABLE_MODE==='true'?'127.0.0.1':'0.0.0.0',port:Number(process.env.PORT??3001)});
