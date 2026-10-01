@@ -1,8 +1,9 @@
-import {useEffect,useState} from 'react';
-import {ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Eye, EyeOff, FileClock, Info, LayoutDashboard, LogOut, PackageSearch, ShieldCheck, Upload, UsersRound} from 'lucide-react';
-import {api,post,type User} from './api';
+import {useEffect,useRef,useState} from 'react';
+import {Eye, EyeOff, Info, LogOut} from 'lucide-react';
+import {api,post,setUnauthorizedHandler,type User} from './api';
 import {purgeOfflineCopy} from './offline';
 import {LockerisIcon,roleName} from './ui';
+import {tabs,tabKeys,resolveHashPage} from './navigation';
 import {Header,ThemeSwitch,type NotificationKey} from './components/Header';
 import {AboutModal} from './components/AboutModal';
 import {ChangePasswordModal} from './components/ChangePasswordModal';
@@ -17,23 +18,12 @@ import {History} from './pages/History';
 import {Admin} from './pages/Admin';
 import {RetainedItems} from './pages/RetainedItems';
 import {Audits} from './pages/Audits';
+import {NotFound} from './pages/NotFound';
 
 export type NoticeAction={label:string;onClick:()=>void};
 export type PageProps={branchId:string;branchName:string;readonly:boolean;admin?:boolean;refresh:()=>void;notice:(message:string,action?:NoticeAction)=>void;askConfirm:(message:string)=>Promise<boolean>;askPrompt:(message:string)=>Promise<string|null>};
 export type PeoplePreset={withoutLocker?:boolean};
 type Branch={id:string;name:string;timezone:string;status:string;version:number};
-const tabs=[
-  {key:'resumo',label:'Dashboard',icon:LayoutDashboard,group:'Operação'},
-  {key:'painel',label:'Armários',icon:Boxes,group:'Operação'},
-  {key:'pessoas',label:'Colaboradores',icon:UsersRound,group:'Operação'},
-  {key:'pendencias',label:'Pendências',icon:ClipboardCheck,group:'Operação'},
-  {key:'movimentacoes',label:'Transferências',icon:ArrowLeftRight,group:'Operação'},
-  {key:'achados',label:'Achados e Perdidos',icon:PackageSearch,group:'Operação'},
-  {key:'auditorias',label:'Auditorias',icon:ClipboardList,group:'Operação'},
-  {key:'importacao',label:'Importações',icon:Upload,group:'Gestão'},
-  {key:'historico',label:'Histórico',icon:FileClock,group:'Gestão'},
-  {key:'administracao',label:'Administração',icon:ShieldCheck,group:'Gestão'}
-] as const;
 type Theme='light'|'dark';
 type AppDialog={kind:'confirm';message:string;value:string;resolve:(value:boolean)=>void}|{kind:'prompt';message:string;value:string;resolve:(value:string|null)=>void};
 const themePreferenceKey='armarios-theme';
@@ -42,14 +32,28 @@ export default function App(){
   const [theme,setTheme]=useState<Theme>(()=>document.documentElement.dataset.theme==='dark'?'dark':'light');
   const [user,setUser]=useState<User|null>(null),[branches,setBranches]=useState<Branch[]>([]),[branchId,setBranchId]=useState('');
   const [page,setPage]=useState<string>('painel');
+  const [notFoundPath,setNotFoundPath]=useState<string|null>(null);
+  const [sessionExpiredNotice,setSessionExpiredNotice]=useState(false);
   const [lockerPreset,setLockerPreset]=useState<LockerPreset|undefined>(undefined),[peoplePreset,setPeoplePreset]=useState<PeoplePreset|undefined>(undefined),[listRevision,setListRevision]=useState(0),[mobileMenu,setMobileMenu]=useState(false);
   const [ready,setReady]=useState(false),[message,setMessage]=useState(''),[noticeAction,setNoticeAction]=useState<NoticeAction|undefined>();
   const [dialog,setDialog]=useState<AppDialog|null>(null);
   const [aboutOpen,setAboutOpen]=useState(false);
   const [passwordOpen,setPasswordOpen]=useState(false);
+  const userRoleRef=useRef<string|undefined>(undefined);
+  userRoleRef.current=user?.role;
   const refresh=()=>{setBranches(current=>[...current]);void api<Branch[]>('/branches').then(list=>{setBranches(list);setBranchId(current=>list.some(branch=>branch.id===current)?current:list[0]?.id??'');}).catch(()=>{});};
   useEffect(()=>{void purgeOfflineCopy();},[]);
   useEffect(()=>{document.documentElement.dataset.theme=theme;document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#2E1065');try{localStorage.setItem(themePreferenceKey,theme);}catch{/* A preferência continua ativa nesta sessão. */}},[theme]);
+  const applyHash=()=>{
+    const resolution=resolveHashPage(window.location.hash,userRoleRef.current);
+    setSessionExpiredNotice(false);
+    if(resolution.kind==='none'){setNotFoundPath(null);setPage(current=>tabKeys.has(current)?current:'painel');return;}
+    if(resolution.kind==='notfound'){setNotFoundPath(resolution.path);return;}
+    setNotFoundPath(null);setPage(resolution.page);
+  };
+  useEffect(()=>{applyHash();window.addEventListener('hashchange',applyHash);return()=>window.removeEventListener('hashchange',applyHash);},[]);
+  useEffect(()=>{if(user)applyHash();},[user]);
+  useEffect(()=>{setUnauthorizedHandler(()=>{setUser(null);setBranchId('');setSessionExpiredNotice(true);});return()=>setUnauthorizedHandler(null);},[]);
   const toggleTheme=()=>setTheme(current=>current==='dark'?'light':'dark');
   useEffect(()=>{let active=true;(async()=>{
     try{
@@ -67,7 +71,7 @@ export default function App(){
   useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenu(false);};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape);},[]);
   async function logout(){try{await post('/auth/logout',{});}finally{setUser(null);setBranchId('');}}
   if(!ready)return <main className="center" role="status"><p>Preparando sua área de trabalho…</p></main>;
-  if(!user)return <Login theme={theme} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===result.user.branchId)?.id??list[0]?.id??'');}}/>;
+  if(!user)return <Login theme={theme} sessionExpired={sessionExpiredNotice} onToggleTheme={toggleTheme} onLogin={async result=>{setUser(result.user);if(result.user.mustChangePassword)return;const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===result.user.branchId)?.id??list[0]?.id??'');}}/>;
   if(user.mustChangePassword)return <Password theme={theme} onToggleTheme={toggleTheme} onDone={async()=>{setUser({...user,mustChangePassword:false});const list=await api<Branch[]>('/branches');setBranches(list);setBranchId(list.find(item=>item.id===user.branchId)?.id??list[0]?.id??'');}}/>;
   const admin=['geral','filial_admin'].includes(user.role);
   const showNotice=(nextMessage:string,action?:NoticeAction)=>{setMessage(nextMessage);setNoticeAction(action);};
@@ -77,7 +81,7 @@ export default function App(){
   const updateDialogValue=(value:string)=>setDialog(current=>current?{...current,value}:current);
   const props:PageProps={branchId,branchName:branches.find(branch=>branch.id===branchId)?.name??'Filial autorizada',readonly:user.role==='consulta',admin,refresh,notice:showNotice,askConfirm,askPrompt};
   const visibleTabs=tabs.filter(({key})=>!['administracao','importacao','historico'].includes(key)||admin);
-  function navigate(next:string,preset?:PeoplePreset){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}if(next==='pessoas')setPeoplePreset(preset);}
+  function navigate(next:string,preset?:PeoplePreset){setPage(next);setMessage('');setNoticeAction(undefined);setMobileMenu(false);if(window.location.hash!==`#/${next}`)window.location.hash=`#/${next}`;if(next==='painel'){setLockerPreset(undefined);setListRevision(value=>value+1);}if(next==='pessoas')setPeoplePreset(preset);}
   function openLockers(preset:LockerPreset){setLockerPreset(preset);setListRevision(value=>value+1);setPage('painel');setMobileMenu(false);setMessage('');}
   function openAlert(key:NotificationKey){
     if(key==='withoutLocker')navigate('pessoas',{withoutLocker:true});
@@ -101,7 +105,7 @@ export default function App(){
       <Header page={page} tabs={tabs} theme={theme} onToggleTheme={toggleTheme} branches={branches} branchId={branchId}
         mobileMenu={mobileMenu} onToggleMobileMenu={()=>setMobileMenu(open=>!open)} user={user} onChangePassword={()=>setPasswordOpen(true)}
         onAlert={openAlert}
-        onBranchChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')setPage('painel');}}/>
+        onBranchChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')navigate('painel');}}/>
       {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
         {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
           <div className="app-dialog-heading"><span className="eyebrow">Atualização</span><button type="button" className="app-dialog-close" onClick={()=>{setMessage('');setNoticeAction(undefined);}} aria-label="Fechar aviso">×</button></div>
@@ -115,6 +119,7 @@ export default function App(){
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>
         {!branchId?<section className="card"><p>Crie ou selecione uma filial em Administração.</p><Admin {...props} general={user.role==='geral'}/></section>:
+          notFoundPath?<NotFound path={notFoundPath} onBack={()=>navigate('painel')}/>:
           page==='resumo'?<Overview {...props} onOpenLockers={openLockers} onNavigate={navigate}/>:page==='painel'?<Dashboard {...props} preset={lockerPreset}/>:page==='pessoas'?<People {...props} preset={peoplePreset}/>:page==='movimentacoes'?<Transfers {...props}/>:page==='achados'?<RetainedItems {...props}/>:page==='auditorias'?<Audits {...props}/>:page==='importacao'?<Imports {...props}/>:page==='pendencias'?<Pending {...props}/>:page==='historico'?<History {...props}/>:<Admin {...props} general={user.role==='geral'}/>}
       </main>
     </div>
@@ -123,7 +128,7 @@ export default function App(){
   </div>;
 }
 
-function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void;theme:Theme;onToggleTheme:()=>void}){
+function Login({onLogin,theme,onToggleTheme,sessionExpired}:{onLogin:(result:{user:User})=>void;theme:Theme;onToggleTheme:()=>void;sessionExpired?:boolean}){
   const [username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [revealPassword,setRevealPassword]=useState(false);
   async function submit(event:React.FormEvent){event.preventDefault();setBusy(true);setError('');try{await onLogin(await post('/auth/login',{username,password}));}catch(e){setError(e instanceof Error?e.message:'Falha no login');}finally{setBusy(false);}}
@@ -142,7 +147,7 @@ function Login({onLogin,theme,onToggleTheme}:{onLogin:(result:{user:User})=>void
             <span className="password-toggle-icon">{revealPassword?<EyeOff size={20} strokeWidth={2} aria-hidden="true"/>:<Eye size={20} strokeWidth={2} aria-hidden="true"/>}</span>
           </button>
         </span>
-      </label>{error&&<p className="field-error" role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form>
+      </label>{error&&<p className="field-error" role="alert">{error}</p>}{!error&&sessionExpired&&<p className="field-error" role="alert">Sua sessão expirou. Faça login novamente.</p>}<button className="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form>
   </main>;
 }
 function Password({onDone,theme,onToggleTheme}:{onDone:()=>void;theme:Theme;onToggleTheme:()=>void}){

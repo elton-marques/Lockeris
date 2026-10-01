@@ -95,6 +95,7 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .branch-chip { background: #f3f7f6; color: #294753; }
 .status.online { background: #e9f6ed; border-color: #cde8d5; color: #176449; }
 .status.offline { background: #fff3da; border-color: #efdcb0; color: #735013; }
+.status.reconnecting { background: #e8f0fb; border-color: #c9d9f2; color: #1e4e8c; }
 .branch-select { display: flex; gap: 7px; align-items: center; color: var(--muted); }
 .branch-select select { margin: 0; max-width: 220px; }
 .content { max-width: 1510px; padding-top: 26px; }

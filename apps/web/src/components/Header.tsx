@@ -30,6 +30,23 @@ export function ThemeSwitch({theme,onToggle}:{theme:Theme;onToggle:()=>void}){
   return <button type="button" className="theme-switch" role="switch" aria-label="Modo escuro" aria-checked={theme==='dark'} title={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'} onClick={onToggle}><Sun size={15} aria-hidden="true"/><span className="theme-switch-thumb" aria-hidden="true"/><Moon size={15} aria-hidden="true"/></button>;
 }
 
+export type ConnectionState='online'|'offline'|'reconnecting';
+export function useConnectionStatus():ConnectionState{
+  const [state,setState]=useState<ConnectionState>(()=>navigator.onLine?'online':'offline');
+  useEffect(()=>{
+    const goOffline=()=>setState('offline');
+    const verify=async()=>{
+      setState(current=>current==='online'?'online':'reconnecting');
+      try{const response=await fetch('/api/health',{credentials:'include'});setState(response.ok?'online':'offline');}
+      catch{setState('offline');}
+    };
+    window.addEventListener('offline',goOffline);
+    window.addEventListener('online',verify);
+    return()=>{window.removeEventListener('offline',goOffline);window.removeEventListener('online',verify);};
+  },[]);
+  return state;
+}
+
 function NotificationCenter({branchId,onNavigate}:{branchId:string;onNavigate:(key:NotificationKey)=>void}){
   const [summary,setSummary]=useState<NotificationSummary|null>(null);
   const [open,setOpen]=useState(false);
@@ -89,6 +106,7 @@ export type HeaderProps={
 };
 export function Header({page,tabs,theme,onToggleTheme,branches,branchId,onBranchChange,mobileMenu,onToggleMobileMenu,user,onChangePassword,onAlert}:HeaderProps){
   const [userMenu,setUserMenu]=useState(false);
+  const connection=useConnectionStatus();
   const current=tabs.find(tab=>tab.key===page);
   useEffect(()=>{if(!userMenu)return;
     const onPointerDown=(event:MouseEvent)=>{if(!(event.target instanceof Element)||!event.target.closest('.user-menu'))setUserMenu(false);};
@@ -103,14 +121,14 @@ export function Header({page,tabs,theme,onToggleTheme,branches,branchId,onBranch
   return <header className={`topbar hide-on-print ${compact?'topbar-compact':''}`}><div className="topbar-main">
     <button type="button" className="mobile-menu-button" aria-label={mobileMenu?'Fechar menu':'Abrir menu'} aria-expanded={mobileMenu} onClick={onToggleMobileMenu}><Menu size={20} aria-hidden="true"/></button>
     <span className="topbar-brand"><LockerisIcon size={28}/><strong>Lockeris<span className="brand-dot">*</span></strong></span>
-    {compact?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label}</strong></div>
-      :<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label}</h1><p>{pageCopy[page]??'Gerencie armários e acessos.'}</p></div>}
+    {compact?<div className="topbar-breadcrumb"><span>Área de trabalho</span><i>/</i><strong>{current?.label??'Página não encontrada'}</strong></div>
+      :<div className="page-heading"><span className="eyebrow">Área de trabalho</span><h1>{current?.label??'Página não encontrada'}</h1><p>{pageCopy[page]??'Gerencie armários e acessos.'}</p></div>}
   </div><div className="top-actions"><ThemeSwitch theme={theme} onToggle={onToggleTheme}/>
     {branches.length>1?<div className="branch-select"><Building2 size={17} aria-hidden="true"/><span>Filial</span><Select className="branch-select-field" ariaLabel="Filial" value={branchId}
       onChange={onBranchChange}
       options={branches.map(x=>({value:x.id,label:x.name}))}/></div>:<span className="branch-chip"><Building2 size={16} aria-hidden="true"/>{branches[0]?.name??'Filial autorizada'}</span>}
     {branchId&&<NotificationCenter branchId={branchId} onNavigate={onAlert}/>}
-    <span className="status online"><Wifi size={15} aria-hidden="true"/>Conectado</span>
+    <span className={`status ${connection}`} role="status"><Wifi size={15} aria-hidden="true"/>{connection==='online'?'Conectado':connection==='offline'?'Sem conexão':'Reconectando…'}</span>
     <div className="user-menu">
       <button type="button" className="user-menu-toggle" aria-label={`Conta de ${user.username}`} aria-haspopup="menu" aria-expanded={userMenu} onClick={()=>setUserMenu(open=>!open)}>
         <UsersRound size={16} aria-hidden="true"/><span>{user.username}</span><ChevronDown size={14} aria-hidden="true"/>

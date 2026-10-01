@@ -2,9 +2,12 @@ export type User={id:string;username:string;role:'geral'|'filial_admin'|'operado
 export const op=()=>crypto.randomUUID();
 export function csrf():string {return document.cookie.split('; ').find(x=>x.startsWith('armarios_csrf='))?.split('=')[1]??'';}
 type ApiErrorBody={error?:{code?:string;message?:string;details?:unknown}};
+let unauthorizedHandler:(()=>void)|null=null;
+export function setUnauthorizedHandler(handler:(()=>void)|null):void{unauthorizedHandler=handler;}
 export function readableError(status:number,body:ApiErrorBody):string{
   if(status>=500)return 'O serviço está indisponível no momento. Confira os dados antes de tentar novamente. Se continuar, procure o suporte.';
   if(status===429)return 'Muitas tentativas em pouco tempo. Aguarde um momento e tente novamente.';
+  if(status===401&&!body.error?.message)return 'Sua sessão expirou. Faça login novamente.';
   if(status===403&&body.error?.code==='PERMISSAO')return 'Seu perfil não permite esta ação. Procure a administração da filial se precisar de acesso.';
   if(status===403&&body.error?.code==='FILIAL')return 'Você não tem acesso a esta filial. Selecione uma filial autorizada.';
   if(status===409&&body.error?.code==='VERSAO')return 'Este registro mudou desde que você o abriu. Atualize os dados e confira antes de salvar.';
@@ -22,7 +25,10 @@ export async function api<T>(path:string,init:RequestInit={}):Promise<T> {
     ?'Não foi possível confirmar o resultado. Consulte os dados antes de repetir a ação.'
     :'Sem conexão com o serviço. Verifique a rede e tente novamente.');}
   const result=await response.json().catch(()=>({})) as ApiErrorBody;
-  if(!response.ok) throw Object.assign(new Error(readableError(response.status,result)),{status:response.status,code:result.error?.code});
+  if(!response.ok){
+    if(response.status===401&&unauthorizedHandler&&!path.startsWith('/auth/login')&&!path.startsWith('/auth/me')) unauthorizedHandler();
+    throw Object.assign(new Error(readableError(response.status,result)),{status:response.status,code:result.error?.code});
+  }
   return result as T;
 }
 export const post=<T>(path:string,value:unknown)=>api<T>(path,{method:'POST',body:JSON.stringify(value)});
