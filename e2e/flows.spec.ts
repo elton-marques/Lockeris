@@ -122,8 +122,11 @@ test('painel distingue livre, ocupado e pendente',async({page})=>{
       SELECT id,'104','padrao',2,true,'fixo' FROM branches WHERE name='Caruaru Demonstração'`);
     const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0];
     const semArmario=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Promotora Sem Armário') RETURNING id")).rows[0];
-    await pool.query(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed)
-      VALUES($1,$2,'promotor_fixo','manual','0099',true)`,[semArmario.id,branch.id]);
+    const membership=(await pool.query<{id:string}>(`INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed)
+      VALUES($1,$2,'promotor_fixo','manual','0099',true) RETURNING id`,[semArmario.id,branch.id])).rows[0];
+    // A reconciliação roda nas operações de escrita e no timer de fundo; cadastro criado por SQL fora da API
+    // precisa da pendência inserida diretamente (mesma política de frescor da produção).
+    await pool.query(`INSERT INTO pending_items(branch_id,kind,subject_type,subject_id) VALUES($1,'sem_armario','membership',$2)`,[branch.id,membership.id]);
     await createAdminAlias(pool,'e2e-status');
   }finally{await pool.end();}
   await page.goto('/');
@@ -883,4 +886,45 @@ test('admin geral cria e exclui filial e limpa o histórico legado',async({page}
   await expectNotice(page,'Filial Filial E2E Temporária excluída');
   await closeNotice(page);
   await expect(page.locator('tr').filter({hasText:'Filial E2E Temporária'})).toHaveCount(0,{timeout:15000});
+});
+
+test('drawer registra empréstimo e devolução de chave',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0]!;
+    const person=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Portador E2E da Chave') RETURNING id")).rows[0]!;
+    await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed) VALUES($1,$2,'colaborador','manual','7007',true)",[person.id,branch.id]);
+  }finally{await pool.end();}
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.getByRole('button',{name:'Abrir detalhes do armário 101',exact:true}).click();
+  await page.getByRole('button',{name:'Registrar empréstimo da chave'}).click();
+  await page.getByLabel('Buscar pessoa por nome ou matrícula').fill('7007');
+  await page.getByRole('button',{name:'Buscar',exact:true}).click();
+  await page.getByRole('button',{name:/Portador E2E da Chave/}).click();
+  await expectNotice(page,'emprestada a Portador E2E da Chave');
+  await closeNotice(page);
+  const drawer=page.getByRole('dialog',{name:'Armário Nº 101'});
+  await expect(drawer.getByText('Emprestada há 1 dia(s)')).toBeVisible();
+  await drawer.getByRole('button',{name:'Registrar devolução'}).click();
+  await expectNotice(page,'Devolução da chave do armário #101 registrada.');
+  await closeNotice(page);
+});
+
+test('regras de vínculo editáveis em Administração',async({page})=>{
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.goto('/#/administracao');
+  await expect(page.getByRole('heading',{name:'Regras de vínculo'})).toBeVisible();
+  const thirdParty=page.getByLabel('Terceirizado');
+  await thirdParty.fill('delta, climatiza, terceiriz, parceiro e2e');
+  await page.getByRole('button',{name:'Salvar regras de vínculo'}).click();
+  await expectNotice(page,'Regras de vínculo atualizadas');
+  await closeNotice(page);
 });

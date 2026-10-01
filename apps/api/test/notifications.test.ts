@@ -66,7 +66,7 @@ describe('central de alertas da filial',()=>{
     const response=await read(`/api/branches/${branch.id}/notifications`,auth);
     expect(response.statusCode).toBe(200);
     const summary=response.json() as Summary;
-    expect(summary.alerts.map(alert=>alert.key)).toEqual(['withoutLocker','registrationPending','underusedDoubles']);
+    expect(summary.alerts.map(alert=>alert.key)).toEqual(['withoutLocker','registrationPending','underusedDoubles','keyLoanOpen','custodyExpiring']);
     expect(summary.total).toBe(summary.alerts.reduce((sum,alert)=>sum+alert.count,0));
 
     const withoutLocker=alertOf(summary,'withoutLocker');

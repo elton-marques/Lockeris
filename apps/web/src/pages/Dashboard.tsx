@@ -16,7 +16,7 @@ type Locker={id:string;number:string;sector_occupant:string|null;capacity:number
   key_loan_id:string|null;key_loan_taken_at:string|null;key_loan_person:string|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
 type KeyLoan={id:string;locker_id:string;person_id:string|null;person_name:string;person_registration:string|null;notes:string|null;taken_at:string;returned_at:string|null;locker_number?:string};
-type PersonOption={id:string;name:string;registration:string|null;department:string|null};
+type PersonOption={id:string;person_id:string;name:string;registration:string|null;department:string|null};
 type Pending={pending_locker_id:string|null;state:string;kind:string};
 type PrintData={nome:string;matricula:string;setor:string;numeroArmario:string;tipoUsuario:'colaborador';possuiCopia:boolean;filial:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
@@ -418,7 +418,7 @@ function KeyLoanCard({branchId,locker,loans,busy,canRegister,run}:{branchId:stri
   const daysOut=open?Math.max(1,Math.ceil((Date.now()-new Date(open.taken_at).getTime())/86400000)):0;
   function take(person:PersonOption){
     setRegistering(false);
-    run(async()=>{await post(`/branches/${branchId}/lockers/${locker.id}/key-loans`,{operationId:op(),personId:person.id});},
+    run(async()=>{await post(`/branches/${branchId}/lockers/${locker.id}/key-loans`,{operationId:op(),personId:person.person_id});},
       `Chave do armário #${locker.number} emprestada a ${person.name}.`);
   }
   function giveBack(){

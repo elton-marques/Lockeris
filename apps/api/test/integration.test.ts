@@ -702,3 +702,86 @@ describe('higienização, acessos e exportação',()=>{
     expect(response.body).toContain('Pessoa CSV');
   });
 });
+
+describe('movimentos de chave, resumo do dia, tendência e regras de vínculo',()=>{
+  it('registra empréstimo e devolução, bloqueia chave dupla e registra eventos',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'901');
+    const member=await person(auth,branch.id,'Portador da Chave','9001');
+    const loan=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/key-loans`,{operationId:uuid(),personId:member.person_id});
+    expect(loan.statusCode).toBe(200);
+    expect(loan.json().person_name).toBe('Portador da Chave');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/key-loans`,{operationId:uuid(),personId:member.person_id})).statusCode).toBe(409);
+    const open=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/key-loans?status=abertos`,headers:{cookie:auth.cookie}})).json();
+    expect(open).toHaveLength(1);
+    const returned=await send(auth,'POST',`/api/branches/${branch.id}/key-loans/${loan.json().id}/return`,{operationId:uuid()});
+    expect(returned.statusCode).toBe(200);
+    expect(new Date(returned.json().returned_at).getTime()).toBeGreaterThan(Date.now()-60000);
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/key-loans/${loan.json().id}/return`,{operationId:uuid()})).statusCode).toBe(409);
+    const events=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/history`,headers:{cookie:auth.cookie}})).json();
+    expect(events.some((row:{kind:string})=>row.kind==='chave_emprestada')).toBe(true);
+    expect(events.some((row:{kind:string})=>row.kind==='chave_devolvida')).toBe(true);
+  });
+  it('alerta de chave aberta conta apenas empréstimos com 7 dias ou mais',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'902');
+    const member=await person(auth,branch.id,'Portadora Recente','9002');
+    const loan=await send(auth,'POST',`/api/branches/${branch.id}/lockers/${cabinet.id}/key-loans`,{operationId:uuid(),personId:member.person_id});
+    const keyCount=async()=>{const summary=await app.inject({method:'GET',url:`/api/branches/${branch.id}/notifications`,headers:{cookie:auth.cookie}});
+      return summary.json().alerts.find((alert:{key:string})=>alert.key==='keyLoanOpen').count as number;};
+    expect(await keyCount()).toBe(0);
+    await pool.query("UPDATE key_loans SET taken_at=now()-interval '8 days' WHERE id=$1",[loan.json().id]);
+    expect(await keyCount()).toBe(1);
+  });
+  it('resumo do dia reúne vencidos, vencendo e chaves emprestadas',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const item={category:'roupa',customCategory:null,finderName:'Equipe PP',foundLocation:'Recepção'};
+    expect((await send(auth,'POST','/api/retained-items',{branchId:branch.id,...item,description:'Casaco vencido',foundAt:new Date(Date.now()-40*86400000).toISOString()})).statusCode).toBe(200);
+    expect((await send(auth,'POST','/api/retained-items',{branchId:branch.id,...item,description:'Casaco do resumo',foundAt:new Date(Date.now()-28*86400000).toISOString()})).statusCode).toBe(200);
+    const summary=await app.inject({method:'GET',url:`/api/branches/${branch.id}/daily-summary`,headers:{cookie:auth.cookie}});
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().overdue).toHaveLength(1);
+    expect(summary.json().expiring).toHaveLength(1);
+    expect(summary.json().keyLoans).toHaveLength(0);
+  });
+  it('tendência do dashboard traz 8 semanas e reflete a alocação atual',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'903');
+    const member=await person(auth,branch.id,'Pessoa Tendência','9003');
+    expect((await send(auth,'POST',`/api/branches/${branch.id}/allocations/occupy`,{operationId:uuid(),personId:member.person_id,lockerId:cabinet.id,expectedVersion:1,modality:'fixo',seasonal:false})).statusCode).toBe(200);
+    const trend=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/dashboard`,headers:{cookie:auth.cookie}})).json().trend;
+    expect(trend).toHaveLength(8);
+    expect(trend[0].occupied).toBe(0);
+    expect(trend[7]).toMatchObject({occupied:1,capacity:1});
+  });
+  it('regras de vínculo personalizadas alteram o painel e respeitam versionamento',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const member=await person(auth,branch.id,'Aluno Especial','9004');
+    await pool.query("UPDATE memberships SET category='vinculo_nao_identificado',department='Nucleo de Formacao' WHERE person_id=$1",[member.person_id]);
+    const baseline=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/dashboard`,headers:{cookie:auth.cookie}})).json().links;
+    expect(baseline.vinculo_nao_identificado).toBe(1);
+    const saved=await send(auth,'PATCH',`/api/branches/${branch.id}/settings/link-rules`,{operationId:uuid(),expectedVersion:0,apprentice:['formacao']});
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().version).toBe(1);
+    expect(saved.json().promoter).toEqual(['promotor']);
+    const after=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/dashboard`,headers:{cookie:auth.cookie}})).json().links;
+    expect(after.colaborador).toBe(1);
+    expect(after.vinculo_nao_identificado).toBe(0);
+    expect((await send(auth,'PATCH',`/api/branches/${branch.id}/settings/link-rules`,{operationId:uuid(),expectedVersion:99,apprentice:['outra']})).statusCode).toBe(409);
+  });
+  it('consulta de pendências apenas lê; a rotina de fundo reconcilia',async()=>{
+    const {auth,branch}=await setupWithoutLogin();
+    const cabinet=await locker(auth,branch.id,'904');
+    const personRow=(await pool.query<{id:string}>("INSERT INTO people(name) VALUES('Pessoa Sem Vaga') RETURNING id")).rows[0]!;
+    await pool.query("INSERT INTO memberships(person_id,branch_id,category,origin,registration,needs_fixed) VALUES($1,$2,'colaborador','manual','9005',true)",[personRow.id,branch.id]);
+    await transaction(client=>refreshPending(client,branch.id));
+    const countOpen=async()=>{const rows=(await app.inject({method:'GET',url:`/api/branches/${branch.id}/pending`,headers:{cookie:auth.cookie}})).json();
+      return rows.filter((row:{state:string;kind:string})=>row.state==='aberta'&&row.kind==='sem_armario').length;};
+    expect(await countOpen()).toBeGreaterThan(0);
+    const admin=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='test'")).rows[0]!;
+    await pool.query("INSERT INTO allocations(branch_id,locker_id,person_id,modality,started_at,started_by) VALUES($1,$2,$3,'fixo',now(),$4)",[branch.id,cabinet.id,personRow.id,admin.id]);
+    expect(await countOpen()).toBeGreaterThan(0);
+    await transaction(client=>refreshPending(client,branch.id));
+    expect(await countOpen()).toBe(0);
+  });
+});
