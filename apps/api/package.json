@@ -13,7 +13,7 @@
     "seed": "tsx src/cli/seed.ts"
   },
   "dependencies": {
-    "@armarios/contracts": "1.0.0",
+    "@armarios/contracts": "1.1.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^9.2.1",
     "@fastify/rate-limit": "^10.3.0",
