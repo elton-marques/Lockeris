@@ -101,7 +101,7 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    await transaction(client=>refreshPending(client,branchId));
+    // Somente leitura: a reconciliação roda nas operações de escrita e no timer em segundo plano.
     return (await pool.query(pendingDetailsSql(false),[branchId])).rows;
   });
   async function reviseLocker(request:FastifyRequest,direct:boolean){

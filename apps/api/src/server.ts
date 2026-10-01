@@ -65,12 +65,16 @@ await keyLoanRoutes(app);
 await settingsRoutes(app);
 if(process.env.PORTABLE_MODE==='true') await registerPortableWeb(app);
 
+let reconcilingPending=false;
 const timer=setInterval(async()=>{
+  if(reconcilingPending)return;
+  reconcilingPending=true;
   try {
     const {rows}=await pool.query<{id:string}>("SELECT id FROM branches WHERE status='active'");
     for(const row of rows) await transaction(client=>refreshPending(client,row.id));
   } catch(error) { app.log.error({err:error},'Falha ao atualizar pendências'); }
-},60*60*1000);
+  finally { reconcilingPending=false; }
+},15*60*1000);
 timer.unref();
 const cleanupTimer=setInterval(()=>{
   runPeriodicCleanup().then(result=>{if(result.sessions||result.operations)app.log.info(result,'limpeza_periodica');})
