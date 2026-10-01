@@ -1,4 +1,9 @@
 export const changelog=[
+  {title:'Versão 1.1 — acesso protegido e cópias de segurança',kind:'shield',description:'O Lockeris protege melhor os acessos, avisa quando a conexão cai e o modo portátil agora guarda cópias de segurança por conta própria.',items:[
+    'Quem fica fora do sistema por um tempo recebe um aviso claro e volta ao acesso sem perder o caminho.',
+    'O computador da filial grava cópias de segurança dos registros todos os dias e também ao encerrar o expediente.',
+    'Avisos e confirmações ficam mais acessíveis: a digitação permanece no lugar certo e o teclado fecha as janelas.'
+  ]},
   {title:'Lockeris portátil com dados da filial',kind:'sparkles',description:'A versão 1.0 reúne os registros da filial e uma experiência mais clara para a Prevenção de Perdas.',items:[
     'Telas renovadas facilitam a leitura e o acompanhamento das informações.',
     'Achados e Perdidos e auditorias ficaram mais simples de consultar e preencher.',
