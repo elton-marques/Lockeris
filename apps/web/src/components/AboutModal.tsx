@@ -3,7 +3,7 @@ import {Atom,Braces,Container,Database,Server,ShieldCheck,CodeXml,X,GitCommit,Sp
 import {LockerisIcon,trapTabNavigation,useModalFocus} from '../ui';
 import {changelog} from '../data/changelog';
 
-const VERSION='v1.0.0';
+const VERSION='v1.1.0';
 const stack=[
   {label:'React 19',icon:Atom},
   {label:'Fastify 5',icon:Server},
