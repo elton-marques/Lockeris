@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Eye, EyeOff, Info, LogOut} from 'lucide-react';
 import {api,post,setUnauthorizedHandler,type User} from './api';
 import {purgeOfflineCopy} from './offline';
-import {LockerisIcon,roleName} from './ui';
+import {LockerisIcon,roleName,trapTabNavigation} from './ui';
 import {tabs,tabKeys,resolveHashPage} from './navigation';
 import {Header,ThemeSwitch,type NotificationKey} from './components/Header';
 import {AboutModal} from './components/AboutModal';
@@ -107,14 +107,14 @@ export default function App(){
         onAlert={openAlert}
         onBranchChange={value=>{setBranchId(value);setLockerPreset(undefined);setPeoplePreset(undefined);if(page!=='resumo'&&page!=='painel')navigate('painel');}}/>
       {(message||dialog)&&<div className="app-dialog-backdrop" role="presentation">
-        {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title">
+        {message&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" tabIndex={-1} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setMessage('');setNoticeAction(undefined);}trapTabNavigation(event);}}>
           <div className="app-dialog-heading"><span className="eyebrow">Atualização</span><button type="button" className="app-dialog-close" onClick={()=>{setMessage('');setNoticeAction(undefined);}} aria-label="Fechar aviso">×</button></div>
-          <h2 id="app-dialog-title">{message}</h2><div className="app-dialog-actions">{noticeAction&&<button type="button" className="primary btn-action" onClick={noticeAction.onClick}>{noticeAction.label}</button>}<button type="button" onClick={()=>{setMessage('');setNoticeAction(undefined);}}>Fechar</button></div>
+          <h2 id="app-dialog-title">{message}</h2><div className="app-dialog-actions">{noticeAction&&<button type="button" className="primary btn-action" onClick={noticeAction.onClick}>{noticeAction.label}</button>}<button type="button" autoFocus onClick={()=>{setMessage('');setNoticeAction(undefined);}}>Fechar</button></div>
         </section>}
-        {dialog&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="question-dialog-title">
+        {dialog&&<section className="app-dialog" role="alertdialog" aria-modal="true" aria-labelledby="question-dialog-title" tabIndex={-1} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();finishDialog(dialog.kind==='confirm'?false:null);}trapTabNavigation(event);}}>
           <div className="app-dialog-heading"><span className="eyebrow">Confirmação</span><button type="button" className="app-dialog-close" onClick={()=>finishDialog(dialog.kind==='confirm'?false:null)} aria-label="Fechar">×</button></div>
           <h2 id="question-dialog-title">{dialog.message}</h2>{dialog.kind==='prompt'&&<input autoFocus value={dialog.value} onChange={event=>updateDialogValue(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')finishDialog(dialog.value);}}/>}
-          <div className="app-dialog-actions"><button type="button" className="primary" onClick={()=>finishDialog(dialog.kind==='confirm'?true:dialog.value)}>Confirmar</button><button type="button" onClick={()=>finishDialog(dialog.kind==='confirm'?false:null)}>Cancelar</button></div>
+          <div className="app-dialog-actions">{dialog.kind==='prompt'?<button type="button" className="primary" onClick={()=>finishDialog(dialog.value)}>Confirmar</button>:<button type="button" autoFocus className="primary" onClick={()=>finishDialog(true)}>Confirmar</button>}<button type="button" onClick={()=>finishDialog(dialog.kind==='confirm'?false:null)}>Cancelar</button></div>
         </section>}
       </div>}
       <main className="content" id="main-content" key={page==='painel'?`painel:${listRevision}`:`${branchId}:${page}`}>

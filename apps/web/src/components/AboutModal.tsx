@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Atom,Braces,Container,Database,Server,ShieldCheck,CodeXml,X,GitCommit,Sparkles,Bug} from 'lucide-react';
-import {LockerisIcon} from '../ui';
+import {LockerisIcon,trapTabNavigation,useModalFocus} from '../ui';
 import {changelog} from '../data/changelog';
 
 const VERSION='v1.0.0';
@@ -17,14 +17,14 @@ export function AboutModal({onClose}:{onClose:()=>void}){
   const dialogRef=useRef<HTMLElement|null>(null);
   const closeRef=useRef(onClose);
   useEffect(()=>{closeRef.current=onClose;},[onClose]);
+  useModalFocus(dialogRef,true);
   useEffect(()=>{
-    dialogRef.current?.focus();
     const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.stopPropagation();closeRef.current();}};
     window.addEventListener('keydown',onKeyDown);
     return()=>window.removeEventListener('keydown',onKeyDown);
   },[]);
   return <div className="app-dialog-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}>
-    <section className="app-dialog about-dialog" role="dialog" aria-modal="true" aria-labelledby="about-dialog-title" ref={dialogRef} tabIndex={-1}>
+    <section className="app-dialog about-dialog" role="dialog" aria-modal="true" aria-labelledby="about-dialog-title" ref={dialogRef} tabIndex={-1} onKeyDown={trapTabNavigation}>
       <header className="about-header">
         <span className="about-logo"><LockerisIcon size={46} label="Lockeris"/></span>
         <div className="about-header-copy">

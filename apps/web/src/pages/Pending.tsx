@@ -3,7 +3,7 @@ import {api,op,post,patch} from '../api';
 import type {PageProps} from '../App';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
-import {DataState,EmptyState} from '../ui';
+import {DataState,EmptyState,trapTabNavigation} from '../ui';
 import {SelectField} from '../components/Select';
 import {sectorSelectOptions} from '../sectors';
 
@@ -146,10 +146,10 @@ export function Pending({branchId,readonly,refresh,notice,askConfirm,admin=false
   }
   function effective(item:Item){if(!reviewed||!item.seasonal_version||note.trim().length<3)return;
     act(()=>post(`/branches/${branchId}/allocations/${item.subject_id}/effective`,{operationId:op(),expectedVersion:item.seasonal_version,reason:note.trim()}),'Ocupação efetivada.');}
-  function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){if(event.key==='Escape'){event.preventDefault();setSelectedId(null);return;}
-    if(event.key!=='Tab')return;const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'));
-    if(!elements.length)return;if(event.shiftKey&&document.activeElement===elements[0]){event.preventDefault();elements.at(-1)?.focus();}
-    else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}}
+  function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
+    if(event.key==='Escape'){event.preventDefault();setSelectedId(null);return;}
+    trapTabNavigation(event);
+  }
   const available=lockers.filter(item=>item.modality==='fixo'&&item.condition==='disponivel'&&item.migration_status==='conferido'&&!item.sector_occupant&&
     (item.occupants.length===0||item.is_double&&item.occupants.length<item.capacity)).sort((a,b)=>numeric.compare(a.number,b.number));
   const needsNote=selected&&['sem_armario','dados_alterados','identificacao_conflitante','sazonal_vencida','compartilhamento_vencido'].includes(selected.kind);

@@ -1,7 +1,33 @@
-import type {ReactNode} from 'react';
+import {useEffect} from 'react';
+import type {KeyboardEvent as ReactKeyboardEvent,ReactNode,RefObject} from 'react';
 import {AlertCircle, Inbox} from 'lucide-react';
 
 type SkeletonVariant='text'|'title'|'circle'|'card';
+
+const focusableSelector='button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[href]';
+
+export function trapTabNavigation(event:ReactKeyboardEvent<HTMLElement>):void{
+  if(event.key!=='Tab')return;
+  const container=event.currentTarget;
+  const elements=Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
+  if(!elements.length)return;
+  const first=elements[0]!,last=elements[elements.length-1]!;
+  const active=document.activeElement;
+  if(event.shiftKey&&(active===first||active===container)){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&active===last){event.preventDefault();first.focus();}
+  else if(!event.shiftKey&&(!active||!container.contains(active))){event.preventDefault();first.focus();}
+}
+
+export function useModalFocus(ref:RefObject<HTMLElement|null>,active:boolean):void{
+  useEffect(()=>{
+    if(!active)return;
+    const container=ref.current;
+    if(!container)return;
+    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    container.focus();
+    return()=>{previous?.focus();};
+  },[active,ref]);
+}
 
 export function Skeleton({variant='text',label='Carregando'}:{variant?:SkeletonVariant;label?:string}){
   return <span className={`skeleton skeleton--${variant}`} role="status" aria-label={label}/>;

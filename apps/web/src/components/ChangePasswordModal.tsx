@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Eye,EyeOff,KeyRound} from 'lucide-react';
 import {post} from '../api';
+import {trapTabNavigation,useModalFocus} from '../ui';
 
 type Reveal='current'|'next'|'confirmation';
 type FieldProps={label:string;ariaLabel:string;value:string;onChange:(value:string)=>void;autoComplete:string;
@@ -26,8 +27,8 @@ export function ChangePasswordModal({onClose,onChanged}:{onClose:()=>void;onChan
   const dialogRef=useRef<HTMLElement|null>(null);
   const closeRef=useRef(onClose);
   useEffect(()=>{closeRef.current=onClose;},[onClose]);
+  useModalFocus(dialogRef,true);
   useEffect(()=>{
-    dialogRef.current?.focus();
     const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.stopPropagation();closeRef.current();}};
     window.addEventListener('keydown',onKeyDown);
     return()=>window.removeEventListener('keydown',onKeyDown);
@@ -42,7 +43,7 @@ export function ChangePasswordModal({onClose,onChanged}:{onClose:()=>void;onChan
     finally{setBusy(false);}
   }
   return <div className="app-dialog-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose();}}>
-    <section className="app-dialog password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" ref={dialogRef} tabIndex={-1}>
+    <section className="app-dialog password-dialog" role="dialog" aria-modal="true" aria-labelledby="change-password-title" ref={dialogRef} tabIndex={-1} onKeyDown={trapTabNavigation}>
       <div className="app-dialog-heading">
         <span className="eyebrow">Segurança da conta</span>
         <button type="button" className="app-dialog-close" onClick={onClose} aria-label="Fechar alteração de senha">×</button>

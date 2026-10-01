@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,ArrowRightLeft,Boxes,CircleAlert,User} from 'lucide-react';
 import {api,op,post,patch} from '../api';
 import type {PageProps,PeoplePreset} from '../App';
-import {DataState,EmptyState} from '../ui';
+import {DataState,EmptyState,trapTabNavigation} from '../ui';
 import {SelectField} from '../components/Select';
 
 type Person={id:string;person_id:string;name:string;registration:string|null;category:string;origin:string;company:string|null;
@@ -33,11 +33,7 @@ export function People({branchId,branchName,readonly,refresh,notice,askConfirm,a
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
     if(document.querySelector('#question-dialog-title'))return;
     if(event.key==='Escape'){event.preventDefault();setDetails(null);return;}
-    if(event.key!=='Tab')return;
-    const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled)'));
-    if(!elements.length)return;
-    if(event.shiftKey&&document.activeElement===elements[0]){event.preventDefault();elements.at(-1)?.focus();}
-    else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}
+    trapTabNavigation(event);
   }
   function lockerCell(person:Person){
     if(person.number)return `Armário ${person.number}`;

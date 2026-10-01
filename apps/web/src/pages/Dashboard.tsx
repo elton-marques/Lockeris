@@ -2,7 +2,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,LogOut,MapPin,PencilLine,Plus,Search,SlidersHorizontal,User,Users,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
-import {DataState,EmptyState,Skeleton} from '../ui';
+import {DataState,EmptyState,Skeleton,trapTabNavigation} from '../ui';
 import {RegistrationInput,findRegistration,registrationKey} from '../RegistrationInput';
 import type {RegistrationOption} from '../RegistrationInput';
 import {TermoResponsabilidade} from '../components/TermoResponsabilidade';
@@ -184,11 +184,7 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
   }
   function modalKeyDown(event:React.KeyboardEvent<HTMLElement>){
     if(event.key==='Escape'){event.preventDefault();if(releaseTarget){if(!busy)setReleaseTarget(null);}else setSelected(null);return;}
-    if(event.key!=='Tab')return;
-    const elements=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'));
-    if(!elements.length)return;
-    if(event.shiftKey&&document.activeElement===elements[0]){event.preventDefault();elements.at(-1)?.focus();}
-    else if(!event.shiftKey&&document.activeElement===elements.at(-1)){event.preventDefault();elements[0].focus();}
+    trapTabNavigation(event);
   }
 
   function DashboardSkeleton(){
