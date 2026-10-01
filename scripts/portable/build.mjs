@@ -133,7 +133,7 @@ try {
   await cp(join(root, 'scripts/portable/config.mjs'), join(app, 'portable-config.mjs'));
   await mkdir(join(stage, 'config'));
   await writeFile(join(stage, 'config/.env.portable'), '# Credenciais geradas no primeiro início. Não compartilhe após colocar em uso.\nPORT=3001\nPGPORT=15432\nPGDATABASE=lockeris\nPGUSER=postgres\nPGPASSWORD=\nBOOTSTRAP_USERNAME=admin\nBOOTSTRAP_PASSWORD=\nPORTABLE_MODE=true\nCOOKIE_SECURE=false\n', 'utf8');
-  for (const [filename, command] of [['INICIAR.bat', 'start'], ['PARAR.bat', 'stop']]) {
+  for (const [filename, command] of [['INICIAR.bat', 'start'], ['PARAR.bat', 'stop'], ['BACKUP.bat', 'backup']]) {
     await writeFile(join(stage, filename), ['@echo off', 'setlocal', 'chcp 65001 >nul', 'cd /d "%~dp0"',
       'if not exist "node\\node.exe" (echo Node portatil nao encontrado. & pause & exit /b 1)',
       `"%~dp0node\\node.exe" "%~dp0app\\launcher.mjs" ${command}`, 'set "RESULT=%ERRORLEVEL%"',

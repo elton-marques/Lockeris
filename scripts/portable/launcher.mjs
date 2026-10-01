@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { closeSync, openSync } from 'node:fs';
-import { access, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createConnection, createServer } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -71,6 +71,29 @@ async function pgRunning() {
 async function stopPostgres() {
   if (await pgRunning()) await run(join(pgBin, 'pg_ctl.exe'), ['stop', '-D', data, '-m', 'fast', '-w', '-t', '60']);
 }
+const backupDirectory = join(root, 'backups');
+const backupRetentionMs = 30 * 86400000;
+async function runBackup(config) {
+  await mkdir(backupDirectory, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  const target = join(backupDirectory, `lockeris-${stamp}.dump`);
+  const environment = { ...process.env, PGPASSWORD: config.password };
+  await new Promise((resolve, reject) => {
+    const child = spawn(join(pgBin, 'pg_dump.exe'),
+      ['-Fc', '-h', '127.0.0.1', '-p', String(config.pgPort), '-U', 'postgres', '-d', config.database, '-f', target],
+      { cwd: root, env: environment, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    let diagnostics = '';
+    child.stderr.on('data', chunk => { diagnostics += chunk; });
+    child.once('error', reject);
+    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`pg_dump falhou (${code}). ${diagnostics.trim()}`)));
+  });
+  for (const entry of await readdir(backupDirectory)) {
+    if (!entry.endsWith('.dump')) continue;
+    const full = join(backupDirectory, entry);
+    if (Date.now() - (await stat(full)).mtimeMs > backupRetentionMs) await unlink(full);
+  }
+  return target;
+}
 async function initialize(config) {
   if (await exists(join(data, 'PG_VERSION'))) return;
   if (await exists(data)) throw new Error('A pasta data existe sem PG_VERSION. Preserve seu conteúdo antes de tentar novamente.');
@@ -101,17 +124,28 @@ async function loadConfig() {
 async function serve() {
   let state = { state: 'starting', port: null };
   let api;
+  let config;
   let ownsPostgres = false;
   let shuttingDown = false;
+  let backupTimer;
+  const scheduleBackup = () => {
+    runBackup(config).then(target => console.log(`Backup automático criado: ${target}`))
+      .catch(error => console.error(`Backup automático falhou: ${error.message}`));
+  };
   const shutdown = async () => {
     if (shuttingDown) throw new Error('Encerramento em andamento. Aguarde.');
     shuttingDown = true;
     state = { ...state, state: 'stopping' };
+    if (backupTimer) clearInterval(backupTimer);
     if (api) {
       // Let requests finish, then release stalled HTTP connections; database hooks still drain normally.
       const watchdog = setTimeout(() => api.server.closeAllConnections(), 10000);
       watchdog.unref();
       try { await api.close(); } finally { clearTimeout(watchdog); }
+    }
+    if (ownsPostgres && config && await pgRunning()) {
+      try { console.log(`Backup de encerramento criado: ${await runBackup(config)}`); }
+      catch (error) { console.error(`Backup de encerramento falhou: ${error.message}`); }
     }
     if (ownsPostgres) await stopPostgres();
   };
@@ -138,7 +172,7 @@ async function serve() {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(pipe, resolve); });
   } catch (error) { if (error.code === 'EADDRINUSE') return; throw error; }
   try {
-    const config = await loadConfig();
+    config = await loadConfig();
     state.port = config.port;
     await assertFree(config.port);
     const running = await pgRunning();
@@ -166,6 +200,8 @@ async function serve() {
     ({ app: api } = await import(pathToFileURL(join(appDirectory, 'apps/api/dist/server.js')).href));
     await writeFile(join(root, 'Lockeris.url'), `[InternetShortcut]\r\nURL=http://localhost:${config.port}\r\n`);
     state = { state: 'ready', port: config.port };
+    const firstBackup = setTimeout(scheduleBackup, 60000);firstBackup.unref();
+    backupTimer = setInterval(scheduleBackup, 24 * 60 * 60 * 1000);backupTimer.unref();
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
       shutdown().then(() => server.close(() => process.exit(0))).catch(() => { process.exitCode = 1; });
     });
@@ -229,7 +265,11 @@ try {
       if (result.error) throw new Error(result.error);
     } else await stopPostgres(); // Recover the package's own PG after an interrupted Node process.
     console.log('Lockeris encerrado com segurança. Os dados locais foram preservados.');
-  } else throw new Error('Use INICIAR.bat ou PARAR.bat.');
+  } else if (command === 'backup') {
+    const config = await loadConfig();
+    if (!await pgRunning()) throw new Error('O banco local não está em execução. Use INICIAR antes de executar o backup.');
+    console.log(`Backup criado: ${await runBackup(config)}`);
+  } else throw new Error('Use INICIAR.bat, PARAR.bat ou BACKUP.bat.');
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

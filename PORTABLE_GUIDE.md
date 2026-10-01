@@ -49,7 +49,30 @@ Tudo fica restrito ao computador local. O endereço padrão é `http://localhost
 2. Aguarde a confirmação. O controlador fecha a API e suas conexões, encerra o processo Node da instância e solicita a parada do PostgreSQL com espera pelo desligamento. Sessões restantes do banco são desconectadas e transações em andamento são revertidas.
 3. Só então remova o pendrive, copie a pasta ou desligue o computador. Fechar o navegador não encerra o sistema.
 
-`data/` é criado apenas no primeiro início. Para um backup físico local, execute `PARAR.bat`, confirme o encerramento e copie **a pasta inteira**, incluindo `data/` e `config/`, para local protegido. Não copie `data/` enquanto o banco estiver ativo. As credenciais da cópia correspondem à base copiada.
+### 3.1 Backup automático
+
+O pacote gera backups sozinho, sem internet e sem intervenção:
+
+- **Diário:** com o sistema em uso, um `pg_dump` no formato nativo do PostgreSQL é gravado em `backups/lockeris-AAAA-MM-DD-HH-MM-SS.dump` uma vez por dia (e um primeiro backup cerca de um minuto após cada `INICIAR.bat`).
+- **No encerramento:** cada `PARAR.bat` bem-sucedido grava um backup final antes de parar o banco, garantindo um retrato do último estado em uso.
+- **Sob demanda:** `BACKUP.bat` cria um backup imediato a qualquer momento com o sistema iniciado.
+- **Retenção:** arquivos com mais de 30 dias são removidos automaticamente de `backups/`. A pasta fica dentro do pacote; copie-a periodicamente para um local externo (pendrive ou rede) — cópia única no mesmo disco não protege contra falha do computador.
+
+### 3.2 Restaurar um backup
+
+Restauração substitui o conteúdo atual da base; confirme o arquivo antes de prosseguir e não deixe ninguém usando o sistema durante o processo.
+
+1. Execute `INICIAR.bat` e aguarde o sistema ficar disponível (o banco precisa estar ativo).
+2. No terminal da pasta, execute, em uma única linha, usando a porta `PGPORT` e o banco `PGDATABASE` de `config/.env.portable`:
+
+```powershell
+$env:PGPASSWORD=(Get-Content config\.env.portable | Select-String '^PGPASSWORD=').Line.Substring(10)
+.\postgres\bin\pg_restore.exe -h 127.0.0.1 -p 15432 -U postgres -d lockeris --clean --if-exists .\backups\lockeris-AAAA-MM-DD-HH-MM-SS.dump
+```
+
+3. Se algo falhar no meio, repita o comando do zero; `--clean --if-exists` refaz a base por completo. Em caso de dúvida, use o backup de encerramento mais recente gerado pelo `PARAR.bat` — ele descreve o estado imediatamente anterior.
+
+Para um backup físico integral (incluindo configuração e logs), continue podendo executar `PARAR.bat`, confirmar o encerramento e copiar **a pasta inteira**, incluindo `data/`, `config/` e `backups/`, para local protegido. Não copie `data/` enquanto o banco estiver ativo. As credenciais da cópia correspondem à base copiada.
 
 Para atualizar, faça esse backup, gere um pacote novo e copie `data/` e `config/.env.portable` da versão anterior **já encerrada** para ele. Não misture executáveis ou dependências de versões diferentes. As migrações são aplicadas uma vez; depois de migrar, voltar apenas os arquivos da aplicação pode ser incompatível. Para retornar à versão anterior, restaure o backup completo feito antes da atualização. Este fluxo exige PostgreSQL 17 nas duas versões.
 
@@ -67,9 +90,11 @@ Lockeris-Portable/
 │   ├── node_modules/         somente dependências de produção
 │   └── launcher.mjs          controlador local
 ├── data/                     aparece no primeiro início ou já contém os dados preparados da filial
+├── backups/                  backups automáticos em formato PostgreSQL (retenção de 30 dias)
 ├── config/.env.portable
 ├── INICIAR.bat
 ├── PARAR.bat
+├── BACKUP.bat
 ├── Lockeris.url
 ├── PORTABLE_GUIDE.md
 └── BUILD_INFO.json
