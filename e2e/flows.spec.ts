@@ -462,6 +462,7 @@ test('admin rola 477 armários e limpa somente a cópia legada',async({page})=>{
       request.onsuccess=()=>{const db=request.result,tx=db.transaction('state','readwrite');tx.objectStore('state').put('legado','device');tx.objectStore('state').put({legacy:true},'copy');tx.objectStore('state').put('preservar','other');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};
     });
   });
+  await page.goto('/#/painel');
   await page.reload();
   await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
   expect(await page.evaluate(async()=>{
@@ -518,6 +519,9 @@ test('admin exclui um acesso pela lista e altera a própria senha pelo cabeçalh
   await expect(modal).toHaveCount(0);
   await expectNotice(page,'Senha alterada com sucesso.');
   await closeNotice(page);
+  // Restaura a senha original: os testes seguintes fazem login por interface com as credenciais padrão.
+  const restore=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  try{await restore.query("UPDATE users SET password_hash=$1 WHERE lower(username)='e2e'",[await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);}finally{await restore.end();}
 });
 
 test('seleção em lote alterna marcações e alinha verticalmente as células da tabela',async({page})=>{
@@ -768,4 +772,115 @@ test('desocupação guarda pertences e auditoria gera relatório para gestão',a
   await page.getByRole('button',{name:'Excluir Auditoria'}).click();
   await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
   await expectNotice(page,'Auditoria excluída.');
+});
+
+test('rotas por hash abrem telas, rota desconhecida mostra 404',async({page})=>{
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.goto('/#/pendencias');
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'Pendências',level:1})).toBeVisible();
+  await page.goto('/#/rota-inexistente');
+  await expect(page.getByRole('heading',{name:'Página não encontrada'})).toBeVisible();
+  await expect(page.getByText('#rota-inexistente')).toBeVisible();
+  await page.getByRole('button',{name:'Voltar ao painel'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await expect(page.locator('.status')).toContainText('Conectado');
+});
+
+test('sessão expirada devolve ao login com aviso e novo acesso funciona',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  try{await pool.query('DELETE FROM sessions');}finally{await pool.end();}
+  await page.getByRole('button',{name:'Colaboradores'}).click();
+  await expect(page.getByRole('heading',{name:'Entrar'})).toBeVisible();
+  await expect(page.getByText('Sua sessão expirou. Faça login novamente.')).toBeVisible();
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  // O deep-link devolve à tela em que a sessão expirou.
+  await expect(page.getByRole('heading',{name:'Colaboradores',level:1})).toBeVisible();
+});
+
+test('login com senha incorreta mostra credenciais inválidas',async({page})=>{
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Senha-Errada-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByText('Credenciais inválidas')).toBeVisible();
+});
+
+test('achados e perdidos registra devolução e destinação após o prazo',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  try{
+    const branch=(await pool.query<{id:string}>("SELECT id FROM branches WHERE name='Caruaru Demonstração'")).rows[0]!;
+    await pool.query(`INSERT INTO retained_items(branch_id,category,found_at,expires_at,finder_name,found_location,description)
+      VALUES($1,'roupa',now()-interval '2 days',(now()-interval '2 days')+interval '30 days','Equipe PP','Armário 910','Casaco de teste e2e')`,[branch.id]);
+    await pool.query(`INSERT INTO retained_items(branch_id,category,found_at,expires_at,finder_name,found_location,description)
+      VALUES($1,'celular',now()-interval '31 days',(now()-interval '31 days')+interval '30 days','Equipe PP','Corredor Central','Celular vencido e2e')`,[branch.id]);
+  }finally{await pool.end();}
+  await page.goto('/');
+  await page.getByLabel('Nome de usuário').fill('e2e');
+  await page.getByLabel('Senha').fill('Testing-Password-123');
+  await page.getByRole('button',{name:'Entrar'}).click();
+  await expect(page.getByRole('heading',{name:'Armários',level:1})).toBeVisible();
+  await page.getByRole('button',{name:'Achados e Perdidos'}).click();
+  const devolution=page.locator('.custody-item').filter({hasText:'Casaco de teste e2e'});
+  await devolution.getByRole('button',{name:'Registrar Devolução ao Proprietário'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'Devolução registrada.');
+  await closeNotice(page);
+  const disposal=page.locator('.custody-item').filter({hasText:'Celular vencido e2e'});
+  await expect(disposal).toContainText(/Prazo vencido há \d+ dia\(s\)/);
+  await disposal.getByRole('button',{name:'Dar Destinação'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'Destinação registrada.');
+  await closeNotice(page);
+  await page.getByLabel('Situação').selectOption('devolvido');
+  await expect(page.getByText('Casaco de teste e2e')).toBeVisible();
+  await expect(page.getByText('Celular vencido e2e')).toHaveCount(0);
+});
+
+test('admin geral cria e exclui filial e limpa o histórico legado',async({page})=>{
+  const pool=new Pool({connectionString:process.env.E2E_DATABASE_URL??'postgres://armarios:armarios@localhost:5432/armarios_e2e'});
+  const token=randomBytes(32).toString('base64url'),csrf=randomBytes(32).toString('base64url');
+  const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
+  try{
+    await pool.query("DELETE FROM users WHERE username='geral.e2e'");
+    await pool.query(`INSERT INTO users(username,password_hash,role,branch_id,must_change_password)
+      VALUES('geral.e2e',$1,'geral',NULL,false)`,
+      [await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);
+    const geral=(await pool.query<{id:string}>("SELECT id FROM users WHERE username='geral.e2e'")).rows[0]!;
+    await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')",[digest(token),geral.id,digest(csrf)]);
+  }finally{await pool.end();}
+  await page.context().addCookies([{name:'armarios_session',value:token,url:'http://localhost:5174',httpOnly:true,sameSite:'Strict'},
+    {name:'armarios_csrf',value:csrf,url:'http://localhost:5174',sameSite:'Strict'}]);
+  await page.goto('/#/administracao');
+  await expect(page.getByRole('heading',{name:'Criar filial'})).toBeVisible();
+  const branchForm=page.locator('.inline-form');
+  await branchForm.getByLabel('Nome').fill('Filial E2E Temporária');
+  await branchForm.getByRole('button',{name:'Criar filial'}).click();
+  await page.waitForLoadState('load');
+  await expect(page.getByRole('heading',{name:'Filiais cadastradas'})).toBeVisible();
+  await expect(page.getByText('Filial E2E Temporária')).toBeVisible();
+  await page.getByRole('button',{name:'Histórico'}).click();
+  await expect(page.getByRole('heading',{name:'Histórico de eventos'})).toBeVisible();
+  await page.getByRole('button',{name:'Limpar históricos antigos'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,/registro\(s\) legado\(s\) removido\(s\)|Nenhum registro legado/);
+  await closeNotice(page);
+  await page.getByRole('button',{name:'Administração'}).click();
+  const branchRow=page.locator('tr').filter({hasText:'Filial E2E Temporária'});
+  await branchRow.getByRole('button',{name:'Excluir filial'}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Confirmar'}).click();
+  await expectNotice(page,'Filial Filial E2E Temporária excluída');
+  await closeNotice(page);
+  await expect(page.locator('tr').filter({hasText:'Filial E2E Temporária'})).toHaveCount(0,{timeout:15000});
 });
