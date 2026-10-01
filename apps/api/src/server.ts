@@ -36,6 +36,7 @@ app.setErrorHandler((error,request,reply)=>{
   reply.status(status).send({error:{code,message,details:issue?error.issues.map(x=>({path:x.path,message:x.message})):undefined,requestId:request.id}});
 });
 app.get('/api/health',async()=>({ok:true}));
+if(process.env.COOKIE_SECURE==='false') app.log.warn('COOKIE_SECURE=false: os cookies da sessão vão sem o flag Secure. Em produção, sirva a aplicação por HTTPS (proxy com TLS) e defina COOKIE_SECURE=true.');
 await authRoutes(app);
 await catalogRoutes(app);
 await movementRoutes(app);
