@@ -96,7 +96,8 @@ input[type='checkbox'] { accent-color: var(--brand); width: 17px; height: 17px; 
 .status.online { background: #e9f6ed; border-color: #cde8d5; color: #176449; }
 .status.offline { background: #fff3da; border-color: #efdcb0; color: #735013; }
 .status.reconnecting { background: #e8f0fb; border-color: #c9d9f2; color: #1e4e8c; }
-.overview-trend .trend-chart { width: 100%; max-width: 640px; height: auto; }
+.overview-trend { margin-top: 14px; }
+.overview-trend .trend-chart { display: block; width: 100%; max-width: 680px; height: auto; margin-inline: auto; }
 .overview-trend .trend-bar { fill: #7C3AED; }
 .overview-trend .trend-capacity { stroke: #10B981; stroke-dasharray: 4 4; stroke-width: 1.5; }
 .overview-trend .trend-value { font-size: 9px; font-weight: 700; fill: #2E1065; }
