@@ -9,6 +9,20 @@ declare module 'fastify' { interface FastifyRequest { actor?: Actor } }
 const loginInput = z.object({ username: z.string().trim().min(1), password: z.string().min(1) });
 const cookieName = 'armarios_session';
 const secure = process.env.COOKIE_SECURE !== 'false';
+const passwordAllowedPaths = ['/api/auth/password', '/api/auth/change-password', '/api/auth/logout', '/api/auth/me'];
+
+type LoginBucket = { count: number; resetAt: number };
+const loginBuckets = new Map<string, LoginBucket>();
+const loginWindowMs = () => Number(process.env.AUTH_LOGIN_RATE_MINUTES ?? 15) * 60_000;
+const loginMax = (kind: 'user' | 'ip') => kind === 'user' ? Number(process.env.AUTH_LOGIN_MAX_USER ?? 5) : Number(process.env.AUTH_LOGIN_MAX_IP ?? 30);
+function loginLimited(kind: 'user' | 'ip', key: string): boolean {
+  const now = Date.now();const mapKey = `${kind}:${key.toLowerCase()}`;
+  const bucket = loginBuckets.get(mapKey);
+  if (!bucket || bucket.resetAt <= now) { loginBuckets.set(mapKey, { count: 1, resetAt: now + loginWindowMs() }); return false; }
+  bucket.count += 1;return bucket.count > loginMax(kind);
+}
+function sweepLoginBuckets(): void { const now = Date.now();for (const [key, bucket] of loginBuckets) if (bucket.resetAt <= now) loginBuckets.delete(key); }
+export function resetLoginBuckets(): void { loginBuckets.clear(); }
 
 export async function authenticate(request: FastifyRequest): Promise<Actor> {
   const token = request.cookies[cookieName];
@@ -26,7 +40,7 @@ export async function authenticate(request: FastifyRequest): Promise<Actor> {
     const { rows: sessions } = await pool.query<{ csrf_hash: string }>('SELECT csrf_hash FROM sessions WHERE id_hash=$1', [hash(token)]);
     if (typeof csrf !== 'string' || hash(csrf) !== sessions[0]?.csrf_hash) fail(403, 'CSRF', 'Recarregue a página e tente novamente');
   }
-  if (rows[0].must_change_password && !request.url.endsWith('/password') && !request.url.endsWith('/change-password') && !request.url.endsWith('/logout') && !request.url.endsWith('/me')) fail(403, 'TROCA_SENHA', 'Troque a senha temporária');
+  if (rows[0].must_change_password && !passwordAllowedPaths.includes(request.url.split(/[?#]/)[0]!)) fail(403, 'TROCA_SENHA', 'Troque a senha temporária');
   return rows[0];
 }
 export function branchAccess(actor: Actor, branchId: string, write = false): void {
@@ -38,11 +52,16 @@ export function adminAccess(actor: Actor, branchId: string): void {
   if (!['geral','filial_admin'].includes(actor.role)) fail(403, 'PERMISSAO', 'Acesso administrativo necessário');
 }
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/api/auth/login', { config: { rateLimit: { max: 5, timeWindow: '15 minutes', keyGenerator: request => { const body=request.body as {username?:unknown}|undefined; return typeof body?.username==='string'?body.username.trim().toLowerCase():request.ip; } } } }, async (request, reply) => {
+  const sweep = setInterval(sweepLoginBuckets, 5 * 60_000);sweep.unref();
+  app.addHook('onClose', () => { clearInterval(sweep); });
+  app.post('/api/auth/login', async (request, reply) => {
     const input = loginInput.parse(request.body);
+    if (loginLimited('ip', request.ip)) { request.log.warn({ ip: request.ip }, 'login_bloqueado_ip'); fail(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas a partir desta rede. Aguarde alguns minutos e tente novamente.'); }
+    if (loginLimited('user', input.username)) { request.log.warn({ username: input.username, ip: request.ip }, 'login_bloqueado_usuario'); fail(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas para este usuário. Aguarde alguns minutos e tente novamente.'); }
     const { rows } = await pool.query<{ id: string; username: string; password_hash: string; active: boolean; role: Actor['role']; branch_id: string | null; must_change_password: boolean }>('SELECT * FROM users WHERE lower(username)=lower($1)', [input.username]);
     const user = rows[0];
-    if (!user?.active || !(await argon2.verify(user.password_hash, input.password))) fail(401, 'CREDENCIAIS', 'Credenciais inválidas');
+    if (!user?.active || !(await argon2.verify(user.password_hash, input.password))) { request.log.warn({ username: input.username, ip: request.ip }, 'login_falhou'); fail(401, 'CREDENCIAIS', 'Credenciais inválidas'); }
+    request.log.info({ username: user.username, ip: request.ip }, 'login_ok');
     const token = randomBytes(32).toString('base64url');
     const csrf = randomBytes(32).toString('base64url');
     await pool.query("INSERT INTO sessions(id_hash,user_id,csrf_hash,expires_at) VALUES($1,$2,$3,now()+interval '24 hours')", [hash(token), user.id, hash(csrf)]);

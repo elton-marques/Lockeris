@@ -7,6 +7,7 @@ import {parseFile} from '../src/imports.js';
 import {hash} from '../src/db.js';
 import {transaction} from '../src/db.js';
 import {refreshPending} from '../src/pending.js';
+import {resetLoginBuckets} from '../src/auth.js';
 import ExcelJS from 'exceljs';
 
 type Auth={cookie:string;csrf:string};
@@ -23,7 +24,7 @@ function form(fields:Record<string,string>,filename:string,content:string){const
 function binaryForm(fields:Record<string,string>,filename:string,content:Buffer){const boundary='armarios-binary-test';const parts:Buffer[]=[];for(const [key,value] of Object.entries(fields))parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n`),content,Buffer.from(`\r\n--${boundary}--\r\n`));return {payload:Buffer.concat(parts),headers:{'content-type':`multipart/form-data; boundary=${boundary}`}};}
 
 beforeAll(async()=>{if(!process.env.DATABASE_URL?.includes('armarios_test'))throw new Error('Use o banco armarios_test');await app.ready();});
-beforeEach(async()=>{await pool.query('TRUNCATE branches,people,users CASCADE');await pool.query("INSERT INTO users(username,password_hash,role,must_change_password) VALUES($1,$2,'geral',false)",['test',await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);});
+beforeEach(async()=>{resetLoginBuckets();await pool.query('TRUNCATE branches,people,users CASCADE');await pool.query("INSERT INTO users(username,password_hash,role,must_change_password) VALUES($1,$2,'geral',false)",['test',await argon2.hash('Testing-Password-123',{type:argon2.argon2id})]);});
 afterAll(async()=>{await app.close();});
 
 describe('regras transacionais',()=>{
@@ -600,4 +601,36 @@ it('OpenAPI publica contratos de operação',()=>{
   const document=app.swagger() as {paths:Record<string,Record<string,{requestBody?:unknown}>>};
   expect(document.paths['/api/branches/{branchId}/allocations/occupy'].post.requestBody).toBeDefined();
   expect(document.paths['/api/branches/{branchId}/history/clear'].delete.requestBody).toBeDefined();
+});
+
+describe('limites de login, csrf e troca de senha obrigatória',()=>{
+  const login=(username:string,password:string)=>app.inject({method:'POST',url:'/api/auth/login',payload:{username,password}});
+  it('bloqueia o usuário após o limite de tentativas configurado',async()=>{
+    process.env.AUTH_LOGIN_MAX_USER='1';process.env.AUTH_LOGIN_RATE_MINUTES='1';
+    try{
+      expect((await login('test','Testing-Password-123')).statusCode).toBe(200);
+      const again=await login('test','Testing-Password-123');
+      expect(again.statusCode).toBe(429);
+      expect((await login('OUTRO-USUARIO','Testing-Password-123')).statusCode).toBe(401);
+    }finally{delete process.env.AUTH_LOGIN_MAX_USER;delete process.env.AUTH_LOGIN_RATE_MINUTES;}
+  });
+  it('bloqueia o IP mesmo rotacionando usuários',async()=>{
+    process.env.AUTH_LOGIN_MAX_IP='1';
+    try{
+      expect((await login('test','Testing-Password-123')).statusCode).toBe(200);
+      expect((await login('outro','Testing-Password-123')).statusCode).toBe(429);
+    }finally{delete process.env.AUTH_LOGIN_MAX_IP;}
+  });
+  it('recusa escrita sem o header CSRF',async()=>{
+    const auth=await session();
+    const response=await app.inject({method:'POST',url:'/api/branches',payload:{operationId:uuid(),name:'Sem CSRF',timezone:'America/Fortaleza'},headers:{cookie:auth.cookie}});
+    expect(response.statusCode).toBe(403);
+  });
+  it('exige a troca de senha temporária em toda rota fora da lista de troca',async()=>{
+    await pool.query("UPDATE users SET must_change_password=true WHERE username='test'");
+    const auth=await sessionFor('test');
+    expect((await app.inject({method:'GET',url:'/api/branches',headers:{cookie:auth.cookie}})).statusCode).toBe(403);
+    expect((await app.inject({method:'GET',url:'/api/branches?incluir=123',headers:{cookie:auth.cookie}})).statusCode).toBe(403);
+    expect((await app.inject({method:'GET',url:'/api/auth/me',headers:{cookie:auth.cookie}})).statusCode).toBe(200);
+  });
 });
