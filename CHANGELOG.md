@@ -2,6 +2,18 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versionamento [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.2.0] — 2026-10-01
+
+### Adicionado
+- **Controle de chave como movimento:** novo registro de empréstimos por armário (quem pegou, quando devolveu, quem registrou), com bloqueio de chave emprestada duas vezes, histórico no armário, filtro "Chave emprestada" na lista e alerta na Central para empréstimos abertos há 7 dias ou mais.
+- **Lembretes de prazo:** faixa urgente a partir de 5 dias em Achados e Perdidos, alerta de custódia vencida/vencendo na Central e **Resumo do dia** imprimível (vencidos, vencimentos da semana, chaves emprestadas, pendências por tipo).
+- **Tendência de ocupação:** painel com as últimas 8 semanas de posições ocupadas e capacidade, reconstruído das alocações.
+- **Regras de vínculo configuráveis:** as palavras-chave que classificam o painel "Pessoas por vínculo" passam a ser editáveis em Administração por filial (padrão preserva o comportamento anterior).
+- Rotas documentadas no OpenAPI; testes de integração e E2E para todos os fluxos.
+
+### Alterado
+- A consulta de pendências virou somente-leitura: a reconciliação roda nas operações de escrita e a cada 15 minutos em segundo plano (pendências puramente temporais podem levar até 15 minutos para aparecer).
+
 ## [1.1.0] — 2026-10-01
 
 ### Corrigido

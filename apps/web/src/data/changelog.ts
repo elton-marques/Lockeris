@@ -1,4 +1,9 @@
 export const changelog=[
+  {title:'Versão 1.2 — chaves rastreadas e prazos sob vigilância',kind:'shield',description:'O Controle de Chaves passa a registrar quem pegou e quem devolveu, e o sistema passa a avisar sobre prazos e movimentos que pedem atenção.',items:[
+    'Cada empréstimo de chave fica registrado no próprio armário, com a devolução anotada pela equipe.',
+    'Achados com prazo próximo ganham destaque e um resumo do dia pronto para imprimir.',
+    'O painel mostra a ocupação das últimas semanas e a administração pode ajustar as regras de classificação das pessoas.'
+  ]},
   {title:'Versão 1.1 — acesso protegido e cópias de segurança',kind:'shield',description:'O Lockeris protege melhor os acessos, avisa quando a conexão cai e o modo portátil agora guarda cópias de segurança por conta própria.',items:[
     'Quem fica fora do sistema por um tempo recebe um aviso claro e volta ao acesso sem perder o caminho.',
     'O computador da filial grava cópias de segurança dos registros todos os dias e também ao encerrar o expediente.',

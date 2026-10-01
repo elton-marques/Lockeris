@@ -43,13 +43,15 @@ export async function custodyRoutes(app:FastifyInstance):Promise<void>{
   app.get('/api/branches/:branchId/daily-summary',async request=>{
     const actor=await authenticate(request);const {branchId}=branchParams.parse(request.params);branchAccess(actor,branchId);
     const [overdue,expiring,loans,pending]=await Promise.all([
-      pool.query<{id:string;description:string;locker_number:string|null;days_overdue:number}>(`SELECT r.id,r.description,r.locker_number,
+      pool.query<{id:string;description:string;locker_number:string|null;days_overdue:number}>(`SELECT r.id,r.description,l.number locker_number,
         GREATEST(1,extract(day FROM now()-r.expires_at)::int) days_overdue
-        FROM retained_items r WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at<now()
+        FROM retained_items r LEFT JOIN lockers l ON l.id=r.locker_id
+        WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at<now()
         ORDER BY r.expires_at LIMIT 50`,[branchId]),
-      pool.query<{id:string;description:string;locker_number:string|null;days_left:number}>(`SELECT r.id,r.description,r.locker_number,
+      pool.query<{id:string;description:string;locker_number:string|null;days_left:number}>(`SELECT r.id,r.description,l.number locker_number,
         extract(day FROM r.expires_at-now())::int days_left
-        FROM retained_items r WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at>=now() AND r.expires_at<now()+interval '5 days'
+        FROM retained_items r LEFT JOIN lockers l ON l.id=r.locker_id
+        WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at>=now() AND r.expires_at<now()+interval '5 days'
         ORDER BY r.expires_at LIMIT 50`,[branchId]),
       pool.query<{id:string;locker_number:string;person_name:string;days_out:number}>(`SELECT k.id,l.number locker_number,k.person_name,
         extract(day FROM now()-k.taken_at)::int days_out

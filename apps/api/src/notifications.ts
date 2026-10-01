@@ -113,9 +113,9 @@ async function keyLoanOpenAlert(branchId: string): Promise<NotificationAlert> {
 }
 
 async function custodyExpiringAlert(branchId: string): Promise<NotificationAlert> {
-  const { rows } = await pool.query<CustodyRow>(`SELECT r.id,r.description,r.locker_number,
+  const { rows } = await pool.query<CustodyRow>(`SELECT r.id,r.description,l.number locker_number,
       extract(day FROM r.expires_at-now())::int days_left
-    FROM retained_items r
+    FROM retained_items r LEFT JOIN lockers l ON l.id=r.locker_id
     WHERE r.branch_id=$1 AND r.status='retido' AND r.expires_at<now()+interval '5 days'
     ORDER BY r.expires_at LIMIT ${listLimit}`, [branchId]);
   return {

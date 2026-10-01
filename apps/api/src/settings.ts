@@ -21,7 +21,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request);
     const { branchId } = route.parse(request.params);
     adminAccess(actor, branchId);
-    const body = operation.extend({ expectedVersion: z.number().int().positive(), ...linkRulesShape }).parse(request.body);
+    const body = operation.extend({ expectedVersion: z.number().int().min(0), ...linkRulesShape }).parse(request.body);
     return transaction(client => idempotent(client, body.operationId, branchId, actor.id, body, async () => {
       const existing = await client.query<{ version: number }>('SELECT version FROM branch_settings WHERE branch_id=$1 FOR UPDATE', [branchId]);
       if ((existing.rows[0]?.version ?? 0) !== body.expectedVersion) fail(409, 'VERSAO', 'Regras alteradas; recarregue');

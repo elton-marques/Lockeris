@@ -122,11 +122,17 @@ Esses armários não oferecem uma segunda vaga e não entram na contagem de dupl
 - **Colaboradores sem Armário:** pessoas ativas da filial sem ocupação vigente.
 - **Pendências Críticas:** total de pendências abertas, com destaque por quantidade: zero, de 1 a 10 e acima de 10.
 - **Armários Duplos:** utilização das vagas duplas e quantidade de duplos totalmente ocupados, respeitando as exceções de uso individual.
-- **Controle de Chaves:** quantidade de armários sem cópia da chave cadastrada.
+- **Controle de Chaves:** quantidade de armários sem cópia da chave cadastrada, com as chaves emprestadas em aberto na legenda.
 
-O painel também apresenta o ranking de ocupação por setor, a distribuição de pessoas por vínculo e as movimentações do período. Os indicadores abrem as telas correspondentes com filtros aplicados.
+O painel também apresenta o ranking de ocupação por setor, a distribuição de pessoas por vínculo, a **tendência de ocupação das últimas 8 semanas** e as movimentações do período. Os indicadores abrem as telas correspondentes com filtros aplicados.
 
-Os rótulos de vínculo são **Colaborador**, **Promotor(a)**, **Terceirizado** e **Pendência Cadastral**. Jovens aprendizes são classificados como colaboradores. Promotores identificados pelo cadastro ou pelo setor/função entram em Promotor(a); o cargo promotor não é tratado como setor no ranking de ocupação.
+Os rótulos de vínculo são **Colaborador**, **Promotor(a)**, **Terceirizado** e **Pendência Cadastral**. Jovens aprendizes são classificados como colaboradores. Promotores identificados pelo cadastro ou pelo setor/função entram em Promotor(a); o cargo promotor não é tratado como setor no ranking de ocupação. As palavras-chave dessa classificação são editáveis por filial em **Administração → Regras de vínculo** (sem configuração, vale o padrão do sistema).
+
+### Movimentos de chave e resumo do dia
+
+Cada armário registra **empréstimos de chave**: quem pegou (busca por nome ou matrícula na base ativa), quando e quem registrou; a devolução é anotada no mesmo lugar, com histórico recente no drawer. Um empréstimo aberto há 7 dias ou mais vira alerta na Central. Em **Achados e Perdidos**, itens vencendo em até 5 dias ganham destaque urgente, e o cartão **Resumo do dia** (imprimível) reúne vencidos, vencimentos da semana, chaves emprestadas e pendências abertas por tipo.
+
+A lista de pendências é somente-leitura: a reconciliação acontece nas próprias operações e a cada 15 minutos em segundo plano — pendências que vencem pelo relógio podem levar até 15 minutos para aparecer.
 
 ## Auditorias e achados e perdidos
 
