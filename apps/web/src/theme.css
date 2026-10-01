@@ -371,3 +371,6 @@
 :root[data-theme='dark'] .custody-badge--urgent{background:#7c4a1e;color:#ffd9b3}
 :root[data-theme='dark'] .daily-summary-block{background:#27272A;border-color:#3F3F46;color:#FAFAFA}
 :root[data-theme='dark'] .daily-summary-block .count{background:#3F3F46;color:#e4e4e7}
+:root[data-theme='dark'] .overview-trend .trend-bar{fill:#a78bfa}
+:root[data-theme='dark'] .overview-trend .trend-value{fill:#e4e4e7}
+:root[data-theme='dark'] .overview-trend .trend-label{fill:#a1a1aa}

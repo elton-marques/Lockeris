@@ -3,13 +3,13 @@ import {ArrowLeftRight,ArrowRight,Copy,Grid2X2,KeyRound,ShieldAlert,TriangleAler
 import {api} from '../api';
 import type {PageProps,PeoplePreset} from '../App';
 import {DataState,EmptyState,Skeleton} from '../ui';
-import {categoryShares,doubleLockerBreakdown,keyControlSummary,occupancyBySector,occupancySummary,openPendingCount,pendingAlertLevel,type CategoryLinks,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
+import {categoryShares,doubleLockerBreakdown,keyControlSummary,occupancyBySector,occupancySummary,occupancyTrend,openPendingCount,pendingAlertLevel,type CategoryLinks,type InsightLocker,type InsightPending,type LockerPreset} from '../locker-insights';
 
 type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page:string,preset?:PeoplePreset)=>void};
 type AllocationRow={started_at:string|null;ended_at:string|null};
 type TransferRow={happened_at:string};
 type Movements={allocations:AllocationRow[];transfers:TransferRow[]};
-type DashboardStats={links:CategoryLinks;people:{total:string};withoutLocker:{total:number};keyLoans:{open:number;overdue:number}};
+type DashboardStats={links:CategoryLinks;people:{total:string};withoutLocker:{total:number};keyLoans:{open:number;overdue:number};trend:{week:string;occupied:number;capacity:number}[]};
 const periods=[7,30] as const;
 
 export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
@@ -55,6 +55,8 @@ export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
   const openPendings=openPendingCount(pending);
   const alertLevel=pendingAlertLevel(openPendings);
   const withoutLocker=stats?.withoutLocker.total??0;
+  const trend=useMemo(()=>stats?occupancyTrend(stats.trend):[],[stats]);
+  const trendMax=Math.max(1,...trend.map(point=>Math.max(point.capacity,point.occupied)));
   const movementCounts=useMemo(()=>{
     if(!movements)return null;
     const since=Date.now()-period*86400000;
@@ -130,6 +132,22 @@ export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
           </div>)}</div>
         </section>
       </div>
+
+      <section className="insight-panel overview-trend" aria-labelledby="trend-widget-title">
+        <div className="insight-heading"><h2 id="trend-widget-title">Ocupação — últimas 8 semanas</h2>
+          <span className="trend-caption">posições ocupadas por semana</span></div>
+        {trend.length?<svg viewBox="0 0 350 96" className="trend-chart" role="img"
+          aria-label={`Ocupação semanal de ${trend[0]?.occupied??0} para ${trend.at(-1)?.occupied??0} posições`}>
+          {trend.map((point,index)=>{const x=14+index*42,height=Math.max(2,Math.round(point.occupied/trendMax*64));
+            const capacityHeight=Math.round(point.capacity/trendMax*64);
+            return <g key={`${point.week}-${index}`}>
+              {index===trend.length-1&&<line x1={8} x2={342} y1={80-capacityHeight} y2={80-capacityHeight} className="trend-capacity"/>}
+              <rect x={x} y={80-height} width={26} height={height} rx="4" className="trend-bar"/>
+              <text x={x+13} y={80-height-5} textAnchor="middle" className="trend-value">{point.occupied}</text>
+              <text x={x+13} y={93} textAnchor="middle" className="trend-label">{point.week}</text>
+            </g>;})}
+        </svg>:<p className="insight-empty">Sem histórico suficiente para a tendência.</p>}
+      </section>
 
       <div className="overview-widgets overview-widgets--base">
         <section className="insight-panel" aria-labelledby="movement-widget-title">

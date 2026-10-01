@@ -67,7 +67,8 @@ const pendingDetailsSql=(openOnly:boolean)=>`SELECT p.*,pe.name person_name,m.pe
 export async function managementRoutes(app:FastifyInstance):Promise<void> {
   app.get('/api/branches/:branchId/dashboard',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    const [lockers,people,pending,links,withoutLocker,keyLoans]=await Promise.all([
+    const trendBoundaries=Array.from({length:8},(_,index)=>new Date(Date.now()-(7-index)*7*86400000).toISOString());
+    const [lockers,people,pending,links,withoutLocker,keyLoans,trend]=await Promise.all([
       pool.query<{total:string;occupied:string;blocked:string}>(`SELECT count(*) total,count(*) FILTER (WHERE l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) occupied,
         count(*) FILTER (WHERE l.condition<>'disponivel' OR l.migration_status='inconclusivo') blocked FROM lockers l WHERE l.branch_id=$1`,[branchId]),
       pool.query<{total:string}>('SELECT count(*) total FROM memberships WHERE branch_id=$1 AND status=$2',[branchId,'ativo']),
@@ -109,9 +110,17 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
           AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)`,[branchId]),
       pool.query<{open:number;overdue:number}>(`SELECT count(*) FILTER (WHERE returned_at IS NULL)::int open,
         count(*) FILTER (WHERE returned_at IS NULL AND taken_at<now()-interval '7 days')::int overdue
-        FROM key_loans WHERE branch_id=$1`,[branchId])
+        FROM key_loans WHERE branch_id=$1`,[branchId]),
+      pool.query<{week:string;occupied:number;capacity:number}>(`
+        WITH points(week_end) AS (SELECT unnest($2::timestamptz[]))
+        SELECT to_char(p.week_end AT TIME ZONE 'UTC','DD/MM') week,
+          (SELECT count(DISTINCT a.locker_id)::int FROM allocations a JOIN lockers l2 ON l2.id=a.locker_id
+            WHERE l2.branch_id=$1 AND coalesce(a.started_at,a.migrated_at)<=p.week_end
+              AND (a.ended_at IS NULL OR a.ended_at>p.week_end)) occupied,
+          (SELECT coalesce(sum(l3.capacity),0)::int FROM lockers l3 WHERE l3.branch_id=$1 AND l3.created_at<=p.week_end) capacity
+        FROM points p ORDER BY p.week_end`,[branchId,trendBoundaries])
     ]);
-    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0],withoutLocker:withoutLocker.rows[0],keyLoans:keyLoans.rows[0]};
+    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0],withoutLocker:withoutLocker.rows[0],keyLoans:keyLoans.rows[0],trend:trend.rows};
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);

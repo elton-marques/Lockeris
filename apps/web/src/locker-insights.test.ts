@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {availablePositions,categoryShares,doubleLockerBreakdown,effectiveCapacity,hasExclusiveDoubleRule,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyBySector,occupiedPositions,occupancySummary,pendingAlertLevel,pendingLockerIds,requiresReview,sectorOccupiedPositions,showsLockerPositions,type InsightLocker} from './locker-insights';
+import {availablePositions,categoryShares,doubleLockerBreakdown,effectiveCapacity,hasExclusiveDoubleRule,keyControlSummary,lockersWithoutSectorOrRegistration,occupancyBySector,occupiedPositions,occupancySummary,occupancyTrend,pendingAlertLevel,pendingLockerIds,requiresReview,sectorOccupiedPositions,showsLockerPositions,type InsightLocker} from './locker-insights';
 
 const locker=(overrides:Partial<InsightLocker>={}):InsightLocker=>({
   id:'101',number:'101',capacity:2,is_double:true,sector_occupant:null,condition:'disponivel',migration_status:'conferido',
@@ -181,5 +181,17 @@ describe('indicadores executivos do painel',()=>{
       locker({id:'1'}),
       locker({id:'2',capacity:1,is_double:false,occupants:[{name:'Ana',registration:'0001',department:'Loja'}]})
     ])).toMatchObject({physical:2,capacity:3,occupied:1,available:2,percent:33});
+  });
+
+  it('normaliza a série semanal com percentual limitado a 100',()=>{
+    expect(occupancyTrend([
+      {week:'01/09',occupied:10,capacity:40},
+      {week:'08/09',occupied:45,capacity:40},
+      {week:'15/09',occupied:0,capacity:0}
+    ])).toEqual([
+      {week:'01/09',occupied:10,capacity:40,percent:25},
+      {week:'08/09',occupied:45,capacity:40,percent:100},
+      {week:'15/09',occupied:0,capacity:0,percent:0}
+    ]);
   });
 });

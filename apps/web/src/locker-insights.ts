@@ -151,3 +151,15 @@ export function occupancySummary(lockers:InsightLocker[]):OccupancySummary{
     available:lockers.reduce((sum,locker)=>sum+availablePositions(locker),0),
     percent:capacity?Math.round((occupied/capacity)*100):0};
 }
+
+export type OccupancyTrendPoint={week:string;occupied:number;capacity:number;percent:number};
+/**
+ * Normaliza a série semanal do servidor (posições ocupadas e capacidade em
+ * cada fim de semana) para exibição no painel.
+ */
+export function occupancyTrend(rows:{week:string;occupied:number;capacity:number}[]):OccupancyTrendPoint[]{
+  return rows.map(row=>{
+    const occupied=Math.max(0,row.occupied),capacity=Math.max(0,row.capacity);
+    return {week:row.week,occupied,capacity,percent:capacity?Math.min(100,Math.round(occupied/capacity*100)):0};
+  });
+}
