@@ -26,7 +26,8 @@ export async function api<T>(path:string,init:RequestInit={}):Promise<T> {
     :'Sem conexão com o serviço. Verifique a rede e tente novamente.');}
   const result=await response.json().catch(()=>({})) as ApiErrorBody;
   if(!response.ok){
-    if(response.status===401&&unauthorizedHandler&&!path.startsWith('/auth/login')&&!path.startsWith('/auth/me')) unauthorizedHandler();
+    const credentialCheck=path.startsWith('/auth/login')||path.startsWith('/auth/me')||path.startsWith('/auth/password')||path.startsWith('/auth/change-password');
+    if(response.status===401&&unauthorizedHandler&&!credentialCheck) unauthorizedHandler();
     throw Object.assign(new Error(readableError(response.status,result)),{status:response.status,code:result.error?.code});
   }
   return result as T;

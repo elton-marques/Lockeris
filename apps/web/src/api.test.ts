@@ -25,12 +25,15 @@ describe('interceptador de sessão expirada',()=>{
     await expect(post('/branches',{operationId:'x'})).rejects.toThrow();
     expect(handler).toHaveBeenCalledTimes(2);
   });
-  it('não chama o handler no próprio login nem na validação de sessão do boot',async()=>{
+  it('não chama o handler no próprio login, na validação de sessão nem na confirmação de senha',async()=>{
     const handler=vi.fn();setUnauthorizedHandler(handler);
     vi.stubGlobal('fetch',vi.fn(async()=>jsonResponse(401,{error:{code:'CREDENCIAIS',message:'Credenciais inválidas'}})));
     await expect(post('/auth/login',{username:'a',password:'b'})).rejects.toThrow('Credenciais inválidas');
     vi.stubGlobal('fetch',vi.fn(async()=>jsonResponse(401,{error:{code:'AUTENTICACAO',message:'Faça login'}})));
     await expect(api('/auth/me')).rejects.toThrow('Faça login');
+    vi.stubGlobal('fetch',vi.fn(async()=>jsonResponse(401,{error:{code:'CREDENCIAIS',message:'Senha atual inválida'}})));
+    await expect(post('/auth/change-password',{currentPassword:'a',newPassword:'b'.repeat(12)})).rejects.toThrow('Senha atual inválida');
+    await expect(post('/auth/password',{oldPassword:'a',newPassword:'b'.repeat(12)})).rejects.toThrow();
     expect(handler).not.toHaveBeenCalled();
   });
   it('não chama o handler quando a resposta é de sucesso ou outro erro',async()=>{
