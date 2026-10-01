@@ -9,7 +9,7 @@ type Props=PageProps&{onOpenLockers:(preset:LockerPreset)=>void;onNavigate:(page
 type AllocationRow={started_at:string|null;ended_at:string|null};
 type TransferRow={happened_at:string};
 type Movements={allocations:AllocationRow[];transfers:TransferRow[]};
-type DashboardStats={links:CategoryLinks;people:{total:string};withoutLocker:{total:number}};
+type DashboardStats={links:CategoryLinks;people:{total:string};withoutLocker:{total:number};keyLoans:{open:number;overdue:number}};
 const periods=[7,30] as const;
 
 export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
@@ -103,7 +103,7 @@ export function Overview({branchId,branchName,onOpenLockers,onNavigate}:Props){
         <section className="kpi-card kpi-card--keys" aria-labelledby="kpi-keys-title">
           <span className="kpi-head"><span className="kpi-icon"><KeyRound size={18} aria-hidden="true"/></span><span className="kpi-title" id="kpi-keys-title">Controle de Chaves</span></span>
           <strong className="kpi-value">{keyControl.withoutKey}</strong>
-          <span className="kpi-legend">{keyControl.withoutKey===1?'Armário sem cópia cadastrada':'Armários sem cópia cadastrada'}</span>
+          <span className="kpi-legend">{keyControl.withoutKey===1?'Armário sem cópia cadastrada':'Armários sem cópia cadastrada'}{stats&&stats.keyLoans.open>0&&` • ${stats.keyLoans.open} ${stats.keyLoans.open===1?'chave emprestada':'chaves emprestadas'}`}</span>
           <button type="button" className="kpi-action" onClick={()=>onOpenLockers({key:'nao'})}>Ver chaves <ArrowRight size={15} aria-hidden="true"/></button>
         </section>
       </section>

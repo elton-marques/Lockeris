@@ -18,7 +18,7 @@ const pendingLabels: Record<string, string> = {
 const exclusiveDoubleKeywords = ['transporte pesado', 'conservacao', 'limpeza', 'manutencao'];
 const normalized = (value: string | null | undefined) => value ? value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR') : '';
 
-export type NotificationKey = 'withoutLocker' | 'registrationPending' | 'underusedDoubles';
+export type NotificationKey = 'withoutLocker' | 'registrationPending' | 'underusedDoubles' | 'keyLoanOpen';
 export type NotificationItem = { id: string; label: string; detail: string | null };
 export type NotificationAlert = { key: NotificationKey; label: string; description: string; count: number; items: NotificationItem[] };
 export type NotificationSummary = { total: number; alerts: NotificationAlert[]; checkedAt: string };
@@ -26,6 +26,7 @@ export type NotificationSummary = { total: number; alerts: NotificationAlert[]; 
 type PersonRow = { membership_id: string; name: string; registration: string | null; department: string | null };
 type PendingRow = { membership_id: string; kind: string; name: string | null; registration: string | null };
 type DoubleRow = { id: string; number: string; occupants: { name: string; registration: string | null; department: string | null }[] };
+type KeyLoanRow = { id: string; locker_id: string; number: string; person_name: string; person_registration: string | null; days_out: number };
 
 async function withoutLockerAlert(branchId: string): Promise<NotificationAlert> {
   const { rows } = await pool.query<PersonRow>(`SELECT m.id membership_id,p.name,m.registration,m.department
@@ -91,6 +92,25 @@ async function underusedDoublesAlert(branchId: string): Promise<NotificationAler
   };
 }
 
+async function keyLoanOpenAlert(branchId: string): Promise<NotificationAlert> {
+  const { rows } = await pool.query<KeyLoanRow>(`SELECT k.id,k.locker_id,l.number,k.person_name,k.person_registration,
+      extract(day FROM now()-k.taken_at)::int days_out
+    FROM key_loans k JOIN lockers l ON l.id=k.locker_id
+    WHERE k.branch_id=$1 AND k.returned_at IS NULL AND k.taken_at<now()-interval '7 days'
+    ORDER BY k.taken_at LIMIT ${listLimit}`, [branchId]);
+  return {
+    key: 'keyLoanOpen',
+    label: 'Chaves emprestadas',
+    description: 'Empréstimos de chave abertos há 7 dias ou mais.',
+    count: rows.length,
+    items: rows.slice(0, previewLimit).map(row => ({
+      id: row.locker_id,
+      label: `Armário ${row.number}`,
+      detail: `${row.person_name}${row.days_out ? ` · ${row.days_out} dia(s)` : ''}`
+    }))
+  };
+}
+
 export function notificationSummary(alerts: NotificationAlert[], checkedAt = new Date().toISOString()): NotificationSummary {
   return { total: alerts.reduce((sum, alert) => sum + alert.count, 0), alerts, checkedAt };
 }
@@ -100,7 +120,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const actor = await authenticate(request);
     const { branchId } = route.parse(request.params);
     branchAccess(actor, branchId);
-    const alerts = await Promise.all([withoutLockerAlert(branchId), registrationPendingAlert(branchId), underusedDoublesAlert(branchId)]);
+    const alerts = await Promise.all([withoutLockerAlert(branchId), registrationPendingAlert(branchId), underusedDoublesAlert(branchId), keyLoanOpenAlert(branchId)]);
     return notificationSummary(alerts);
   });
 }

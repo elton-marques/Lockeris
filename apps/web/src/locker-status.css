@@ -128,6 +128,17 @@
 }
 :root .locker-list-panel .tile-key{background:#f1f5f9;color:#64748b}
 :root .locker-list-panel .tile-pending{background:#fffbeb;color:#b45309}
+:root .locker-list-panel .tile-key--loan{background:#fffbeb;color:#b45309}
+:root .table-loan{color:#b45309;font-weight:700}
+:root .key-loan-person{width:100%;text-align:left;display:flex;flex-direction:column;gap:2px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+:root .key-loan-person:hover:not(:disabled){border-color:#bfb7ec}
+:root .key-loan-person small{color:#62677a;font-size:11px}
+:root .key-loan-history{display:grid;gap:6px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+:root .key-loan-history small:first-child{font-weight:750;color:#62677a}
+:root .key-loan-history-row{display:flex;justify-content:space-between;gap:10px;font-size:.85rem}
+:root .key-loan-history-row small{color:#62677a}
+:root .key-loan-search{display:grid;gap:10px;margin-top:10px}
+:root .key-loan-search .row-actions{justify-content:flex-end}
 
 /* --- Badges de status em pill --- */
 :root .locker-list-panel .badge{

@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,LogOut,MapPin,PencilLine,Plus,Search,SlidersHorizontal,User,Users,X} from 'lucide-react';
+import {ArrowRight,Briefcase,Building2,CircleAlert,Grid2X2,Gauge,Hash,KeyRound,List,LogOut,MapPin,PencilLine,Plus,Search,SlidersHorizontal,Undo2,User,Users,X} from 'lucide-react';
 import {api,op,post} from '../api';
 import type {PageProps} from '../App';
 import {DataState,EmptyState,Skeleton,trapTabNavigation} from '../ui';
@@ -13,7 +13,10 @@ import {availablePositions,effectiveCapacity,hasExclusiveDoubleRule,lockerSector
 
 type Occupant={allocationId:string;allocationVersion:number;personId:string;membershipId:string;membershipVersion:number;origin:string;name:string;registration:string|null;department:string|null;functionName:string|null;dueAt:string|null};
 type Locker={id:string;number:string;sector_occupant:string|null;capacity:number;is_double:boolean;key_copy_available:boolean|null;
+  key_loan_id:string|null;key_loan_taken_at:string|null;key_loan_person:string|null;
   modality:string;destination:string|null;condition:string;migration_status:string;version:number;occupants:Occupant[]};
+type KeyLoan={id:string;locker_id:string;person_id:string|null;person_name:string;person_registration:string|null;notes:string|null;taken_at:string;returned_at:string|null;locker_number?:string};
+type PersonOption={id:string;name:string;registration:string|null;department:string|null};
 type Pending={pending_locker_id:string|null;state:string;kind:string};
 type PrintData={nome:string;matricula:string;setor:string;numeroArmario:string;tipoUsuario:'colaborador';possuiCopia:boolean;filial:string};
 type LockerState='livre'|'ocupado'|'pendente'|'indisponivel';
@@ -28,10 +31,11 @@ const sectors=lockerSectors;
 
 export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=false,preset}:PageProps&{preset?:LockerPreset}){
   const [lockers,setLockers]=useState<Locker[]>([]),[registrations,setRegistrations]=useState<RegistrationOption[]>([]),[pending,setPending]=useState<Pending[]>([]);
-  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false),[doublePartial,setDoublePartial]=useState(preset?.doublePartial??false);
+  const [query,setQuery]=useState(''),[statusFilter,setStatusFilter]=useState(preset?.status??''),[sectorFilter,setSectorFilter]=useState(preset?.sector??''),[keyFilter,setKeyFilter]=useState(preset?.key??''),[pendingKindFilter,setPendingKindFilter]=useState(preset?.pendingKind??''),[doubleOnly,setDoubleOnly]=useState(preset?.double??false),[doublePartial,setDoublePartial]=useState(preset?.doublePartial??false),[keyLoanOnly,setKeyLoanOnly]=useState(preset?.keyLoan??false);
   const [view,setView]=useState<'cards'|'table'>('cards');
   const [selected,setSelected]=useState<string|null>(null),closeRef=useRef<HTMLButtonElement>(null);
   const [keyCopy,setKeyCopy]=useState('');
+  const [keyLoans,setKeyLoans]=useState<KeyLoan[]>([]);
   const [busy,setBusy]=useState(false);
   const [printData,setPrintData]=useState<PrintData|null>(null);
   const [edit,setEdit]=useState({keyCopy:'sim'});
@@ -42,10 +46,11 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
   async function load(){
     setLoading(true);setLoadError('');
     try{
-    const [l,items,roster]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),
+    const [l,items,roster,loans]=await Promise.all([api<Locker[]>(`/branches/${branchId}/lockers`),
       api<Pending[]>(`/branches/${branchId}/pending`),
-      api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`)]);
-    setLockers(l);setPending(items);setRegistrations(roster);
+      api<RegistrationOption[]>(`/branches/${branchId}/people/registrations`),
+      api<KeyLoan[]>(`/branches/${branchId}/key-loans?status=todos`)]);
+    setLockers(l);setPending(items);setRegistrations(roster);setKeyLoans(loans);
     }catch(error){setLoadError(error instanceof Error?error.message:'Confira a conexão e tente novamente.');throw error;}
     finally{setLoading(false);}
   }
@@ -81,14 +86,16 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
     if(sectorFilter&&sectorFilter!=='__none__'&&!sectors(locker).includes(sectorFilter))return false;
     if(keyFilter==='sim'&&locker.key_copy_available!==true)return false;
     if(keyFilter==='nao'&&locker.key_copy_available!==false)return false;
+    if(keyLoanOnly&&!locker.key_loan_id)return false;
     if(pendingKindFilter&&!pending.some(item=>item.state==='aberta'&&item.pending_locker_id===locker.id&&item.kind===pendingKindFilter))return false;
-    return !query||[locker.number,...sectors(locker),...locker.occupants.flatMap(item=>[item.name,item.registration??''])].some(value=>lower(value).includes(lower(query)));
-  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,pendingKindFilter,doubleOnly,doublePartial]);
+    return !query||[locker.number,...sectors(locker),...locker.occupants.flatMap(item=>[item.name,item.registration??'']),locker.key_loan_person??''].some(value=>lower(value).includes(lower(query)));
+  }).sort((a,b)=>numeric.compare(a.number,b.number)),[lockers,pending,query,statusFilter,sectorFilter,keyFilter,keyLoanOnly,pendingKindFilter,doubleOnly,doublePartial]);
   const activeFilters=[
     query&&{label:`Busca: ${query}`,clear:()=>setQuery('')},
     statusFilter&&{label:`Situação: ${statusFilter==='com_vaga'?'Com vaga':statusFilter==='ocupado'?'Ocupados':statusFilter==='livre'?'Livres':statusFilter==='pendente'?'Com pendência':'Bloqueados / revisão'}`,clear:()=>{setStatusFilter('');setPendingKindFilter('');}},
     sectorFilter&&{label:`Setor: ${sectorFilter==='__none__'?'Sem setor':sectorFilter}`,clear:()=>setSectorFilter('')},
     keyFilter&&{label:`Cópia da chave: ${keyFilter==='sim'?'Sim':'Não'}`,clear:()=>setKeyFilter('')},
+    keyLoanOnly&&{label:'Chave emprestada',clear:()=>setKeyLoanOnly(false)},
     pendingKindFilter&&{label:`Motivo: ${pendingKindLabels[pendingKindFilter]??'Conferência necessária'}`,clear:()=>setPendingKindFilter('')},
     doubleOnly&&{label:'Duplos',clear:()=>setDoubleOnly(false)},
     doublePartial&&{label:'Duplos parciais',clear:()=>setDoublePartial(false)}
@@ -98,9 +105,10 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
     {label:'Livres',active:statusFilter==='livre',apply:()=>{setStatusFilter(statusFilter==='livre'?'':'livre');setPendingKindFilter('');}},
     {label:'Pendentes',active:statusFilter==='pendente',apply:()=>setStatusFilter(statusFilter==='pendente'?'':'pendente')},
     {label:'Duplos',active:doubleOnly,apply:()=>{setDoubleOnly(current=>!current);setDoublePartial(false);}},
-    {label:'Duplos parciais',active:doublePartial,apply:()=>{setDoublePartial(current=>!current);setDoubleOnly(false);}}
+    {label:'Duplos parciais',active:doublePartial,apply:()=>{setDoublePartial(current=>!current);setDoubleOnly(false);}},
+    {label:'Chave emprestada',active:keyLoanOnly,apply:()=>setKeyLoanOnly(current=>!current)}
   ];
-  function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setPendingKindFilter('');setDoubleOnly(false);setDoublePartial(false);}
+  function clearFilters(){setQuery('');setStatusFilter('');setSectorFilter('');setKeyFilter('');setKeyLoanOnly(false);setPendingKindFilter('');setDoubleOnly(false);setDoublePartial(false);}
   const locker=lockers.find(item=>item.id===selected);
   const editingOccupant=occupantEdit&&occupantEdit.allocationId&&locker?locker.occupants.find(item=>item.allocationId===occupantEdit.allocationId):undefined;
   const creatingOccupant=!!occupantEdit&&!editingOccupant;
@@ -235,8 +243,9 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
           <span className="tile-people">{item.sector_occupant?item.sector_occupant:item.occupants.length?item.occupants.map(person=><span key={person.allocationId} className="tile-person"><span className="tile-person-name">{person.name}</span><small><Hash size={11} aria-hidden="true"/>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):<span className="tile-empty">{item.destination||'Sem ocupante'}</span>}</span>
           <span className="tile-footer">{showsLockerPositions(item)?`${occupiedPositions(item)}/${effectiveCapacity(item)} ${effectiveCapacity(item)===1?'posição ocupada':'posições ocupadas'}`:occupiedPositions(item)>0?'Ocupado':'Livre'}{availablePositions(item)>0&&` · ${availablePositions(item)} ${availablePositions(item)===1?'vaga disponível':'vagas disponíveis'}`}</span>
           {item.key_copy_available===false&&<span className="tile-key"><KeyRound size={13} aria-hidden="true"/> Sem cópia da chave</span>}
+          {item.key_loan_id&&<span className="tile-key tile-key--loan"><KeyRound size={13} aria-hidden="true"/> Chave emprestada</span>}
           {itemState==='pendente'&&<span className="tile-pending"><CircleAlert size={13} aria-hidden="true"/> Conferência necessária</span>}</>}
-        </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong>{item.is_double&&<span className="double-badge table-badge">Duplo</span>}</td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{showsLockerPositions(item)?`${occupiedPositions(item)} de ${effectiveCapacity(item)}`:occupiedPositions(item)>0?'Ocupado':'Livre'}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
+        </button>;})}</div>:<div className="table-wrap locker-table"><table><thead><tr><th>Armário</th><th>Setor</th><th>Situação</th><th>Ocupante / matrícula</th><th>Ocupação</th><th>Vagas disponíveis</th><th>Cópia da chave</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{filtered.map(item=><tr key={item.id}><td><strong>№ {item.number}</strong>{item.is_double&&<span className="double-badge table-badge">Duplo</span>}</td><td>{sectors(item).join(', ')||'Sem setor'}</td><td><span className={`badge state-${state(item)}`}>{stateLabels[state(item)]}</span></td><td>{item.sector_occupant||item.occupants.length?item.sector_occupant||item.occupants.map(person=><span className="table-person" key={person.allocationId}>{person.name}<small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}</small></span>):'Sem ocupante'}</td><td>{showsLockerPositions(item)?`${occupiedPositions(item)} de ${effectiveCapacity(item)}`:occupiedPositions(item)>0?'Ocupado':'Livre'}</td><td>{availablePositions(item)}</td><td>{item.key_copy_available===null?'Não informada':item.key_copy_available?'Sim':'Não'}{item.key_loan_id&&<span className="table-loan"> · Emprestada</span>}</td><td><button type="button" className="table-detail" onClick={()=>openLocker(item)}>Ver detalhes <ArrowRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table></div>}
     </section>
     {locker&&<div className="locker-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}>
       <section className="locker-modal" role="dialog" aria-modal="true" aria-hidden={!!releaseTarget} aria-labelledby="locker-dialog-title" onKeyDown={modalKeyDown}>
@@ -283,6 +292,7 @@ export function Dashboard({branchId,branchName,readonly,refresh,notice,admin=fal
               {!readonly&&<button type="button" disabled={busy} onClick={()=>release(occupant)}>Desocupar armário</button>}</div></div>)}</div>
             :<p className="locker-empty"><Users size={16} aria-hidden="true"/>{locker.sector_occupant?'Ocupação por setor, sem pessoa identificada.':'Nenhuma pessoa ocupando este armário no momento.'}</p>}
         </section>
+        {locker&&<KeyLoanCard branchId={branchId} locker={locker} loans={keyLoans.filter(item=>item.locker_id===locker.id)} busy={busy} canRegister={!readonly} run={act}/>}
         {!admin&&<section className="locker-card" aria-labelledby="locker-key-title">
           <div className="locker-card-head"><h3 id="locker-key-title"><span className="card-icon"><KeyRound size={16} aria-hidden="true"/></span>Configurações da chave</h3></div>
           <div className="toggle-row">
@@ -397,4 +407,57 @@ function OccupantSlot({slot,occupant,draft,editing,busy,officialLocked,blocked=f
       <button type="button" disabled={busy} onClick={()=>onRelease(occupant)}>Desocupar armário</button>
     </div>
   </article>;
+}
+
+function KeyLoanCard({branchId,locker,loans,busy,canRegister,run}:{branchId:string;locker:Locker;loans:KeyLoan[];busy:boolean;canRegister:boolean;run:(fn:()=>Promise<unknown>,message:string)=>void}){
+  const [registering,setRegistering]=useState(false);
+  const [query,setQuery]=useState('');
+  const [results,setResults]=useState<PersonOption[]|null>(null),[searching,setSearching]=useState(false);
+  const open=loans.find(item=>!item.returned_at);
+  const history=loans.filter(item=>item.returned_at).slice(0,3);
+  const daysOut=open?Math.max(1,Math.ceil((Date.now()-new Date(open.taken_at).getTime())/86400000)):0;
+  function take(person:PersonOption){
+    setRegistering(false);
+    run(async()=>{await post(`/branches/${branchId}/lockers/${locker.id}/key-loans`,{operationId:op(),personId:person.id});},
+      `Chave do armário #${locker.number} emprestada a ${person.name}.`);
+  }
+  function giveBack(){
+    if(!open)return;
+    run(async()=>{await post(`/branches/${branchId}/key-loans/${open.id}/return`,{operationId:op()});},
+      `Devolução da chave do armário #${locker.number} registrada.`);
+  }
+  async function search(){
+    setSearching(true);setResults(null);
+    try{setResults((await api<PersonOption[]>(`/branches/${branchId}/people?q=${encodeURIComponent(query.trim())}`)).slice(0,8));}
+    catch{setResults([]);}
+    finally{setSearching(false);}
+  }
+  return <section className="locker-card" aria-labelledby="key-loan-title">
+    <div className="locker-card-head"><h3 id="key-loan-title"><span className="card-icon"><KeyRound size={16} aria-hidden="true"/></span>Movimentos da chave</h3>
+      {open&&<span className="badge">Emprestada há {daysOut} dia(s)</span>}</div>
+    {open?<div className="list-row key-loan-open">
+        <div className="occupant-copy"><strong>{open.person_name}</strong>
+          <small><span><Hash size={12} aria-hidden="true"/>{open.person_registration?`Matrícula ${open.person_registration}`:'Sem matrícula'}</span>
+            <span><KeyRound size={12} aria-hidden="true"/>Emprestada em {new Date(open.taken_at).toLocaleDateString('pt-BR')}</span></small></div>
+        {canRegister&&<div className="row-actions"><button type="button" className="btn-action" disabled={busy} onClick={giveBack}><Undo2 size={14} aria-hidden="true"/>Registrar devolução</button></div>}
+      </div>
+      :canRegister&&!registering&&<button type="button" className="add-occupant" disabled={busy} onClick={()=>{setRegistering(true);setQuery('');setResults(null);}}>
+        <KeyRound size={15} aria-hidden="true"/>Registrar empréstimo da chave</button>}
+    {!open&&canRegister&&registering&&<>
+      <form className="key-loan-search" onSubmit={event=>{event.preventDefault();search();}}>
+        <label className="filter-search">Buscar pessoa por nome ou matrícula
+          <span className="filter-input"><Search size={15} aria-hidden="true"/>
+            <input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder="Nome ou matrícula"/></span>
+        </label>
+        <div className="row-actions"><button type="submit" className="btn-action" disabled={searching||query.trim().length<2}>Buscar</button>
+          <button type="button" disabled={busy} onClick={()=>setRegistering(false)}>Cancelar</button></div>
+      </form>
+      {results&&<div className="list">{results.length?results.map(person=><button key={person.id} type="button" className="key-loan-person" disabled={busy} onClick={()=>take(person)}>
+          <strong>{person.name}</strong><small>{person.registration?`Matrícula ${person.registration}`:'Sem matrícula'}{person.department?` · ${person.department}`:''}</small>
+        </button>):<p className="locker-empty"><Users size={16} aria-hidden="true"/>Nenhuma pessoa ativa encontrada para “{query.trim()}”.</p>}</div>}
+    </>}
+    {!open&&!canRegister&&<p className="locker-empty"><KeyRound size={16} aria-hidden="true"/>Nenhuma chave emprestada no momento.</p>}
+    {history.length>0&&<div className="key-loan-history"><small>Devoluções recentes</small>
+      {history.map(item=><div key={item.id} className="key-loan-history-row"><span>{item.person_name}</span><small>{new Date(item.returned_at!).toLocaleDateString('pt-BR')}</small></div>)}</div>}
+  </section>;
 }

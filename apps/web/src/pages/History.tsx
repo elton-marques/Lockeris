@@ -10,7 +10,7 @@ const events:Record<string,string>={
   pessoa_cadastrada:'Pessoa cadastrada',pessoa_alterada:'Cadastro de pessoa atualizado',
   atuacao_encerrada:'Cadastro excluído',atuacao_reativada:'Cadastro reativado',
   armario_criado:'Armário cadastrado',armario_alterado:'Dados do armário atualizados',armario_revisado:'Armário conferido',
-  copia_chave_atualizada:'Cópia da chave atualizada',dados_ti_alterados:'Dados oficiais atualizados',
+  copia_chave_atualizada:'Cópia da chave atualizada',chave_emprestada:'Chave emprestada',chave_devolvida:'Chave devolvida',dados_ti_alterados:'Dados oficiais atualizados',
   pessoa_ti_incluida:'Colaborador incluído na base ativa',lote_ti_aplicado:'Base de colaboradores atualizada',
   pendencia_revisada:'Pendência conferida',pendencia_resolvida:'Pendência resolvida',
   excecao_armario:'Dispensa de armário registrada',usuario_criado:'Usuário criado',usuario_alterado:'Acesso atualizado',
@@ -27,7 +27,7 @@ const events:Record<string,string>={
   pendencia_auto_reconciliada:'Matrícula reconciliada automaticamente',
   historico_limpo:'Histórico legado limpo'
 };
-const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Dispositivo legado',allocation:'Ocupação',sharing:'Compartilhamento'};
+const subjects:Record<string,string>={branch:'Filial',membership:'Pessoa',locker:'Armário',import:'Importação',pending:'Pendência',user:'Acesso',device:'Dispositivo legado',allocation:'Ocupação',sharing:'Compartilhamento',key_loan:'Chave'};
 export const eventLabel=(kind:string)=>events[kind]??'Evento registrado';
 const eventTone=(kind:string)=>kind.includes('pendencia')?'warning':kind.includes('encerrada')||kind.includes('removidos')?'neutral':'success';
 function involved(item:RecordItem):string|null{

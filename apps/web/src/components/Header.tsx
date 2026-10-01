@@ -7,14 +7,15 @@ import {Select} from './Select';
 export type Theme='light'|'dark';
 export type Branch={id:string;name:string;timezone:string;status:string;version:number};
 export type Tab={key:string;label:string;icon:typeof Bell;group:string};
-export type NotificationKey='withoutLocker'|'registrationPending'|'underusedDoubles';
+export type NotificationKey='withoutLocker'|'registrationPending'|'underusedDoubles'|'keyLoanOpen';
 type NotificationAlert={key:NotificationKey;label:string;description:string;count:number};
 type NotificationSummary={total:number;alerts:NotificationAlert[];checkedAt:string};
 const refreshInterval=60_000;
 const notificationCopy:Record<NotificationKey,{description:string;action:string;className:string}>={
   withoutLocker:{description:'Pessoas ativas aguardando alocação.',action:'Ver colaboradores',className:'without-locker'},
   registrationPending:{description:'Cadastros com dados incompletos ou divergentes.',action:'Revisar pendências',className:'registration-pending'},
-  underusedDoubles:{description:'Armários duplos com uma vaga livre.',action:'Ver armários duplos',className:'underused-doubles'}
+  underusedDoubles:{description:'Armários duplos com uma vaga livre.',action:'Ver armários duplos',className:'underused-doubles'},
+  keyLoanOpen:{description:'Empréstimos de chave abertos há 7 dias ou mais.',action:'Ver armários com chave emprestada',className:'key-loan'}
 };
 const pageCopy:Record<string,string>={
   pessoas:'Encontre pessoas, atribua ou transfira armários.',

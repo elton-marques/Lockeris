@@ -86,6 +86,7 @@ export default function App(){
   function openAlert(key:NotificationKey){
     if(key==='withoutLocker')navigate('pessoas',{withoutLocker:true});
     else if(key==='registrationPending')navigate('pendencias');
+    else if(key==='keyLoanOpen')openLockers({keyLoan:true});
     else openLockers({doublePartial:true});
   }
   return <div className="app-shell">

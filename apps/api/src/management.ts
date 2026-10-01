@@ -67,7 +67,7 @@ const pendingDetailsSql=(openOnly:boolean)=>`SELECT p.*,pe.name person_name,m.pe
 export async function managementRoutes(app:FastifyInstance):Promise<void> {
   app.get('/api/branches/:branchId/dashboard',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);
-    const [lockers,people,pending,links,withoutLocker]=await Promise.all([
+    const [lockers,people,pending,links,withoutLocker,keyLoans]=await Promise.all([
       pool.query<{total:string;occupied:string;blocked:string}>(`SELECT count(*) total,count(*) FILTER (WHERE l.sector_occupant IS NOT NULL OR EXISTS(SELECT 1 FROM allocations a WHERE a.locker_id=l.id AND a.ended_at IS NULL)) occupied,
         count(*) FILTER (WHERE l.condition<>'disponivel' OR l.migration_status='inconclusivo') blocked FROM lockers l WHERE l.branch_id=$1`,[branchId]),
       pool.query<{total:string}>('SELECT count(*) total FROM memberships WHERE branch_id=$1 AND status=$2',[branchId,'ativo']),
@@ -106,9 +106,12 @@ export async function managementRoutes(app:FastifyInstance):Promise<void> {
         WHERE link IS NOT NULL`,[branchId]),
       pool.query<{total:number}>(`SELECT count(*)::int total FROM memberships m
         WHERE m.branch_id=$1 AND m.status='ativo'
-          AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)`,[branchId])
+          AND NOT EXISTS(SELECT 1 FROM allocations a WHERE a.person_id=m.person_id AND a.ended_at IS NULL)`,[branchId]),
+      pool.query<{open:number;overdue:number}>(`SELECT count(*) FILTER (WHERE returned_at IS NULL)::int open,
+        count(*) FILTER (WHERE returned_at IS NULL AND taken_at<now()-interval '7 days')::int overdue
+        FROM key_loans WHERE branch_id=$1`,[branchId])
     ]);
-    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0],withoutLocker:withoutLocker.rows[0]};
+    return {lockers:lockers.rows[0],people:people.rows[0],pending:pending.rows[0],links:links.rows[0],withoutLocker:withoutLocker.rows[0],keyLoans:keyLoans.rows[0]};
   });
   app.get('/api/branches/:branchId/pending',async request=>{
     const actor=await authenticate(request),{branchId}=route.parse(request.params);branchAccess(actor,branchId);

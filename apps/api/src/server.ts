@@ -16,6 +16,7 @@ import { migrationRoutes } from './migration.js';
 import { notificationRoutes } from './notifications.js';
 import { sanitationRoutes } from './sanitation.js';
 import { custodyRoutes } from './custody.js';
+import { keyLoanRoutes } from './keyloans.js';
 import { refreshPending } from './pending.js';
 import { documentRoute } from './openapi.js';
 import { registerPortableWeb } from './portable.js';
@@ -59,6 +60,7 @@ await managementRoutes(app);
 await notificationRoutes(app);
 await sanitationRoutes(app);
 await custodyRoutes(app);
+await keyLoanRoutes(app);
 if(process.env.PORTABLE_MODE==='true') await registerPortableWeb(app);
 
 const timer=setInterval(async()=>{

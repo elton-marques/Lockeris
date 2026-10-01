@@ -37,3 +37,7 @@ export const retainedItemInput = z.object({
 export const releaseInput = operation.extend({ allocationId: id, expectedVersion: z.number().int().positive(), note: z.string().max(2000).nullish(), retainedItem: retainedItemInput.optional() });
 export const transferInput = operation.extend({ allocationId: id, expectedAllocationVersion: z.number().int().positive(), destinationLockerId: id, sourceVersion: z.number().int().positive(), destinationVersion: z.number().int().positive(), reason: z.string().trim().min(3).max(500), note: z.string().max(2000).nullish(), keyCopyAvailable: z.boolean().optional(), sharingReason: z.string().max(500).nullish(), sharingDueAt: z.iso.datetime().nullish() });
 export const branchInput = z.object({ name: z.string().trim().min(2).max(120) });
+const keywordList = z.array(z.string().trim().toLowerCase().min(2).max(80)).max(30).default([]);
+export const linkRulesInput = z.object({ apprentice: keywordList, promoter: keywordList, thirdParty: keywordList }).refine(value => Object.values(value).some(list => list.length > 0), { message: 'Informe ao menos uma palavra-chave' });
+export const keyLoanInput = operation.extend({ personId: id, notes: z.string().trim().max(2000).nullish() });
+export const keyLoanReturnInput = z.object({ operationId: id, notes: z.string().trim().max(2000).nullish() });
